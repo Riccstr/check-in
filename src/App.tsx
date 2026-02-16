@@ -3,8 +3,19 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
-import NotFound from "./pages/NotFound";
+import { AuthProvider } from "@/hooks/useAuth";
+import AppLayout from "@/components/AppLayout";
+import Auth from "@/pages/Auth";
+import Index from "@/pages/Index";
+import LogVisit from "@/pages/LogVisit";
+import MyVisits from "@/pages/MyVisits";
+import Averages from "@/pages/Averages";
+import AdminCustomers from "@/pages/admin/AdminCustomers";
+import AdminReps from "@/pages/admin/AdminReps";
+import AdminAssignments from "@/pages/admin/AdminAssignments";
+import AdminVisits from "@/pages/admin/AdminVisits";
+import AdminExports from "@/pages/admin/AdminExports";
+import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
 
@@ -14,11 +25,23 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/auth" element={<Auth />} />
+            <Route element={<AppLayout />}>
+              <Route path="/" element={<Index />} />
+              <Route path="/log-visit" element={<LogVisit />} />
+              <Route path="/my-visits" element={<MyVisits />} />
+              <Route path="/averages" element={<Averages />} />
+              <Route path="/admin/customers" element={<AdminCustomers />} />
+              <Route path="/admin/reps" element={<AdminReps />} />
+              <Route path="/admin/assignments" element={<AdminAssignments />} />
+              <Route path="/admin/visits" element={<AdminVisits />} />
+              <Route path="/admin/exports" element={<AdminExports />} />
+            </Route>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
