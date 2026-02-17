@@ -56,6 +56,48 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const action = body.action || url.searchParams.get("action") || "list";
 
+    if (action === "create_user") {
+      const { email, password, role, full_name } = body;
+      if (!email || !password) {
+        return new Response(JSON.stringify({ error: "email and password required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Delete any existing auto-assigned role (trigger may have fired)
+      // We'll set the correct role after creation
+      const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: full_name || email },
+      });
+
+      if (createErr) {
+        return new Response(JSON.stringify({ error: createErr.message }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Assign role if provided (override any auto-assigned role)
+      if (role && newUser.user) {
+        // Remove auto-assigned role first
+        await supabaseAdmin.from("user_roles").delete().eq("user_id", newUser.user.id);
+        await supabaseAdmin.from("user_roles").insert({ user_id: newUser.user.id, role });
+        
+        // If role is admin, make sure they're NOT linked to any rep
+        if (role === "admin") {
+          await supabaseAdmin.from("reps").update({ user_id: null, email: null }).eq("user_id", newUser.user.id);
+        }
+      }
+
+      return new Response(JSON.stringify({ success: true, user_id: newUser.user?.id }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (action === "list") {
       // List all auth users
       const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers({
