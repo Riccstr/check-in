@@ -1,1 +1,4 @@
 project_id = "wmrthlygvnuvxqfetnbz"
+
+[functions.manage-rep-user]
+verify_jwt = false
