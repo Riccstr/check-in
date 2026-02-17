@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate, Outlet, Link, useLocation } from "react-router-dom";
-import { ClipboardCheck, LogOut, MapPin, BarChart3, Users, UserCog, Link2, Eye, Download, Menu, X } from "lucide-react";
+import { ClipboardCheck, LogOut, MapPin, BarChart3, Users, UserCog, Link2, Eye, Download, Menu, X, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,7 @@ export default function AppLayout() {
   );
 
   const repLinks = [
+    { to: "/schedule", label: "Schedule", icon: CalendarDays },
     { to: "/log-visit", label: "Log Visit", icon: MapPin },
     { to: "/my-visits", label: "My Visits", icon: Eye },
     { to: "/averages", label: "Averages", icon: BarChart3 },
@@ -32,6 +33,7 @@ export default function AppLayout() {
     { to: "/admin/customers", label: "Customers", icon: Users },
     { to: "/admin/reps", label: "Reps", icon: UserCog },
     { to: "/admin/assignments", label: "Assignments", icon: Link2 },
+    { to: "/admin/schedules", label: "Schedules", icon: CalendarDays },
     { to: "/admin/visits", label: "Visits", icon: Eye },
     { to: "/admin/exports", label: "Exports", icon: Download },
   ];

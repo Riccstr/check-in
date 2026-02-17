@@ -71,6 +71,35 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_schedules: {
+        Row: {
+          created_at: string
+          id: string
+          rep_id: string
+          schedule_date: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          rep_id: string
+          schedule_date: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          rep_id?: string
+          schedule_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_schedules_rep_id_fkey"
+            columns: ["rep_id"]
+            isOneToOne: false
+            referencedRelation: "reps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -91,27 +120,165 @@ export type Database = {
       }
       reps: {
         Row: {
+          cell_no: string | null
           created_at: string
+          email: string | null
           id: string
           is_active: boolean
           rep_name: string
+          surname: string | null
           user_id: string | null
         }
         Insert: {
+          cell_no?: string | null
           created_at?: string
+          email?: string | null
           id?: string
           is_active?: boolean
           rep_name: string
+          surname?: string | null
           user_id?: string | null
         }
         Update: {
+          cell_no?: string | null
           created_at?: string
+          email?: string | null
           id?: string
           is_active?: boolean
           rep_name?: string
+          surname?: string | null
           user_id?: string | null
         }
         Relationships: []
+      }
+      schedule_items: {
+        Row: {
+          arrival_time: string | null
+          customer_id: string
+          duration_minutes: number | null
+          id: string
+          leaving_time: string | null
+          notes: string | null
+          schedule_id: string
+          sort_order: number
+          status: string
+          visit_id: string | null
+        }
+        Insert: {
+          arrival_time?: string | null
+          customer_id: string
+          duration_minutes?: number | null
+          id?: string
+          leaving_time?: string | null
+          notes?: string | null
+          schedule_id: string
+          sort_order?: number
+          status?: string
+          visit_id?: string | null
+        }
+        Update: {
+          arrival_time?: string | null
+          customer_id?: string
+          duration_minutes?: number | null
+          id?: string
+          leaving_time?: string | null
+          notes?: string | null
+          schedule_id?: string
+          sort_order?: number
+          status?: string
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_items_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_items_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "daily_schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_items_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schedule_template_items: {
+        Row: {
+          customer_id: string
+          id: string
+          sort_order: number
+          template_id: string
+        }
+        Insert: {
+          customer_id: string
+          id?: string
+          sort_order?: number
+          template_id: string
+        }
+        Update: {
+          customer_id?: string
+          id?: string
+          sort_order?: number
+          template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_template_items_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_template_items_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schedule_templates: {
+        Row: {
+          created_at: string
+          day_of_week: number
+          id: string
+          is_active: boolean
+          rep_id: string
+        }
+        Insert: {
+          created_at?: string
+          day_of_week: number
+          id?: string
+          is_active?: boolean
+          rep_id: string
+        }
+        Update: {
+          created_at?: string
+          day_of_week?: number
+          id?: string
+          is_active?: boolean
+          rep_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_templates_rep_id_fkey"
+            columns: ["rep_id"]
+            isOneToOne: false
+            referencedRelation: "reps"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
