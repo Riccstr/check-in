@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate, Outlet, Link, useLocation } from "react-router-dom";
-import { ClipboardCheck, LogOut, MapPin, BarChart3, Users, UserCog, Link2, Eye, Download, Menu, X, CalendarDays } from "lucide-react";
+import { ClipboardCheck, LogOut, MapPin, BarChart3, Users, UserCog, Link2, Eye, Download, Menu, X, CalendarDays, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -36,9 +36,10 @@ export default function AppLayout() {
     { to: "/admin/schedules", label: "Schedules", icon: CalendarDays },
     { to: "/admin/visits", label: "Visits", icon: Eye },
     { to: "/admin/exports", label: "Exports", icon: Download },
+    { to: "/admin/account", label: "Account", icon: Settings },
   ];
 
-  const links = role === "admin" ? [...repLinks, ...adminLinks] : repLinks;
+  const links = role === "admin" ? adminLinks : repLinks;
 
   const isActive = (path: string) => location.pathname === path;
 
