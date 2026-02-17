@@ -52,18 +52,21 @@ export type Database = {
       }
       customers: {
         Row: {
+          area: string | null
           created_at: string
           customer_name: string
           id: string
           is_active: boolean
         }
         Insert: {
+          area?: string | null
           created_at?: string
           customer_name: string
           id?: string
           is_active?: boolean
         }
         Update: {
+          area?: string | null
           created_at?: string
           customer_name?: string
           id?: string
