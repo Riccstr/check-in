@@ -4,11 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
-import { Users, Plus, Pencil, ArrowUpDown } from "lucide-react";
+import { Users, Plus, Pencil, ArrowUpDown, Filter } from "lucide-react";
 
 type SortKey = "customer_name" | "area" | "rep";
 
@@ -22,8 +24,12 @@ export default function AdminCustomers() {
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [area, setArea] = useState("");
+  const [priceCategory, setPriceCategory] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("customer_name");
   const [sortAsc, setSortAsc] = useState(true);
+  const [filterRep, setFilterRep] = useState("all");
+  const [filterArea, setFilterArea] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
 
   const fetchAll = async () => {
     setLoading(true);
@@ -56,12 +62,24 @@ export default function AdminCustomers() {
     return m;
   }, [assignments, repMap]);
 
-  const openNew = () => { setEditId(null); setName(""); setArea(""); setDialogOpen(true); };
-  const openEdit = (c: any) => { setEditId(c.id); setName(c.customer_name); setArea(c.area || ""); setDialogOpen(true); };
+  const areas = useMemo(() => {
+    const set = new Set<string>();
+    customers.forEach((c) => { if (c.area) set.add(c.area); });
+    return Array.from(set).sort();
+  }, [customers]);
+
+  const repNames = useMemo(() => {
+    const set = new Set<string>();
+    Object.values(customerRepMap).forEach((n) => { if (n !== "—") set.add(n); });
+    return Array.from(set).sort();
+  }, [customerRepMap]);
+
+  const openNew = () => { setEditId(null); setName(""); setArea(""); setPriceCategory(""); setDialogOpen(true); };
+  const openEdit = (c: any) => { setEditId(c.id); setName(c.customer_name); setArea(c.area || ""); setPriceCategory(c.price_category || ""); setDialogOpen(true); };
 
   const save = async () => {
     if (!name.trim()) { toast.error("Name required"); return; }
-    const payload = { customer_name: name.trim(), area: area.trim() || null };
+    const payload: any = { customer_name: name.trim(), area: area.trim() || null, price_category: priceCategory || null };
     if (editId) {
       const { error } = await supabase.from("customers").update(payload).eq("id", editId);
       if (error) toast.error(error.message); else toast.success("Updated");
@@ -82,6 +100,8 @@ export default function AdminCustomers() {
     else { setSortKey(key); setSortAsc(true); }
   };
 
+  const activeFilterCount = [filterRep, filterArea, filterStatus].filter((f) => f !== "all").length;
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     let list = customers.filter((c) =>
@@ -89,6 +109,10 @@ export default function AdminCustomers() {
       (c.area || "").toLowerCase().includes(q) ||
       (customerRepMap[c.id] || "").toLowerCase().includes(q)
     );
+
+    if (filterRep !== "all") list = list.filter((c) => customerRepMap[c.id] === filterRep);
+    if (filterArea !== "all") list = list.filter((c) => c.area === filterArea);
+    if (filterStatus !== "all") list = list.filter((c) => filterStatus === "active" ? c.is_active : !c.is_active);
 
     list.sort((a, b) => {
       let va: string, vb: string;
@@ -100,7 +124,7 @@ export default function AdminCustomers() {
     });
 
     return list;
-  }, [customers, search, sortKey, sortAsc, customerRepMap]);
+  }, [customers, search, sortKey, sortAsc, customerRepMap, filterRep, filterArea, filterStatus]);
 
   const SortButton = ({ label, sortId }: { label: string; sortId: SortKey }) => (
     <Button variant="ghost" size="sm" className="-ml-3 h-8 font-medium" onClick={() => handleSort(sortId)}>
@@ -109,6 +133,8 @@ export default function AdminCustomers() {
     </Button>
   );
 
+  const clearFilters = () => { setFilterRep("all"); setFilterArea("all"); setFilterStatus("all"); };
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -116,7 +142,53 @@ export default function AdminCustomers() {
         <Button size="sm" onClick={openNew}><Plus className="h-4 w-4 mr-1" /> Add</Button>
       </CardHeader>
       <CardContent>
-        <Input placeholder="Search customers..." value={search} onChange={(e) => setSearch(e.target.value)} className="mb-4 max-w-xs" />
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <Input placeholder="Search customers..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1">
+                <Filter className="h-4 w-4" /> Filter
+                {activeFilterCount > 0 && <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">{activeFilterCount}</Badge>}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 space-y-3" align="start">
+              <div className="space-y-1">
+                <Label className="text-xs">Rep</Label>
+                <Select value={filterRep} onValueChange={setFilterRep}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Reps</SelectItem>
+                    {repNames.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Area</Label>
+                <Select value={filterArea} onValueChange={setFilterArea}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Areas</SelectItem>
+                    {areas.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Status</Label>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {activeFilterCount > 0 && (
+                <Button variant="ghost" size="sm" className="w-full" onClick={clearFilters}>Clear filters</Button>
+              )}
+            </PopoverContent>
+          </Popover>
+        </div>
         {loading ? <p className="text-muted-foreground py-4">Loading...</p> : (
           <Table>
             <TableHeader>
@@ -124,6 +196,7 @@ export default function AdminCustomers() {
                 <TableHead><SortButton label="Name" sortId="customer_name" /></TableHead>
                 <TableHead><SortButton label="Area" sortId="area" /></TableHead>
                 <TableHead><SortButton label="Rep" sortId="rep" /></TableHead>
+                <TableHead>Price</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead></TableHead>
               </TableRow>
@@ -134,6 +207,7 @@ export default function AdminCustomers() {
                   <TableCell className="font-medium">{c.customer_name}</TableCell>
                   <TableCell>{c.area || "—"}</TableCell>
                   <TableCell className="text-muted-foreground">{customerRepMap[c.id] || "Unassigned"}</TableCell>
+                  <TableCell>{c.price_category || "—"}</TableCell>
                   <TableCell><Badge variant={c.is_active ? "default" : "secondary"}>{c.is_active ? "Active" : "Inactive"}</Badge></TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
@@ -151,6 +225,17 @@ export default function AdminCustomers() {
           <div className="space-y-3">
             <div><Label>Name *</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
             <div><Label>Area</Label><Input value={area} onChange={(e) => setArea(e.target.value)} placeholder="e.g. Johannesburg North" /></div>
+            <div className="space-y-1">
+              <Label>Price Category</Label>
+              <Select value={priceCategory} onValueChange={setPriceCategory}>
+                <SelectTrigger><SelectValue placeholder="Select price category" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Price A">Price A</SelectItem>
+                  <SelectItem value="Price B">Price B</SelectItem>
+                  <SelectItem value="Price C">Price C</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter><Button onClick={save}>Save</Button></DialogFooter>
         </DialogContent>

@@ -57,6 +57,7 @@ export type Database = {
           customer_name: string
           id: string
           is_active: boolean
+          price_category: string | null
         }
         Insert: {
           area?: string | null
@@ -64,6 +65,7 @@ export type Database = {
           customer_name: string
           id?: string
           is_active?: boolean
+          price_category?: string | null
         }
         Update: {
           area?: string | null
@@ -71,6 +73,7 @@ export type Database = {
           customer_name?: string
           id?: string
           is_active?: boolean
+          price_category?: string | null
         }
         Relationships: []
       }
