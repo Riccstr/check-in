@@ -35,7 +35,7 @@ export default function AppLayout() {
     { to: "/admin/assignments", label: "Assignments", icon: Link2 },
     { to: "/admin/schedules", label: "Schedules", icon: CalendarDays },
     { to: "/admin/visits", label: "Visits", icon: Eye },
-    { to: "/admin/exports", label: "Exports", icon: Download },
+    { to: "/admin/reports", label: "Reports", icon: Download },
     { to: "/admin/users", label: "Users", icon: ShieldCheck },
     { to: "/admin/account", label: "Account", icon: Settings },
   ];

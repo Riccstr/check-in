@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Users, Shield, KeyRound, Trash2 } from "lucide-react";
+import { Users, Shield, KeyRound, Trash2, UserPlus } from "lucide-react";
 import { format } from "date-fns";
 
 interface UserAccount {
@@ -29,6 +29,7 @@ export default function AdminUsers() {
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -37,6 +38,13 @@ export default function AdminUsers() {
   const [selectedRole, setSelectedRole] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Create user form state
+  const [createEmail, setCreateEmail] = useState("");
+  const [createPassword, setCreatePassword] = useState("");
+  const [createFullName, setCreateFullName] = useState("");
+  const [createSurname, setCreateSurname] = useState("");
+  const [createRole, setCreateRole] = useState("rep");
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -52,6 +60,45 @@ export default function AdminUsers() {
   };
 
   useEffect(() => { fetchUsers(); }, []);
+
+  const openCreateDialog = () => {
+    setCreateEmail("");
+    setCreatePassword("");
+    setCreateFullName("");
+    setCreateSurname("");
+    setCreateRole("rep");
+    setCreateDialogOpen(true);
+  };
+
+  const createUser = async () => {
+    if (!createEmail.trim() || !createPassword.trim()) {
+      toast.error("Email and password are required");
+      return;
+    }
+    if (createPassword.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    setSaving(true);
+    const fullName = [createFullName.trim(), createSurname.trim()].filter(Boolean).join(" ") || createEmail;
+    const res = await supabase.functions.invoke("manage-users", {
+      body: {
+        action: "create_user",
+        email: createEmail.trim(),
+        password: createPassword,
+        role: createRole,
+        full_name: fullName,
+      },
+    });
+    if (res.error || res.data?.error) {
+      toast.error(res.data?.error || res.error?.message || "Failed to create user");
+    } else {
+      toast.success("User created successfully");
+      setCreateDialogOpen(false);
+      fetchUsers();
+    }
+    setSaving(false);
+  };
 
   const openRoleDialog = (u: UserAccount) => {
     setSelectedUser(u);
@@ -133,9 +180,14 @@ export default function AdminUsers() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Users className="h-5 w-5 text-accent" /> User Accounts
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-accent" /> User Accounts
+          </CardTitle>
+          <Button onClick={openCreateDialog} size="sm">
+            <UserPlus className="h-4 w-4 mr-2" /> Add User
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {loading ? (
@@ -192,6 +244,52 @@ export default function AdminUsers() {
         )}
       </CardContent>
 
+      {/* Create User Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New User</DialogTitle>
+            <DialogDescription>Create a new user account with role assignment.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>First Name</Label>
+                <Input value={createFullName} onChange={(e) => setCreateFullName(e.target.value)} placeholder="First name" />
+              </div>
+              <div>
+                <Label>Surname</Label>
+                <Input value={createSurname} onChange={(e) => setCreateSurname(e.target.value)} placeholder="Surname" />
+              </div>
+            </div>
+            <div>
+              <Label>Email *</Label>
+              <Input type="email" value={createEmail} onChange={(e) => setCreateEmail(e.target.value)} placeholder="user@example.com" />
+            </div>
+            <div>
+              <Label>Password *</Label>
+              <Input type="password" value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} placeholder="Min 6 characters" />
+            </div>
+            <div>
+              <Label>Role</Label>
+              <Select value={createRole} onValueChange={setCreateRole}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="rep">Rep</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
+            <Button onClick={createUser} disabled={saving}>{saving ? "Creating..." : "Create User"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Role Dialog */}
       <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
         <DialogContent>
@@ -203,9 +301,7 @@ export default function AdminUsers() {
             <div>
               <Label>Role</Label>
               <Select value={selectedRole} onValueChange={setSelectedRole}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="rep">Rep</SelectItem>
@@ -229,12 +325,7 @@ export default function AdminUsers() {
           <div className="space-y-3">
             <div>
               <Label>New Password</Label>
-              <Input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Min 6 characters"
-              />
+              <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min 6 characters" />
             </div>
           </div>
           <DialogFooter>
