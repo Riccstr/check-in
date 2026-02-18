@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,8 +9,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Eye, Pencil, Trash2 } from "lucide-react";
+import { Eye, Pencil, Trash2, RefreshCw } from "lucide-react";
+import { getAllOfflineVisits, type OfflineVisit } from "@/lib/offlineDb";
+import { syncPendingVisits } from "@/lib/syncEngine";
 
 interface Visit {
   id: string;
@@ -21,6 +24,10 @@ interface Visit {
   notes: string | null;
   customer_id: string;
   customers: { customer_name: string } | null;
+  _offline?: boolean;
+  _sync_status?: "pending" | "synced" | "error";
+  _error_message?: string | null;
+  _client_generated_id?: string;
 }
 
 export default function MyVisits() {
@@ -37,9 +44,11 @@ export default function MyVisits() {
   const [editNotes, setEditNotes] = useState("");
   const [editDate, setEditDate] = useState("");
 
-  const fetchVisits = async () => {
+  const fetchVisits = useCallback(async () => {
     if (!repId) return;
     setLoading(true);
+
+    // Fetch server visits
     let q = supabase
       .from("visits")
       .select("*, customers(customer_name)")
@@ -48,10 +57,57 @@ export default function MyVisits() {
     if (dateFrom) q = q.gte("visit_date", dateFrom);
     if (dateTo) q = q.lte("visit_date", dateTo);
     if (customerFilter && customerFilter !== "all") q = q.eq("customer_id", customerFilter);
-    const { data } = await q;
-    setVisits((data as any) || []);
+
+    let serverVisits: Visit[] = [];
+    try {
+      const { data } = await q;
+      serverVisits = (data as any) || [];
+    } catch {
+      // Offline - no server data
+    }
+
+    // Fetch offline visits
+    const offlineVisits = await getAllOfflineVisits();
+    const offlineAsVisits: Visit[] = offlineVisits
+      .filter((ov) => ov.sync_status !== "synced") // Don't show synced offline visits (they should be in server data)
+      .filter((ov) => ov.payload.rep_id === repId)
+      .filter((ov) => {
+        if (customerFilter && customerFilter !== "all" && ov.payload.customer_id !== customerFilter) return false;
+        if (dateFrom && ov.payload.visit_date < dateFrom) return false;
+        if (dateTo && ov.payload.visit_date > dateTo) return false;
+        return true;
+      })
+      .map((ov) => ({
+        id: ov.client_generated_id,
+        visit_date: ov.payload.visit_date,
+        arrival_time: ov.payload.arrival_time,
+        leaving_time: ov.payload.leaving_time,
+        duration_minutes: ov.payload.duration_minutes,
+        notes: ov.payload.notes,
+        customer_id: ov.payload.customer_id,
+        customers: { customer_name: ov.customer_name || "Unknown" },
+        _offline: true,
+        _sync_status: ov.sync_status,
+        _error_message: ov.error_message,
+        _client_generated_id: ov.client_generated_id,
+      }));
+
+    // Merge: offline first, then server (deduplicate by client_generated_id)
+    const serverClientIds = new Set(
+      serverVisits
+        .filter((v: any) => v.client_generated_id)
+        .map((v: any) => v.client_generated_id)
+    );
+    const uniqueOffline = offlineAsVisits.filter(
+      (ov) => !serverClientIds.has(ov._client_generated_id)
+    );
+
+    const merged = [...uniqueOffline, ...serverVisits];
+    merged.sort((a, b) => b.visit_date.localeCompare(a.visit_date));
+
+    setVisits(merged);
     setLoading(false);
-  };
+  }, [repId, dateFrom, dateTo, customerFilter]);
 
   useEffect(() => {
     if (!repId) return;
@@ -61,7 +117,7 @@ export default function MyVisits() {
       });
   }, [repId]);
 
-  useEffect(() => { fetchVisits(); }, [repId, dateFrom, dateTo, customerFilter]);
+  useEffect(() => { fetchVisits(); }, [fetchVisits]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this visit?")) return;
@@ -71,6 +127,7 @@ export default function MyVisits() {
   };
 
   const openEdit = (v: Visit) => {
+    if (v._offline) return; // Can't edit offline visits
     setEditVisit(v);
     setEditArrival(v.arrival_time);
     setEditLeaving(v.leaving_time);
@@ -95,11 +152,27 @@ export default function MyVisits() {
     else { toast.success("Updated"); setEditVisit(null); fetchVisits(); }
   };
 
+  const handleRetrySync = async () => {
+    const result = await syncPendingVisits();
+    if (result.synced > 0) toast.success(`${result.synced} visit(s) synced`);
+    if (result.errors > 0) toast.error(`${result.errors} visit(s) failed`);
+    fetchVisits();
+  };
+
+  const hasPendingOffline = visits.some((v) => v._offline);
+
   return (
     <div>
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Eye className="h-5 w-5 text-accent" /> My Visits</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2"><Eye className="h-5 w-5 text-accent" /> My Visits</CardTitle>
+            {hasPendingOffline && navigator.onLine && (
+              <Button variant="outline" size="sm" onClick={handleRetrySync}>
+                <RefreshCw className="h-4 w-4 mr-1" /> Sync Now
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3 mb-4">
@@ -138,12 +211,13 @@ export default function MyVisits() {
                     <TableHead>Leaving</TableHead>
                     <TableHead>Duration</TableHead>
                     <TableHead>Notes</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {visits.map((v) => (
-                    <TableRow key={v.id}>
+                    <TableRow key={v.id} className={v._offline ? "opacity-80" : ""}>
                       <TableCell>{v.visit_date}</TableCell>
                       <TableCell>{v.customers?.customer_name}</TableCell>
                       <TableCell>{v.arrival_time?.slice(0,5)}</TableCell>
@@ -151,10 +225,21 @@ export default function MyVisits() {
                       <TableCell>{v.duration_minutes} min</TableCell>
                       <TableCell className="max-w-[200px] truncate">{v.notes || "—"}</TableCell>
                       <TableCell>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => openEdit(v)}><Pencil className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(v.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                        </div>
+                        {v._offline ? (
+                          <Badge variant={v._sync_status === "error" ? "destructive" : "secondary"} className="text-xs">
+                            {v._sync_status === "pending" ? "Pending" : v._sync_status === "error" ? "Error" : "Synced"}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs">Synced</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {!v._offline && (
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => openEdit(v)}><Pencil className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleDelete(v.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                          </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

@@ -9,9 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { MapPin, Clock } from "lucide-react";
+import { v4 as uuidv4 } from "uuid";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { addOfflineVisit, setCachedCustomers, getCachedCustomers } from "@/lib/offlineDb";
 
 export default function LogVisit() {
   const { repId } = useAuth();
+  const isOnline = useOnlineStatus();
   const [customers, setCustomers] = useState<{ id: string; customer_name: string }[]>([]);
   const [customerId, setCustomerId] = useState("");
   const [visitDate, setVisitDate] = useState(new Date().toISOString().split("T")[0]);
@@ -22,19 +26,34 @@ export default function LogVisit() {
 
   useEffect(() => {
     if (!repId) return;
-    supabase
-      .from("customer_assignments")
-      .select("customer_id, customers(id, customer_name, is_active)")
-      .eq("rep_id", repId)
-      .then(({ data }) => {
+
+    const loadCustomers = async () => {
+      if (isOnline) {
+        const { data } = await supabase
+          .from("customer_assignments")
+          .select("customer_id, customers(id, customer_name, is_active)")
+          .eq("rep_id", repId);
         if (data) {
           const active = data
             .filter((d: any) => d.customers?.is_active)
             .map((d: any) => ({ id: d.customers.id, customer_name: d.customers.customer_name }));
           setCustomers(active);
+          // Cache for offline use
+          await setCachedCustomers(active);
         }
-      });
-  }, [repId]);
+      } else {
+        // Load from cache
+        const cached = await getCachedCustomers();
+        if (cached.length > 0) {
+          setCustomers(cached);
+        } else {
+          toast.info("Connect to the internet once to load your customers.");
+        }
+      }
+    };
+
+    loadCustomers();
+  }, [repId, isOnline]);
 
   const nowTime = () => {
     const now = new Date();
@@ -58,7 +77,9 @@ export default function LogVisit() {
       return;
     }
     setSubmitting(true);
-    const { error } = await supabase.from("visits").insert({
+
+    const clientId = uuidv4();
+    const visitPayload = {
       rep_id: repId,
       customer_id: customerId,
       visit_date: visitDate,
@@ -66,17 +87,49 @@ export default function LogVisit() {
       leaving_time: leavingTime,
       duration_minutes: duration,
       notes: notes || null,
-    });
-    if (error) {
-      toast.error(error.message);
+      client_generated_id: clientId,
+    };
+
+    if (isOnline) {
+      const { error } = await supabase.from("visits").insert(visitPayload);
+      if (error) {
+        // If network error, save offline
+        if (error.message.includes("fetch") || error.message.includes("network")) {
+          await saveOffline(clientId, visitPayload);
+        } else {
+          toast.error(error.message);
+        }
+      } else {
+        toast.success("Visit logged!");
+        resetForm();
+      }
     } else {
-      toast.success("Visit logged!");
-      setCustomerId("");
-      setArrivalTime("");
-      setLeavingTime("");
-      setNotes("");
+      await saveOffline(clientId, visitPayload);
     }
+
     setSubmitting(false);
+  };
+
+  const saveOffline = async (clientId: string, payload: any) => {
+    const customerName = customers.find((c) => c.id === payload.customer_id)?.customer_name;
+    await addOfflineVisit({
+      client_generated_id: clientId,
+      payload,
+      created_at_local: new Date().toISOString(),
+      sync_status: "pending",
+      last_sync_attempt: null,
+      error_message: null,
+      customer_name: customerName,
+    });
+    toast.success("Saved offline. Will sync when online.");
+    resetForm();
+  };
+
+  const resetForm = () => {
+    setCustomerId("");
+    setArrivalTime("");
+    setLeavingTime("");
+    setNotes("");
   };
 
   return (
@@ -139,7 +192,7 @@ export default function LogVisit() {
             </div>
 
             <Button type="submit" className="w-full" disabled={submitting || !customerId || !arrivalTime || !leavingTime || duration <= 0}>
-              {submitting ? "Saving..." : "Log Visit"}
+              {submitting ? "Saving..." : isOnline ? "Log Visit" : "Save Offline"}
             </Button>
           </form>
         </CardContent>

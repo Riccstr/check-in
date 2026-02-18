@@ -2,13 +2,21 @@ import { useAuth } from "@/hooks/useAuth";
 import { Navigate, Outlet, Link, useLocation } from "react-router-dom";
 import { ClipboardCheck, LogOut, MapPin, BarChart3, Users, UserCog, Link2, Eye, Download, Menu, X, CalendarDays, Settings, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import OfflineStatusBar from "@/components/OfflineStatusBar";
+import { setupAutoSync } from "@/lib/syncEngine";
 
 export default function AppLayout() {
   const { user, role, loading, signOut } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // Setup auto-sync for offline visits
+  useEffect(() => {
+    const cleanup = setupAutoSync();
+    return cleanup;
+  }, []);
 
   if (loading) return <div className="flex min-h-screen items-center justify-center"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>;
   if (!user) return <Navigate to="/auth" replace />;
@@ -66,6 +74,7 @@ export default function AppLayout() {
           </nav>
 
           <div className="flex items-center gap-2">
+            <OfflineStatusBar />
             <span className="hidden sm:inline text-xs font-medium uppercase tracking-wide px-2 py-1 rounded-full bg-secondary text-secondary-foreground">
               {role}
             </span>
