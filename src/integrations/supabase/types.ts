@@ -307,6 +307,7 @@ export type Database = {
       visits: {
         Row: {
           arrival_time: string
+          client_generated_id: string | null
           created_at: string
           customer_id: string
           duration_minutes: number
@@ -318,6 +319,7 @@ export type Database = {
         }
         Insert: {
           arrival_time: string
+          client_generated_id?: string | null
           created_at?: string
           customer_id: string
           duration_minutes: number
@@ -329,6 +331,7 @@ export type Database = {
         }
         Update: {
           arrival_time?: string
+          client_generated_id?: string | null
           created_at?: string
           customer_id?: string
           duration_minutes?: number

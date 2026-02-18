@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { BarChart3 } from "lucide-react";
+import { BarChart3, WifiOff } from "lucide-react";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 interface AvgRow {
   customer_name: string;
@@ -17,6 +18,7 @@ interface AvgRow {
 
 export default function Averages() {
   const { repId, role } = useAuth();
+  const isOnline = useOnlineStatus();
   const [data, setData] = useState<AvgRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFrom, setDateFrom] = useState("");
@@ -104,6 +106,13 @@ export default function Averages() {
             </Select>
           </div>
         </div>
+
+        {!isOnline && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4 px-3 py-2 rounded-md bg-secondary">
+            <WifiOff className="h-4 w-4" />
+            Averages may be incomplete offline; will refresh after sync.
+          </div>
+        )}
 
         {loading ? (
           <p className="text-muted-foreground text-center py-8">Loading...</p>
