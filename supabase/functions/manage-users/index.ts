@@ -6,6 +6,38 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const VALID_ROLES = ["admin", "rep"];
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function sanitizeError(err: Error): string {
+  const msg = err.message || "";
+  if (msg.includes("duplicate key") || msg.includes("already exists")) return "A record with this information already exists";
+  if (msg.includes("foreign key")) return "Invalid reference provided";
+  if (msg.includes("not found")) return "Record not found";
+  return "Operation failed. Please try again.";
+}
+
+function validateEmail(email: string): string | null {
+  if (!email || typeof email !== "string") return "Email is required";
+  if (email.length > 255) return "Email is too long";
+  if (!EMAIL_REGEX.test(email.trim())) return "Invalid email format";
+  return null;
+}
+
+function validatePassword(password: string): string | null {
+  if (!password || typeof password !== "string") return "Password is required";
+  if (password.length < 8) return "Password must be at least 8 characters";
+  if (password.length > 72) return "Password is too long";
+  return null;
+}
+
+function validateString(value: unknown, name: string, maxLen = 255): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") return `${name} must be a string`;
+  if (value.length > maxLen) return `${name} is too long (max ${maxLen} characters)`;
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -58,36 +90,50 @@ Deno.serve(async (req) => {
 
     if (action === "create_user") {
       const { email, password, role, full_name } = body;
-      if (!email || !password) {
-        return new Response(JSON.stringify({ error: "email and password required" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+      
+      const emailErr = validateEmail(email);
+      if (emailErr) {
+        return new Response(JSON.stringify({ error: emailErr }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const passErr = validatePassword(password);
+      if (passErr) {
+        return new Response(JSON.stringify({ error: passErr }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (role && !VALID_ROLES.includes(role)) {
+        return new Response(JSON.stringify({ error: "Invalid role. Must be 'admin' or 'rep'" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const nameErr = validateString(full_name, "Full name");
+      if (nameErr) {
+        return new Response(JSON.stringify({ error: nameErr }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      // Delete any existing auto-assigned role (trigger may have fired)
-      // We'll set the correct role after creation
       const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-        email,
+        email: email.trim(),
         password,
         email_confirm: true,
-        user_metadata: { full_name: full_name || email },
+        user_metadata: { full_name: (full_name || email).trim() },
       });
 
       if (createErr) {
-        return new Response(JSON.stringify({ error: createErr.message }), {
+        console.error("Create user error:", createErr.message);
+        return new Response(JSON.stringify({ error: sanitizeError(createErr) }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      // Assign role if provided (override any auto-assigned role)
       if (role && newUser.user) {
-        // Remove auto-assigned role first
         await supabaseAdmin.from("user_roles").delete().eq("user_id", newUser.user.id);
         await supabaseAdmin.from("user_roles").insert({ user_id: newUser.user.id, role });
         
-        // If role is admin, make sure they're NOT linked to any rep
         if (role === "admin") {
           await supabaseAdmin.from("reps").update({ user_id: null, email: null }).eq("user_id", newUser.user.id);
         }
@@ -99,22 +145,19 @@ Deno.serve(async (req) => {
     }
 
     if (action === "list") {
-      // List all auth users
       const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers({
         perPage: 1000,
       });
 
       if (error) {
-        return new Response(JSON.stringify({ error: error.message }), {
+        console.error("List users error:", error.message);
+        return new Response(JSON.stringify({ error: "Failed to list users" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      // Get all roles
       const { data: allRoles } = await supabaseAdmin.from("user_roles").select("*");
-      
-      // Get all reps
       const { data: allReps } = await supabaseAdmin.from("reps").select("id, rep_name, surname, user_id");
 
       const enrichedUsers = users.map((u) => {
@@ -141,14 +184,17 @@ Deno.serve(async (req) => {
 
     if (action === "update_role") {
       const { user_id, role } = body;
-      if (!user_id || !role) {
-        return new Response(JSON.stringify({ error: "user_id and role required" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+      if (!user_id || typeof user_id !== "string") {
+        return new Response(JSON.stringify({ error: "Valid user_id required" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (!role || !VALID_ROLES.includes(role)) {
+        return new Response(JSON.stringify({ error: "Invalid role. Must be 'admin' or 'rep'" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      // Upsert role
       const { data: existing } = await supabaseAdmin
         .from("user_roles")
         .select("id")
@@ -168,16 +214,22 @@ Deno.serve(async (req) => {
 
     if (action === "reset_password") {
       const { user_id, password } = body;
-      if (!user_id || !password) {
-        return new Response(JSON.stringify({ error: "user_id and password required" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+      if (!user_id || typeof user_id !== "string") {
+        return new Response(JSON.stringify({ error: "Valid user_id required" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const passErr = validatePassword(password);
+      if (passErr) {
+        return new Response(JSON.stringify({ error: passErr }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       const { error } = await supabaseAdmin.auth.admin.updateUserById(user_id, { password });
       if (error) {
-        return new Response(JSON.stringify({ error: error.message }), {
+        console.error("Reset password error:", error.message);
+        return new Response(JSON.stringify({ error: "Failed to reset password" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -190,14 +242,12 @@ Deno.serve(async (req) => {
 
     if (action === "delete_user") {
       const { user_id } = body;
-      if (!user_id) {
-        return new Response(JSON.stringify({ error: "user_id required" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+      if (!user_id || typeof user_id !== "string") {
+        return new Response(JSON.stringify({ error: "Valid user_id required" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      // Prevent self-deletion
       if (user_id === caller.id) {
         return new Response(JSON.stringify({ error: "Cannot delete your own account" }), {
           status: 400,
@@ -205,16 +255,13 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Unlink from rep if linked
       await supabaseAdmin.from("reps").update({ user_id: null, email: null }).eq("user_id", user_id);
-      
-      // Remove role
       await supabaseAdmin.from("user_roles").delete().eq("user_id", user_id);
 
-      // Delete auth user
       const { error } = await supabaseAdmin.auth.admin.deleteUser(user_id);
       if (error) {
-        return new Response(JSON.stringify({ error: error.message }), {
+        console.error("Delete user error:", error.message);
+        return new Response(JSON.stringify({ error: "Failed to delete user" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -230,7 +277,8 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
+    console.error("Unhandled error:", err.message);
+    return new Response(JSON.stringify({ error: "An unexpected error occurred" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
