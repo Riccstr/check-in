@@ -215,10 +215,12 @@ export default function DailySchedule() {
       rep_id: repId!,
       customer_id: item.customer_id,
       visit_date: scheduleDate,
+      arrival_time: "00:00",
+      leaving_time: "00:00",
       duration_minutes: 0,
       notes: item.notes,
       status: "skipped",
-    });
+    } as any);
 
     fetchSchedule();
   };
