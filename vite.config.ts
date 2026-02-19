@@ -19,10 +19,24 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "pwa-192x192.png", "pwa-512x512.png"],
-      manifest: false, // We use public/manifest.json
+      manifest: {
+        name: "Check-In Tracker",
+        short_name: "Check-In",
+        description: "Sales Rep Check-In & Visit Tracker",
+        start_url: "/",
+        scope: "/",
+        display: "standalone",
+        background_color: "#ffffff",
+        theme_color: "#1a1a2e",
+        icons: [
+          { src: "/pwa-192x192.png", sizes: "192x192", type: "image/png" },
+          { src: "/pwa-512x512.png", sizes: "512x512", type: "image/png" },
+          { src: "/pwa-512x512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+        ],
+      },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,json}"],
-        navigateFallback: "/index.html",
+        navigateFallback: "index.html",
         navigateFallbackDenylist: [/^\/~oauth/],
         skipWaiting: true,
         clientsClaim: true,
