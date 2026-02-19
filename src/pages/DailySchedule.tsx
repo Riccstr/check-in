@@ -193,8 +193,34 @@ export default function DailySchedule() {
     updateItem(item, { leaving_time: nowTime() });
   };
 
-  const skipItem = (item: any) => {
-    updateItem(item, { status: "skipped" });
+  const skipItem = async (item: any) => {
+    if (!item.notes || item.notes.trim() === "") {
+      toast.error("Please provide a reason in the notes before skipping");
+      return;
+    }
+
+    // Update schedule item status
+    const { error } = await supabase
+      .from("schedule_items")
+      .update({ status: "skipped", notes: item.notes })
+      .eq("id", item.id);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    // Log a skipped visit record
+    await supabase.from("visits").insert({
+      rep_id: repId!,
+      customer_id: item.customer_id,
+      visit_date: scheduleDate,
+      duration_minutes: 0,
+      notes: item.notes,
+      status: "skipped",
+    });
+
+    fetchSchedule();
   };
 
   // Ad-hoc visit
