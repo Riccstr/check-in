@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { CalendarDays, Clock, Check, SkipForward, Plus } from "lucide-react";
+import { CalendarDays, Clock, Check, SkipForward, Plus, Loader2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
@@ -17,6 +17,8 @@ export default function DailySchedule() {
   const [schedule, setSchedule] = useState<any>(null);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [currentWeekName, setCurrentWeekName] = useState<string>("");
 
   // Ad-hoc visit state
   const [adHocOpen, setAdHocOpen] = useState(false);
@@ -26,6 +28,70 @@ export default function DailySchedule() {
   const [adHocLeaving, setAdHocLeaving] = useState("");
   const [adHocNotes, setAdHocNotes] = useState("");
   const [adHocSubmitting, setAdHocSubmitting] = useState(false);
+
+  const autoGenerateSchedule = useCallback(async () => {
+    if (!repId) return null;
+
+    // Get current week setting
+    const { data: setting } = await supabase
+      .from("app_settings")
+      .select("setting_value")
+      .eq("setting_key", "current_week_order")
+      .maybeSingle();
+
+    const weekOrder = parseInt(setting?.setting_value || "1");
+
+    // Get weekly template with this sort_order
+    const { data: weeklyTemplate } = await supabase
+      .from("weekly_templates")
+      .select("id, name")
+      .eq("sort_order", weekOrder)
+      .maybeSingle();
+
+    if (!weeklyTemplate) return null;
+    setCurrentWeekName(weeklyTemplate.name);
+
+    // Get day of week (1=Mon, 5=Fri)
+    const dayOfWeek = new Date(scheduleDate + "T12:00:00").getDay();
+    // Skip weekends
+    if (dayOfWeek === 0 || dayOfWeek === 6) return null;
+
+    // Find the schedule template for this rep + day + weekly template
+    const { data: tmpl } = await supabase
+      .from("schedule_templates")
+      .select("id, schedule_template_items(customer_id, sort_order)")
+      .eq("rep_id", repId)
+      .eq("day_of_week", dayOfWeek)
+      .eq("weekly_template_id", weeklyTemplate.id)
+      .maybeSingle();
+
+    if (!tmpl || !tmpl.schedule_template_items?.length) return null;
+
+    // Create daily schedule
+    const { data: newSchedule, error: schedErr } = await supabase
+      .from("daily_schedules")
+      .insert({ rep_id: repId, schedule_date: scheduleDate })
+      .select("id")
+      .single();
+
+    if (schedErr) {
+      console.error("Auto-generate error:", schedErr.message);
+      return null;
+    }
+
+    // Create schedule items from template
+    const scheduleItems = tmpl.schedule_template_items
+      .sort((a: any, b: any) => a.sort_order - b.sort_order)
+      .map((ti: any, i: number) => ({
+        schedule_id: newSchedule.id,
+        customer_id: ti.customer_id,
+        sort_order: i,
+        status: "pending",
+      }));
+
+    await supabase.from("schedule_items").insert(scheduleItems);
+    return newSchedule.id;
+  }, [repId, scheduleDate]);
 
   useEffect(() => {
     if (repId) {
@@ -45,11 +111,50 @@ export default function DailySchedule() {
       .eq("schedule_date", scheduleDate)
       .maybeSingle();
 
-    setSchedule(data);
-    setItems(
-      (data?.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order)
-    );
-    setLoading(false);
+    if (data) {
+      setSchedule(data);
+      setItems(
+        (data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order)
+      );
+      // Fetch current week name for display
+      const { data: setting } = await supabase
+        .from("app_settings")
+        .select("setting_value")
+        .eq("setting_key", "current_week_order")
+        .maybeSingle();
+      if (setting) {
+        const { data: wk } = await supabase
+          .from("weekly_templates")
+          .select("name")
+          .eq("sort_order", parseInt(setting.setting_value))
+          .maybeSingle();
+        if (wk) setCurrentWeekName(wk.name);
+      }
+      setLoading(false);
+    } else {
+      // Try auto-generating
+      setGenerating(true);
+      const newId = await autoGenerateSchedule();
+      setGenerating(false);
+
+      if (newId) {
+        // Re-fetch the newly created schedule
+        const { data: newData } = await supabase
+          .from("daily_schedules")
+          .select("*, schedule_items(*, customers(customer_name))")
+          .eq("id", newId)
+          .single();
+
+        setSchedule(newData);
+        setItems(
+          (newData?.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order)
+        );
+      } else {
+        setSchedule(null);
+        setItems([]);
+      }
+      setLoading(false);
+    }
   };
 
   const fetchAdHocCustomers = async () => {
@@ -80,7 +185,6 @@ export default function DailySchedule() {
   const updateItem = async (item: any, updates: Partial<{ arrival_time: string; leaving_time: string; notes: string; status: string; duration_minutes: number }>) => {
     const newItem = { ...item, ...updates };
 
-    // Auto-calc duration
     if (newItem.arrival_time && newItem.leaving_time) {
       newItem.duration_minutes = calcDuration(newItem.arrival_time, newItem.leaving_time);
     }
@@ -99,7 +203,6 @@ export default function DailySchedule() {
     if (error) {
       toast.error(error.message);
     } else {
-      // Also create/update visit record if completed
       if (newItem.status === "visited" && newItem.arrival_time && newItem.leaving_time && newItem.duration_minutes > 0) {
         if (item.visit_id) {
           await supabase.from("visits").update({
@@ -173,9 +276,14 @@ export default function DailySchedule() {
     <div className="max-w-2xl mx-auto space-y-4">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <CalendarDays className="h-5 w-5 text-accent" /> Today's Schedule
-          </CardTitle>
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5 text-accent" /> Today's Schedule
+            </CardTitle>
+            {currentWeekName && (
+              <p className="text-sm text-muted-foreground mt-1">{currentWeekName}</p>
+            )}
+          </div>
           <Input
             type="date"
             value={scheduleDate}
@@ -184,8 +292,11 @@ export default function DailySchedule() {
           />
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <p className="text-muted-foreground py-4">Loading...</p>
+          {loading || generating ? (
+            <div className="flex items-center gap-2 text-muted-foreground py-4">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {generating ? "Generating schedule from template..." : "Loading..."}
+            </div>
           ) : !schedule ? (
             <div className="text-center py-8 text-muted-foreground">
               <CalendarDays className="h-12 w-12 mx-auto mb-2 opacity-30" />

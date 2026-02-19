@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          id: string
+          setting_key: string
+          setting_value: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          setting_key: string
+          setting_value: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          setting_key?: string
+          setting_value?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       customer_assignments: {
         Row: {
           assigned_at: string
@@ -261,6 +285,7 @@ export type Database = {
           id: string
           is_active: boolean
           rep_id: string
+          weekly_template_id: string | null
         }
         Insert: {
           created_at?: string
@@ -268,6 +293,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           rep_id: string
+          weekly_template_id?: string | null
         }
         Update: {
           created_at?: string
@@ -275,6 +301,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           rep_id?: string
+          weekly_template_id?: string | null
         }
         Relationships: [
           {
@@ -282,6 +309,13 @@ export type Database = {
             columns: ["rep_id"]
             isOneToOne: false
             referencedRelation: "reps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_templates_weekly_template_id_fkey"
+            columns: ["weekly_template_id"]
+            isOneToOne: false
+            referencedRelation: "weekly_templates"
             referencedColumns: ["id"]
           },
         ]
@@ -357,6 +391,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      weekly_templates: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          sort_order?: number
+        }
+        Relationships: []
       }
     }
     Views: {
