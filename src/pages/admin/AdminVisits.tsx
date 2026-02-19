@@ -50,7 +50,8 @@ export default function AdminVisits() {
 
   const del = async (id: string) => {
     if (!confirm("Delete this visit?")) return;
-    await supabase.from("visits").delete().eq("id", id);
+    const { error } = await supabase.from("visits").delete().eq("id", id);
+    if (error) { toast.error("Failed to delete: " + error.message); return; }
     toast.success("Deleted"); fetchVisits();
   };
 

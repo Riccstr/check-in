@@ -69,6 +69,30 @@ export default function DailySchedule() {
     }
   }, [repId, scheduleDate]);
 
+  // Realtime subscription for schedule_items changes (e.g. admin edits)
+  useEffect(() => {
+    if (!schedule?.id) return;
+    const channel = supabase
+      .channel(`schedule-items-${schedule.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "schedule_items",
+          filter: `schedule_id=eq.${schedule.id}`,
+        },
+        () => {
+          fetchSchedule();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [schedule?.id]);
+
   const fetchSchedule = async () => {
     if (!repId) return;
     setLoading(true);
