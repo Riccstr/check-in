@@ -32,71 +32,40 @@ export default function DailySchedule() {
   const autoGenerateSchedule = useCallback(async () => {
     if (!repId) return null;
 
-    // Get current week setting
+    const { data, error } = await supabase.rpc("auto_generate_daily_schedule", {
+      p_rep_id: repId,
+      p_schedule_date: scheduleDate,
+    });
+
+    if (error) {
+      console.error("Auto-generate error:", error.message);
+      return null;
+    }
+
+    return data as string | null;
+  }, [repId, scheduleDate]);
+
+  const fetchWeekName = async () => {
     const { data: setting } = await supabase
       .from("app_settings")
       .select("setting_value")
       .eq("setting_key", "current_week_order")
       .maybeSingle();
-
-    const weekOrder = parseInt(setting?.setting_value || "1");
-
-    // Get weekly template with this sort_order
-    const { data: weeklyTemplate } = await supabase
-      .from("weekly_templates")
-      .select("id, name")
-      .eq("sort_order", weekOrder)
-      .maybeSingle();
-
-    if (!weeklyTemplate) return null;
-    setCurrentWeekName(weeklyTemplate.name);
-
-    // Get day of week (1=Mon, 5=Fri)
-    const dayOfWeek = new Date(scheduleDate + "T12:00:00").getDay();
-    // Skip weekends
-    if (dayOfWeek === 0 || dayOfWeek === 6) return null;
-
-    // Find the schedule template for this rep + day + weekly template
-    const { data: tmpl } = await supabase
-      .from("schedule_templates")
-      .select("id, schedule_template_items(customer_id, sort_order)")
-      .eq("rep_id", repId)
-      .eq("day_of_week", dayOfWeek)
-      .eq("weekly_template_id", weeklyTemplate.id)
-      .maybeSingle();
-
-    if (!tmpl || !tmpl.schedule_template_items?.length) return null;
-
-    // Create daily schedule
-    const { data: newSchedule, error: schedErr } = await supabase
-      .from("daily_schedules")
-      .insert({ rep_id: repId, schedule_date: scheduleDate })
-      .select("id")
-      .single();
-
-    if (schedErr) {
-      console.error("Auto-generate error:", schedErr.message);
-      return null;
+    if (setting) {
+      const { data: wk } = await supabase
+        .from("weekly_templates")
+        .select("name")
+        .eq("sort_order", parseInt(setting.setting_value))
+        .maybeSingle();
+      if (wk) setCurrentWeekName(wk.name);
     }
-
-    // Create schedule items from template
-    const scheduleItems = tmpl.schedule_template_items
-      .sort((a: any, b: any) => a.sort_order - b.sort_order)
-      .map((ti: any, i: number) => ({
-        schedule_id: newSchedule.id,
-        customer_id: ti.customer_id,
-        sort_order: i,
-        status: "pending",
-      }));
-
-    await supabase.from("schedule_items").insert(scheduleItems);
-    return newSchedule.id;
-  }, [repId, scheduleDate]);
+  };
 
   useEffect(() => {
     if (repId) {
       fetchSchedule();
       fetchAdHocCustomers();
+      fetchWeekName();
     }
   }, [repId, scheduleDate]);
 
@@ -116,34 +85,19 @@ export default function DailySchedule() {
       setItems(
         (data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order)
       );
-      // Fetch current week name for display
-      const { data: setting } = await supabase
-        .from("app_settings")
-        .select("setting_value")
-        .eq("setting_key", "current_week_order")
-        .maybeSingle();
-      if (setting) {
-        const { data: wk } = await supabase
-          .from("weekly_templates")
-          .select("name")
-          .eq("sort_order", parseInt(setting.setting_value))
-          .maybeSingle();
-        if (wk) setCurrentWeekName(wk.name);
-      }
       setLoading(false);
     } else {
-      // Try auto-generating
+      // Try auto-generating via server-side function
       setGenerating(true);
       const newId = await autoGenerateSchedule();
       setGenerating(false);
 
       if (newId) {
-        // Re-fetch the newly created schedule
         const { data: newData } = await supabase
           .from("daily_schedules")
           .select("*, schedule_items(*, customers(customer_name))")
           .eq("id", newId)
-          .single();
+          .maybeSingle();
 
         setSchedule(newData);
         setItems(
