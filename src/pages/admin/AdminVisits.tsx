@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Eye, Pencil, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 export default function AdminVisits() {
   const [visits, setVisits] = useState<any[]>([]);
@@ -82,13 +83,18 @@ export default function AdminVisits() {
               <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Rep</TableHead><TableHead>Customer</TableHead><TableHead>Arrival</TableHead><TableHead>Leaving</TableHead><TableHead>Duration</TableHead><TableHead>Notes</TableHead><TableHead></TableHead></TableRow></TableHeader>
               <TableBody>
                 {visits.map((v: any) => (
-                  <TableRow key={v.id}>
+                   <TableRow key={v.id} className={v.status === "skipped" ? "bg-destructive/10" : ""}>
                     <TableCell>{v.visit_date}</TableCell>
                     <TableCell>{v.reps?.rep_name}</TableCell>
-                    <TableCell>{v.customers?.customer_name}</TableCell>
-                    <TableCell>{v.arrival_time?.slice(0,5)}</TableCell>
-                    <TableCell>{v.leaving_time?.slice(0,5)}</TableCell>
-                    <TableCell>{v.duration_minutes} min</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {v.customers?.customer_name}
+                        {v.status === "skipped" && <Badge variant="destructive" className="text-xs">Skipped</Badge>}
+                      </div>
+                    </TableCell>
+                    <TableCell>{v.status === "skipped" ? "—" : v.arrival_time?.slice(0,5)}</TableCell>
+                    <TableCell>{v.status === "skipped" ? "—" : v.leaving_time?.slice(0,5)}</TableCell>
+                    <TableCell>{v.status === "skipped" ? "—" : `${v.duration_minutes} min`}</TableCell>
                     <TableCell className="max-w-[150px] truncate">{v.notes || "—"}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">

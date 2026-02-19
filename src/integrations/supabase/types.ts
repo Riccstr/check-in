@@ -340,39 +340,42 @@ export type Database = {
       }
       visits: {
         Row: {
-          arrival_time: string
+          arrival_time: string | null
           client_generated_id: string | null
           created_at: string
           customer_id: string
-          duration_minutes: number
+          duration_minutes: number | null
           id: string
-          leaving_time: string
+          leaving_time: string | null
           notes: string | null
           rep_id: string
+          status: string
           visit_date: string
         }
         Insert: {
-          arrival_time: string
+          arrival_time?: string | null
           client_generated_id?: string | null
           created_at?: string
           customer_id: string
-          duration_minutes: number
+          duration_minutes?: number | null
           id?: string
-          leaving_time: string
+          leaving_time?: string | null
           notes?: string | null
           rep_id: string
+          status?: string
           visit_date?: string
         }
         Update: {
-          arrival_time?: string
+          arrival_time?: string | null
           client_generated_id?: string | null
           created_at?: string
           customer_id?: string
-          duration_minutes?: number
+          duration_minutes?: number | null
           id?: string
-          leaving_time?: string
+          leaving_time?: string | null
           notes?: string | null
           rep_id?: string
+          status?: string
           visit_date?: string
         }
         Relationships: [
