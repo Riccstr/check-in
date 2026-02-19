@@ -24,7 +24,7 @@ export default function AdminCustomers() {
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [area, setArea] = useState("");
-  const [priceCategory, setPriceCategory] = useState("");
+  
   const [sortKey, setSortKey] = useState<SortKey>("customer_name");
   const [sortAsc, setSortAsc] = useState(true);
   const [filterRep, setFilterRep] = useState("all");
@@ -74,12 +74,12 @@ export default function AdminCustomers() {
     return Array.from(set).sort();
   }, [customerRepMap]);
 
-  const openNew = () => { setEditId(null); setName(""); setArea(""); setPriceCategory(""); setDialogOpen(true); };
-  const openEdit = (c: any) => { setEditId(c.id); setName(c.customer_name); setArea(c.area || ""); setPriceCategory(c.price_category || ""); setDialogOpen(true); };
+  const openNew = () => { setEditId(null); setName(""); setArea(""); setDialogOpen(true); };
+  const openEdit = (c: any) => { setEditId(c.id); setName(c.customer_name); setArea(c.area || ""); setDialogOpen(true); };
 
   const save = async () => {
     if (!name.trim()) { toast.error("Name required"); return; }
-    const payload: any = { customer_name: name.trim(), area: area.trim() || null, price_category: priceCategory || null };
+    const payload: any = { customer_name: name.trim(), area: area.trim() || null };
     if (editId) {
       const { error } = await supabase.from("customers").update(payload).eq("id", editId);
       if (error) toast.error(error.message); else toast.success("Updated");
@@ -196,7 +196,7 @@ export default function AdminCustomers() {
                 <TableHead><SortButton label="Name" sortId="customer_name" /></TableHead>
                 <TableHead><SortButton label="Area" sortId="area" /></TableHead>
                 <TableHead><SortButton label="Rep" sortId="rep" /></TableHead>
-                <TableHead>Price</TableHead>
+                
                 <TableHead>Status</TableHead>
                 <TableHead></TableHead>
               </TableRow>
@@ -207,7 +207,7 @@ export default function AdminCustomers() {
                   <TableCell className="font-medium">{c.customer_name}</TableCell>
                   <TableCell>{c.area || "—"}</TableCell>
                   <TableCell className="text-muted-foreground">{customerRepMap[c.id] || "Unassigned"}</TableCell>
-                  <TableCell>{c.price_category || "—"}</TableCell>
+                  
                   <TableCell><Badge variant={c.is_active ? "default" : "secondary"}>{c.is_active ? "Active" : "Inactive"}</Badge></TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
@@ -225,17 +225,6 @@ export default function AdminCustomers() {
           <div className="space-y-3">
             <div><Label>Name *</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
             <div><Label>Area</Label><Input value={area} onChange={(e) => setArea(e.target.value)} placeholder="e.g. Johannesburg North" /></div>
-            <div className="space-y-1">
-              <Label>Price Category</Label>
-              <Select value={priceCategory} onValueChange={setPriceCategory}>
-                <SelectTrigger><SelectValue placeholder="Select price category" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Price A">Price A</SelectItem>
-                  <SelectItem value="Price B">Price B</SelectItem>
-                  <SelectItem value="Price C">Price C</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </div>
           <DialogFooter><Button onClick={save}>Save</Button></DialogFooter>
         </DialogContent>
