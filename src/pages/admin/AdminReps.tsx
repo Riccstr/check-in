@@ -18,7 +18,6 @@ export default function AdminReps() {
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [surname, setSurname] = useState("");
-  const [cellNo, setCellNo] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
@@ -33,17 +32,17 @@ export default function AdminReps() {
   useEffect(() => { fetchReps(); }, []);
 
   const openNew = () => {
-    setEditId(null); setName(""); setSurname(""); setCellNo(""); setEmail(""); setPassword("");
+    setEditId(null); setName(""); setSurname(""); setEmail(""); setPassword("");
     setDialogOpen(true);
   };
 
   const openEdit = (r: any) => {
-    setEditId(r.id); setName(r.rep_name); setSurname(r.surname || ""); setCellNo(r.cell_no || ""); setEmail(r.email || ""); setPassword("");
+    setEditId(r.id); setName(r.rep_name); setSurname(r.surname || ""); setEmail(r.email || ""); setPassword("");
     setDialogOpen(true);
   };
 
   const openCredentials = (r: any) => {
-    setEditId(r.id); setName(r.rep_name); setSurname(r.surname || ""); setCellNo(r.cell_no || ""); setEmail(r.email || ""); setPassword("");
+    setEditId(r.id); setName(r.rep_name); setSurname(r.surname || ""); setEmail(r.email || ""); setPassword("");
     setCredDialogOpen(true);
   };
 
@@ -55,7 +54,7 @@ export default function AdminReps() {
       // Update rep details via edge function
       const { data: { session } } = await supabase.auth.getSession();
       const res = await supabase.functions.invoke("manage-rep-user", {
-        body: { action: "update", rep_id: editId, rep_name: name.trim(), surname: surname.trim(), cell_no: cellNo.trim(), email: email.trim() || undefined, password: password || undefined },
+        body: { action: "update", rep_id: editId, rep_name: name.trim(), surname: surname.trim(), email: email.trim() || undefined, password: password || undefined },
       });
       if (res.error || res.data?.error) {
         toast.error(res.data?.error || res.error?.message || "Failed");
@@ -63,7 +62,7 @@ export default function AdminReps() {
         toast.success("Updated");
       }
     } else {
-      const { error } = await supabase.from("reps").insert({ rep_name: name.trim(), surname: surname.trim() || null, cell_no: cellNo.trim() || null, email: email.trim() || null });
+      const { error } = await supabase.from("reps").insert({ rep_name: name.trim(), surname: surname.trim() || null });
       if (error) toast.error(error.message); else toast.success("Created");
     }
     setSaving(false);
@@ -78,7 +77,7 @@ export default function AdminReps() {
     setSaving(true);
 
     const res = await supabase.functions.invoke("manage-rep-user", {
-      body: { action: "create", rep_id: editId, email: email.trim(), password: password.trim(), rep_name: name.trim(), surname: surname.trim(), cell_no: cellNo.trim() },
+      body: { action: "create", rep_id: editId, email: email.trim(), password: password.trim(), rep_name: name.trim(), surname: surname.trim() },
     });
 
     if (res.error || res.data?.error) {
@@ -108,8 +107,6 @@ export default function AdminReps() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Surname</TableHead>
-                <TableHead>Cell No</TableHead>
-                <TableHead>Email</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead></TableHead>
               </TableRow>
@@ -119,8 +116,6 @@ export default function AdminReps() {
                 <TableRow key={r.id}>
                   <TableCell className="font-medium">{r.rep_name}</TableCell>
                   <TableCell>{r.surname || "—"}</TableCell>
-                  <TableCell>{r.cell_no || "—"}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{r.email || "No login"}</TableCell>
                   <TableCell><Badge variant={r.is_active ? "default" : "secondary"}>{r.is_active ? "Active" : "Inactive"}</Badge></TableCell>
                   <TableCell className="text-right space-x-1">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(r)} title="Edit"><Pencil className="h-4 w-4" /></Button>
@@ -143,7 +138,6 @@ export default function AdminReps() {
           <div className="space-y-3">
             <div><Label>Name *</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
             <div><Label>Surname</Label><Input value={surname} onChange={(e) => setSurname(e.target.value)} /></div>
-            <div><Label>Cell No</Label><Input value={cellNo} onChange={(e) => setCellNo(e.target.value)} /></div>
             {editId && (
               <>
                 <div><Label>Email</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
