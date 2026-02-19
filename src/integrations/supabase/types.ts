@@ -421,6 +421,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      auto_generate_daily_schedule: {
+        Args: { p_rep_id: string; p_schedule_date: string }
+        Returns: string
+      }
       get_my_rep_id: { Args: never; Returns: string }
       has_role: {
         Args: {
