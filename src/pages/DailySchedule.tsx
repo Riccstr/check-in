@@ -36,20 +36,23 @@ function ScheduleItemRow({ item, repId, scheduleDate, onRefresh }: { item: any; 
       newItem.duration_minutes = calcDuration(newItem.arrival_time, newItem.leaving_time);
     }
 
-    const { error } = await supabase
-      .from("schedule_items")
-      .update({
-        arrival_time: newItem.arrival_time || null,
-        leaving_time: newItem.leaving_time || null,
-        duration_minutes: newItem.duration_minutes || null,
-        notes: newItem.notes || null,
-        status: newItem.status,
-      })
-      .eq("id", item.id);
+    try {
+      const { error } = await supabase
+        .from("schedule_items")
+        .update({
+          arrival_time: newItem.arrival_time || null,
+          leaving_time: newItem.leaving_time || null,
+          duration_minutes: newItem.duration_minutes || null,
+          notes: newItem.notes || null,
+          status: newItem.status,
+        })
+        .eq("id", item.id);
 
-    if (error) {
-      toast.error(error.message);
-    } else {
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
       if (newItem.status === "visited" && newItem.arrival_time && newItem.leaving_time && newItem.duration_minutes > 0) {
         if (item.visit_id) {
           await supabase.from("visits").update({
@@ -75,6 +78,9 @@ function ScheduleItemRow({ item, repId, scheduleDate, onRefresh }: { item: any; 
         }
       }
       onRefresh();
+    } catch (err: any) {
+      console.warn("[Schedule] Network error on update:", err?.message);
+      toast.error("You're offline. This action requires a connection.");
     }
   };
 

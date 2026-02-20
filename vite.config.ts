@@ -37,7 +37,7 @@ export default defineConfig(({ mode }) => ({
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,ttf,eot,json}"],
         navigateFallback: "index.html",
-        navigateFallbackDenylist: [/^\/~oauth/],
+        navigateFallbackDenylist: [/^\/~oauth/, /^\/api/],
         skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
@@ -47,7 +47,7 @@ export default defineConfig(({ mode }) => ({
             urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico|woff|woff2|ttf|eot)$/i,
             handler: "CacheFirst",
             options: {
-              cacheName: "static-assets-v2",
+              cacheName: "static-assets-v3",
               expiration: { maxEntries: 100, maxAgeSeconds: 30 * 24 * 60 * 60 },
               cacheableResponse: { statuses: [0, 200] },
             },
@@ -57,7 +57,7 @@ export default defineConfig(({ mode }) => ({
             urlPattern: /\.(?:js|css)$/i,
             handler: "CacheFirst",
             options: {
-              cacheName: "static-code-v2",
+              cacheName: "static-code-v3",
               expiration: { maxEntries: 50, maxAgeSeconds: 30 * 24 * 60 * 60 },
               cacheableResponse: { statuses: [0, 200] },
             },
@@ -71,6 +71,27 @@ export default defineConfig(({ mode }) => ({
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/auth\/.*/i,
             handler: "NetworkOnly",
+          },
+          // Network-Only for Supabase edge functions
+          {
+            urlPattern: /^https:\/\/.*\.supabase\.co\/functions\/.*/i,
+            handler: "NetworkOnly",
+          },
+          // Network-Only for Supabase storage
+          {
+            urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/.*/i,
+            handler: "NetworkOnly",
+          },
+          // Catch-all: NetworkFirst with fallback for any other requests
+          {
+            urlPattern: /./,
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "fallback-v3",
+              expiration: { maxEntries: 50, maxAgeSeconds: 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
+              networkTimeoutSeconds: 5,
+            },
           },
         ],
       },

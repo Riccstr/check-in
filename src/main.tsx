@@ -4,14 +4,24 @@ import App from "./App.tsx";
 import "./index.css";
 
 // Register service worker — force update immediately, never leave in waiting state
-registerSW({
+const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    // Auto-apply updates without prompting
-    window.location.reload();
+    console.log("[SW] New content available, updating...");
+    // Force the new SW to take over immediately
+    updateSW(true);
   },
   onOfflineReady() {
-    console.log("App ready for offline use");
+    console.log("[SW] App ready for offline use");
+  },
+  onRegisteredSW(swUrl, registration) {
+    console.log("[SW] Registered at:", swUrl);
+    // Check for updates every 5 minutes
+    if (registration) {
+      setInterval(() => {
+        registration.update();
+      }, 5 * 60 * 1000);
+    }
   },
 });
 

@@ -90,27 +90,30 @@ export default function LogVisit() {
       client_generated_id: clientId,
     };
 
-    if (isOnline) {
-      try {
-        const { error } = await supabase.from("visits").insert(visitPayload);
-        if (error) {
-          // If network-related error, save offline
-          if (error.message.includes("fetch") || error.message.includes("network") || error.message.includes("Failed to")) {
-            await saveOffline(clientId, visitPayload);
-          } else {
-            toast.error(error.message);
-          }
+    // Always try online first, but catch ALL errors and fall back to offline
+    try {
+      const { error } = await supabase.from("visits").insert(visitPayload);
+      if (error) {
+        const msg = error.message?.toLowerCase() || "";
+        if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed") || msg.includes("load") || !isOnline) {
+          console.warn("[LogVisit] Supabase error while offline-ish, saving offline:", error.message);
+          await saveOffline(clientId, visitPayload);
         } else {
-          toast.success("Visit logged!");
-          resetForm();
+          toast.error(error.message);
         }
-      } catch (err: any) {
-        // Catch any TypeError: Failed to fetch etc.
-        console.warn("Network error, saving offline:", err?.message);
-        await saveOffline(clientId, visitPayload);
+      } else {
+        toast.success("Visit logged!");
+        resetForm();
       }
-    } else {
-      await saveOffline(clientId, visitPayload);
+    } catch (err: any) {
+      // Catch TypeError: Failed to fetch / TypeError: Load failed / any network error
+      console.warn("[LogVisit] Network exception, saving offline:", err?.message);
+      try {
+        await saveOffline(clientId, visitPayload);
+      } catch (idbErr: any) {
+        console.error("[LogVisit] IndexedDB save also failed:", idbErr?.message);
+        toast.error("Failed to save visit. Please try again.");
+      }
     }
 
     setSubmitting(false);
