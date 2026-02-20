@@ -39,7 +39,7 @@ export default function AdminCustomers() {
     const [custRes, assignRes, repRes] = await Promise.all([
       supabase.from("customers").select("*").order("customer_name"),
       supabase.from("customer_assignments").select("customer_id, rep_id"),
-      supabase.from("reps").select("id, rep_name, surname"),
+      supabase.from("reps").select("id, rep_name, surname, is_active"),
     ]);
     setCustomers(custRes.data || []);
     setAssignments(assignRes.data || []);
