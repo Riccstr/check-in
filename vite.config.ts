@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => ({
     mode === "development" && componentTagger(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.ico", "pwa-192x192.png", "pwa-512x512.png"],
+      includeAssets: ["favicon.ico", "logo.png", "pwa-192x192.png", "pwa-512x512.png"],
       manifest: {
         name: "Check-In Tracker",
         short_name: "Check-In",
@@ -27,7 +27,7 @@ export default defineConfig(({ mode }) => ({
         scope: "/",
         display: "standalone",
         background_color: "#ffffff",
-        theme_color: "#1a1a2e",
+        theme_color: "#1a9e3c",
         icons: [
           { src: "/pwa-192x192.png", sizes: "192x192", type: "image/png" },
           { src: "/pwa-512x512.png", sizes: "512x512", type: "image/png" },
@@ -35,18 +35,19 @@ export default defineConfig(({ mode }) => ({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,json}"],
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,ttf,eot,json}"],
         navigateFallback: "index.html",
         navigateFallbackDenylist: [/^\/~oauth/],
         skipWaiting: true,
         clientsClaim: true,
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           // Cache-First for static assets (fonts, images, etc.)
           {
             urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico|woff|woff2|ttf|eot)$/i,
             handler: "CacheFirst",
             options: {
-              cacheName: "static-assets",
+              cacheName: "static-assets-v2",
               expiration: { maxEntries: 100, maxAgeSeconds: 30 * 24 * 60 * 60 },
               cacheableResponse: { statuses: [0, 200] },
             },
@@ -56,32 +57,20 @@ export default defineConfig(({ mode }) => ({
             urlPattern: /\.(?:js|css)$/i,
             handler: "CacheFirst",
             options: {
-              cacheName: "static-code",
+              cacheName: "static-code-v2",
               expiration: { maxEntries: 50, maxAgeSeconds: 30 * 24 * 60 * 60 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },
-          // Network-First for Supabase API calls (dynamic data)
+          // Network-Only for Supabase API calls — never serve stale API data
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*/i,
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "supabase-api-cache",
-              expiration: { maxEntries: 50, maxAgeSeconds: 86400 },
-              cacheableResponse: { statuses: [0, 200] },
-              networkTimeoutSeconds: 5,
-            },
+            handler: "NetworkOnly",
           },
-          // Network-First for Supabase auth
+          // Network-Only for Supabase auth
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/auth\/.*/i,
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "supabase-auth-cache",
-              expiration: { maxEntries: 10, maxAgeSeconds: 3600 },
-              cacheableResponse: { statuses: [0, 200] },
-              networkTimeoutSeconds: 5,
-            },
+            handler: "NetworkOnly",
           },
         ],
       },

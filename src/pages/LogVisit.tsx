@@ -91,17 +91,23 @@ export default function LogVisit() {
     };
 
     if (isOnline) {
-      const { error } = await supabase.from("visits").insert(visitPayload);
-      if (error) {
-        // If network error, save offline
-        if (error.message.includes("fetch") || error.message.includes("network")) {
-          await saveOffline(clientId, visitPayload);
+      try {
+        const { error } = await supabase.from("visits").insert(visitPayload);
+        if (error) {
+          // If network-related error, save offline
+          if (error.message.includes("fetch") || error.message.includes("network") || error.message.includes("Failed to")) {
+            await saveOffline(clientId, visitPayload);
+          } else {
+            toast.error(error.message);
+          }
         } else {
-          toast.error(error.message);
+          toast.success("Visit logged!");
+          resetForm();
         }
-      } else {
-        toast.success("Visit logged!");
-        resetForm();
+      } catch (err: any) {
+        // Catch any TypeError: Failed to fetch etc.
+        console.warn("Network error, saving offline:", err?.message);
+        await saveOffline(clientId, visitPayload);
       }
     } else {
       await saveOffline(clientId, visitPayload);
