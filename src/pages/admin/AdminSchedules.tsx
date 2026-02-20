@@ -411,7 +411,7 @@ export default function AdminSchedules() {
 
       {/* Template Dialog */}
       <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader><DialogTitle>Day Template — {weeklyTemplates.find(w => w.id === selectedWeeklyTemplate)?.name}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
@@ -432,7 +432,7 @@ export default function AdminSchedules() {
                   {templateCustomers.map((cid, idx) => {
                     const cust = customers.find(c => c.id === cid);
                     return (
-                      <div key={cid} className="flex items-center gap-1 py-1 px-2 rounded bg-muted text-sm">
+                      <div key={cid} className="flex items-center gap-1 py-0.5 px-2 rounded bg-muted text-xs">
                         <GripVertical className="h-3 w-3 text-muted-foreground shrink-0" />
                         <span className="flex-1 truncate">{cust?.customer_name}{cust?.area ? ` (${cust.area})` : ""}</span>
                         <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0} onClick={() => moveCustomerInList(idx, "up")}>
@@ -474,15 +474,15 @@ export default function AdminSchedules() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="border rounded-md p-2 space-y-1 max-h-48 overflow-y-auto mt-1">
+              <div className="border rounded-md p-1.5 space-y-0.5 max-h-48 overflow-y-auto mt-1">
                 {filteredDialogCustomers.map(c => (
-                  <label key={c.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-muted cursor-pointer">
+                  <label key={c.id} className="flex items-center gap-2 py-0.5 px-2 rounded hover:bg-muted cursor-pointer">
                     <Checkbox
                       checked={templateCustomers.includes(c.id)}
                       onCheckedChange={() => toggleCustomer(templateCustomers, setTemplateCustomers, c.id)}
                     />
-                    <span className="text-sm">{c.customer_name}</span>
-                    {c.area && <span className="text-xs text-muted-foreground">({c.area})</span>}
+                    <span className="text-xs">{c.customer_name}</span>
+                    {c.area && <span className="text-[11px] text-muted-foreground">({c.area})</span>}
                   </label>
                 ))}
                 {filteredDialogCustomers.length === 0 && (
