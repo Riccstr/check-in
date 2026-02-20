@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate, Outlet, Link, useLocation } from "react-router-dom";
-import { ClipboardCheck, LogOut, MapPin, BarChart3, Users, UserCog, Link2, Eye, Download, Menu, X, CalendarDays, Settings, ShieldCheck } from "lucide-react";
+import { LogOut, MapPin, BarChart3, Users, UserCog, Link2, Eye, Download, Menu, X, CalendarDays, Settings, ShieldCheck } from "lucide-react";
+import logoImg from "@/assets/logo.png";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -56,9 +57,7 @@ export default function AppLayout() {
       <header className="sticky top-0 z-50 border-b bg-card">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
           <Link to="/" className="flex items-center gap-2 font-bold text-foreground">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <ClipboardCheck className="h-4 w-4 text-primary-foreground" />
-            </div>
+            <img src={logoImg} alt="Check-In Tracker" className="h-8 w-8" />
             <span className="hidden sm:inline">Check-In Tracker</span>
           </Link>
 
