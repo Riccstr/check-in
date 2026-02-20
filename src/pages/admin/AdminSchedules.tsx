@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { CalendarDays, Plus, Trash2, ArrowUp, ArrowDown, Settings } from "lucide-react";
+import { CalendarDays, Plus, Trash2, ArrowUp, ArrowDown, Settings, Search, GripVertical } from "lucide-react";
 
 const WEEKDAYS = [
   { value: 1, label: "Monday" },
@@ -48,6 +48,10 @@ export default function AdminSchedules() {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameWeekId, setRenameWeekId] = useState("");
   const [renameValue, setRenameValue] = useState("");
+
+  // Template dialog filters
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [areaFilter, setAreaFilter] = useState("all");
 
   useEffect(() => {
     fetchBaseData();
@@ -155,8 +159,26 @@ export default function AdminSchedules() {
   const openNewTemplate = () => {
     setTemplateDay("1");
     setTemplateCustomers([]);
+    setCustomerSearch("");
+    setAreaFilter("all");
     setTemplateDialogOpen(true);
   };
+
+  const moveCustomerInList = (index: number, direction: "up" | "down") => {
+    const newList = [...templateCustomers];
+    const swapIdx = direction === "up" ? index - 1 : index + 1;
+    if (swapIdx < 0 || swapIdx >= newList.length) return;
+    [newList[index], newList[swapIdx]] = [newList[swapIdx], newList[index]];
+    setTemplateCustomers(newList);
+  };
+
+  const uniqueAreas = Array.from(new Set(customers.map(c => c.area).filter(Boolean))).sort();
+
+  const filteredDialogCustomers = customers.filter(c => {
+    const matchesSearch = !customerSearch || c.customer_name.toLowerCase().includes(customerSearch.toLowerCase());
+    const matchesArea = areaFilter === "all" || c.area === areaFilter;
+    return matchesSearch && matchesArea;
+  });
 
   const saveTemplate = async () => {
     if (!selectedRep || !selectedWeeklyTemplate || templateCustomers.length === 0) {
@@ -198,7 +220,9 @@ export default function AdminSchedules() {
 
   const editTemplate = (t: any) => {
     setTemplateDay(String(t.day_of_week));
-    setTemplateCustomers(t.schedule_template_items?.map((i: any) => i.customer_id) || []);
+    setTemplateCustomers(t.schedule_template_items?.sort((a: any, b: any) => a.sort_order - b.sort_order).map((i: any) => i.customer_id) || []);
+    setCustomerSearch("");
+    setAreaFilter("all");
     setTemplateDialogOpen(true);
   };
 
@@ -387,7 +411,7 @@ export default function AdminSchedules() {
 
       {/* Template Dialog */}
       <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
-        <DialogContent className="max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader><DialogTitle>Day Template — {weeklyTemplates.find(w => w.id === selectedWeeklyTemplate)?.name}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div>
@@ -399,18 +423,71 @@ export default function AdminSchedules() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Selected customers with reorder */}
+            {templateCustomers.length > 0 && (
+              <div>
+                <Label className="text-sm font-medium">Selected ({templateCustomers.length}) — drag order</Label>
+                <div className="border rounded-md p-2 space-y-1 mt-1 max-h-40 overflow-y-auto">
+                  {templateCustomers.map((cid, idx) => {
+                    const cust = customers.find(c => c.id === cid);
+                    return (
+                      <div key={cid} className="flex items-center gap-1 py-1 px-2 rounded bg-muted text-sm">
+                        <GripVertical className="h-3 w-3 text-muted-foreground shrink-0" />
+                        <span className="flex-1 truncate">{cust?.customer_name}{cust?.area ? ` (${cust.area})` : ""}</span>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0} onClick={() => moveCustomerInList(idx, "up")}>
+                          <ArrowUp className="h-3 w-3" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === templateCustomers.length - 1} onClick={() => moveCustomerInList(idx, "down")}>
+                          <ArrowDown className="h-3 w-3" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setTemplateCustomers(templateCustomers.filter(id => id !== cid))}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Search & filter */}
             <div>
               <Label>Customers</Label>
-              <div className="border rounded-md p-2 space-y-1 max-h-60 overflow-y-auto mt-1">
-                {customers.map(c => (
+              <div className="flex gap-2 mt-1">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search customers..."
+                    value={customerSearch}
+                    onChange={e => setCustomerSearch(e.target.value)}
+                    className="pl-8"
+                  />
+                </div>
+                <Select value={areaFilter} onValueChange={setAreaFilter}>
+                  <SelectTrigger className="w-[140px]"><SelectValue placeholder="All areas" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All areas</SelectItem>
+                    {uniqueAreas.map(a => (
+                      <SelectItem key={a} value={a!}>{a}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="border rounded-md p-2 space-y-1 max-h-48 overflow-y-auto mt-1">
+                {filteredDialogCustomers.map(c => (
                   <label key={c.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-muted cursor-pointer">
                     <Checkbox
                       checked={templateCustomers.includes(c.id)}
                       onCheckedChange={() => toggleCustomer(templateCustomers, setTemplateCustomers, c.id)}
                     />
                     <span className="text-sm">{c.customer_name}</span>
+                    {c.area && <span className="text-xs text-muted-foreground">({c.area})</span>}
                   </label>
                 ))}
+                {filteredDialogCustomers.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-2">No customers found</p>
+                )}
               </div>
             </div>
           </div>
