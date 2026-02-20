@@ -30,6 +30,11 @@ function ScheduleItemRow({ item, repId, scheduleDate, onRefresh }: { item: any; 
     return (lh * 60 + lm) - (ah * 60 + am);
   };
 
+  const isOfflineError = (msg: string) => {
+    const l = msg.toLowerCase();
+    return l.includes("load failed") || l.includes("failed to fetch") || l.includes("network") || l.includes("fetch");
+  };
+
   const updateItem = async (updates: Partial<{ arrival_time: string; leaving_time: string; notes: string; status: string; duration_minutes: number }>) => {
     const newItem = { ...item, ...updates };
     if (newItem.arrival_time && newItem.leaving_time) {
@@ -49,7 +54,11 @@ function ScheduleItemRow({ item, repId, scheduleDate, onRefresh }: { item: any; 
         .eq("id", item.id);
 
       if (error) {
-        toast.error(error.message);
+        if (isOfflineError(error.message)) {
+          toast.error("You're offline. This action requires a connection.");
+        } else {
+          toast.error(error.message);
+        }
         return;
       }
 
@@ -99,25 +108,37 @@ function ScheduleItemRow({ item, repId, scheduleDate, onRefresh }: { item: any; 
       return;
     }
 
-    const { error } = await supabase
-      .from("schedule_items")
-      .update({ status: "skipped", notes: localNotes })
-      .eq("id", item.id);
+    try {
+      const { error } = await supabase
+        .from("schedule_items")
+        .update({ status: "skipped", notes: localNotes })
+        .eq("id", item.id);
 
-    if (error) { toast.error(error.message); return; }
+      if (error) {
+        if (isOfflineError(error.message)) {
+          toast.error("You're offline. This action requires a connection.");
+        } else {
+          toast.error(error.message);
+        }
+        return;
+      }
 
-    await supabase.from("visits").insert({
-      rep_id: repId,
-      customer_id: item.customer_id,
-      visit_date: scheduleDate,
-      arrival_time: "00:00",
-      leaving_time: "00:00",
-      duration_minutes: 0,
-      notes: localNotes,
-      status: "skipped",
-    } as any);
+      await supabase.from("visits").insert({
+        rep_id: repId,
+        customer_id: item.customer_id,
+        visit_date: scheduleDate,
+        arrival_time: "00:00",
+        leaving_time: "00:00",
+        duration_minutes: 0,
+        notes: localNotes,
+        status: "skipped",
+      } as any);
 
-    onRefresh();
+      onRefresh();
+    } catch (err: any) {
+      console.warn("[Schedule] Network error on skip:", err?.message);
+      toast.error("You're offline. This action requires a connection.");
+    }
   };
 
   const markVisited = () => updateItem({ status: "visited", notes: localNotes });
