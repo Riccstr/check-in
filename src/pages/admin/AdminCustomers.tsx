@@ -25,6 +25,7 @@ export default function AdminCustomers() {
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [area, setArea] = useState("");
+  const [selectedRepId, setSelectedRepId] = useState<string>("none");
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   
   const [sortKey, setSortKey] = useState<SortKey>("customer_name");
@@ -76,19 +77,38 @@ export default function AdminCustomers() {
     return Array.from(set).sort();
   }, [customerRepMap]);
 
-  const openNew = () => { setEditId(null); setName(""); setArea(""); setDialogOpen(true); };
-  const openEdit = (c: any) => { setEditId(c.id); setName(c.customer_name); setArea(c.area || ""); setDialogOpen(true); };
+  const openNew = () => { setEditId(null); setName(""); setArea(""); setSelectedRepId("none"); setDialogOpen(true); };
+  const openEdit = (c: any) => {
+    setEditId(c.id); setName(c.customer_name); setArea(c.area || "");
+    const assignedRep = assignments.find((a) => a.customer_id === c.id);
+    setSelectedRepId(assignedRep?.rep_id || "none");
+    setDialogOpen(true);
+  };
 
   const save = async () => {
     if (!name.trim()) { toast.error("Name required"); return; }
     const payload: any = { customer_name: name.trim(), area: area.trim() || null };
+    let customerId = editId;
     if (editId) {
       const { error } = await supabase.from("customers").update(payload).eq("id", editId);
-      if (error) toast.error(error.message); else toast.success("Updated");
+      if (error) { toast.error(error.message); return; }
     } else {
-      const { error } = await supabase.from("customers").insert(payload);
-      if (error) toast.error(error.message); else toast.success("Created");
+      const { data, error } = await supabase.from("customers").insert(payload).select("id").single();
+      if (error) { toast.error(error.message); return; }
+      customerId = data.id;
     }
+
+    // Handle rep assignment
+    if (customerId) {
+      // Remove existing assignment
+      await supabase.from("customer_assignments").delete().eq("customer_id", customerId);
+      // Add new assignment if a rep is selected
+      if (selectedRepId !== "none") {
+        await supabase.from("customer_assignments").insert({ customer_id: customerId, rep_id: selectedRepId });
+      }
+    }
+
+    toast.success(editId ? "Updated" : "Created");
     setDialogOpen(false); fetchAll();
   };
 
@@ -255,6 +275,18 @@ export default function AdminCustomers() {
           <div className="space-y-3">
             <div><Label>Name *</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
             <div><Label>Area</Label><Input value={area} onChange={(e) => setArea(e.target.value)} placeholder="e.g. Johannesburg North" /></div>
+            <div>
+              <Label>Assign to Rep</Label>
+              <Select value={selectedRepId} onValueChange={setSelectedRepId}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Select a rep" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No rep</SelectItem>
+                  {reps.filter((r) => r.is_active).map((r) => (
+                    <SelectItem key={r.id} value={r.id}>{r.rep_name}{r.surname ? ` ${r.surname}` : ""}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter><Button onClick={save}>Save</Button></DialogFooter>
         </DialogContent>
