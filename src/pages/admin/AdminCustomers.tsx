@@ -7,10 +7,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
-import { Users, Plus, Pencil, ArrowUpDown, Filter } from "lucide-react";
+import { Users, Plus, Pencil, ArrowUpDown, Filter, Trash2 } from "lucide-react";
 
 type SortKey = "customer_name" | "area" | "rep";
 
@@ -24,6 +25,7 @@ export default function AdminCustomers() {
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [area, setArea] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   
   const [sortKey, setSortKey] = useState<SortKey>("customer_name");
   const [sortAsc, setSortAsc] = useState(true);
@@ -93,6 +95,31 @@ export default function AdminCustomers() {
   const toggleActive = async (c: any) => {
     await supabase.from("customers").update({ is_active: !c.is_active }).eq("id", c.id);
     toast.success(c.is_active ? "Deactivated" : "Reactivated"); fetchAll();
+  };
+
+  const deleteCustomer = async () => {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
+
+    // Delete related records first, then the customer
+    const { error: e1 } = await supabase.from("schedule_template_items").delete().eq("customer_id", id);
+    if (e1) { toast.error("Failed to remove template items: " + e1.message); setDeleteTarget(null); return; }
+
+    const { error: e2 } = await supabase.from("schedule_items").delete().eq("customer_id", id);
+    if (e2) { toast.error("Failed to remove schedule items: " + e2.message); setDeleteTarget(null); return; }
+
+    const { error: e3 } = await supabase.from("visits").delete().eq("customer_id", id);
+    if (e3) { toast.error("Failed to remove visits: " + e3.message); setDeleteTarget(null); return; }
+
+    const { error: e4 } = await supabase.from("customer_assignments").delete().eq("customer_id", id);
+    if (e4) { toast.error("Failed to remove assignments: " + e4.message); setDeleteTarget(null); return; }
+
+    const { error } = await supabase.from("customers").delete().eq("id", id);
+    if (error) toast.error(error.message);
+    else toast.success("Customer deleted permanently");
+
+    setDeleteTarget(null);
+    fetchAll();
   };
 
   const handleSort = (key: SortKey) => {
@@ -209,9 +236,10 @@ export default function AdminCustomers() {
                   <TableCell className="text-muted-foreground">{customerRepMap[c.id] || "Unassigned"}</TableCell>
                   
                   <TableCell><Badge variant={c.is_active ? "default" : "secondary"}>{c.is_active ? "Active" : "Inactive"}</Badge></TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right space-x-1">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
                     <Button variant="ghost" size="sm" onClick={() => toggleActive(c)}>{c.is_active ? "Deactivate" : "Reactivate"}</Button>
+                    <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(c)} className="text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -219,6 +247,8 @@ export default function AdminCustomers() {
           </Table>
         )}
       </CardContent>
+
+      {/* Edit/Add Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>{editId ? "Edit" : "Add"} Customer</DialogTitle></DialogHeader>
@@ -229,6 +259,22 @@ export default function AdminCustomers() {
           <DialogFooter><Button onClick={save}>Save</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete customer permanently?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <strong>{deleteTarget?.customer_name}</strong> and all associated visits, schedule items, template items, and assignments. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={deleteCustomer} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

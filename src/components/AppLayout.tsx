@@ -32,7 +32,6 @@ export default function AppLayout() {
 
   const repLinks = [
     { to: "/schedule", label: "Schedule", icon: CalendarDays },
-    { to: "/log-visit", label: "Log Visit", icon: MapPin },
     { to: "/my-visits", label: "My Visits", icon: Eye },
     { to: "/averages", label: "Averages", icon: BarChart3 },
   ];
