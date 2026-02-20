@@ -10,8 +10,61 @@ import { toast } from "sonner";
 import { CalendarDays, Clock, Check, SkipForward, Plus, Loader2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { v4 as uuidv4 } from "uuid";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { addOfflineVisit } from "@/lib/offlineDb";
 
-function ScheduleItemRow({ item, repId, scheduleDate, onRefresh }: { item: any; repId: string; scheduleDate: string; onRefresh: () => void }) {
+function isOfflineError(err: any): boolean {
+  const msg = String(err?.message || err || "").toLowerCase();
+  return msg.includes("load failed") || msg.includes("failed to fetch") || msg.includes("networkerror") || msg.includes("network request failed");
+}
+
+async function saveVisitOffline(
+  repId: string,
+  customerId: string,
+  scheduleDate: string,
+  arrivalTime: string,
+  leavingTime: string,
+  durationMinutes: number,
+  notes: string | null,
+  customerName?: string,
+  status?: string,
+) {
+  const clientId = uuidv4();
+  await addOfflineVisit({
+    client_generated_id: clientId,
+    payload: {
+      rep_id: repId,
+      customer_id: customerId,
+      visit_date: scheduleDate,
+      arrival_time: arrivalTime,
+      leaving_time: leavingTime,
+      duration_minutes: durationMinutes,
+      notes,
+      client_generated_id: clientId,
+      ...(status ? { status } : {}),
+    } as any,
+    created_at_local: new Date().toISOString(),
+    sync_status: "pending",
+    last_sync_attempt: null,
+    error_message: null,
+    customer_name: customerName,
+  });
+}
+
+function ScheduleItemRow({
+  item,
+  repId,
+  scheduleDate,
+  onRefresh,
+  onLocalUpdate,
+}: {
+  item: any;
+  repId: string;
+  scheduleDate: string;
+  onRefresh: () => void;
+  onLocalUpdate: (itemId: string, updates: any) => void;
+}) {
   const [localNotes, setLocalNotes] = useState(item.notes || "");
 
   useEffect(() => {
@@ -30,16 +83,20 @@ function ScheduleItemRow({ item, repId, scheduleDate, onRefresh }: { item: any; 
     return (lh * 60 + lm) - (ah * 60 + am);
   };
 
-  const isOfflineError = (msg: string) => {
-    const l = msg.toLowerCase();
-    return l.includes("load failed") || l.includes("failed to fetch") || l.includes("network") || l.includes("fetch");
-  };
-
   const updateItem = async (updates: Partial<{ arrival_time: string; leaving_time: string; notes: string; status: string; duration_minutes: number }>) => {
     const newItem = { ...item, ...updates };
     if (newItem.arrival_time && newItem.leaving_time) {
       newItem.duration_minutes = calcDuration(newItem.arrival_time, newItem.leaving_time);
     }
+
+    // Always apply optimistic local update first
+    onLocalUpdate(item.id, {
+      arrival_time: newItem.arrival_time || null,
+      leaving_time: newItem.leaving_time || null,
+      duration_minutes: newItem.duration_minutes || null,
+      notes: newItem.notes || null,
+      status: newItem.status,
+    });
 
     try {
       const { error } = await supabase
@@ -54,14 +111,16 @@ function ScheduleItemRow({ item, repId, scheduleDate, onRefresh }: { item: any; 
         .eq("id", item.id);
 
       if (error) {
-        if (isOfflineError(error.message)) {
-          toast.error("You're offline. This action requires a connection.");
-        } else {
-          toast.error(error.message);
+        if (isOfflineError(error)) {
+          // Offline: save visit to IndexedDB if we have complete visit data
+          await handleOfflineVisitSave(newItem);
+          return;
         }
+        toast.error(error.message);
         return;
       }
 
+      // Online success: also handle visit record
       if (newItem.status === "visited" && newItem.arrival_time && newItem.leaving_time && newItem.duration_minutes > 0) {
         if (item.visit_id) {
           await supabase.from("visits").update({
@@ -89,8 +148,33 @@ function ScheduleItemRow({ item, repId, scheduleDate, onRefresh }: { item: any; 
       onRefresh();
     } catch (err: any) {
       console.warn("[Schedule] Network error on update:", err?.message);
-      toast.error("You're offline. This action requires a connection.");
+      // Offline: save visit to IndexedDB if we have complete visit data
+      await handleOfflineVisitSave(newItem);
     }
+  };
+
+  const handleOfflineVisitSave = async (newItem: any) => {
+    // Only save a visit record if we have both times (complete visit)
+    if (newItem.arrival_time && newItem.leaving_time && newItem.duration_minutes > 0) {
+      try {
+        await saveVisitOffline(
+          repId,
+          item.customer_id,
+          scheduleDate,
+          newItem.arrival_time,
+          newItem.leaving_time,
+          newItem.duration_minutes,
+          newItem.notes || null,
+          item.customers?.customer_name,
+        );
+        toast.success("Saved offline. Will sync when online.");
+      } catch (idbErr) {
+        console.error("[Schedule] IndexedDB save failed:", idbErr);
+        toast.error("Failed to save visit. Please try again.");
+      }
+    }
+    // For partial updates (just arrival_time), the local UI is already updated optimistically
+    // No error shown - the user sees their time recorded in the UI
   };
 
   const commitNotes = () => {
@@ -108,6 +192,9 @@ function ScheduleItemRow({ item, repId, scheduleDate, onRefresh }: { item: any; 
       return;
     }
 
+    // Optimistic local update
+    onLocalUpdate(item.id, { status: "skipped", notes: localNotes });
+
     try {
       const { error } = await supabase
         .from("schedule_items")
@@ -115,11 +202,17 @@ function ScheduleItemRow({ item, repId, scheduleDate, onRefresh }: { item: any; 
         .eq("id", item.id);
 
       if (error) {
-        if (isOfflineError(error.message)) {
-          toast.error("You're offline. This action requires a connection.");
-        } else {
-          toast.error(error.message);
+        if (isOfflineError(error)) {
+          try {
+            await saveVisitOffline(repId, item.customer_id, scheduleDate, "00:00", "00:00", 0, localNotes, item.customers?.customer_name, "skipped");
+            toast.success("Saved offline. Will sync when online.");
+          } catch (idbErr) {
+            console.error("[Schedule] IndexedDB save failed:", idbErr);
+            toast.error("Failed to save. Please try again.");
+          }
+          return;
         }
+        toast.error(error.message);
         return;
       }
 
@@ -137,7 +230,13 @@ function ScheduleItemRow({ item, repId, scheduleDate, onRefresh }: { item: any; 
       onRefresh();
     } catch (err: any) {
       console.warn("[Schedule] Network error on skip:", err?.message);
-      toast.error("You're offline. This action requires a connection.");
+      try {
+        await saveVisitOffline(repId, item.customer_id, scheduleDate, "00:00", "00:00", 0, localNotes, item.customers?.customer_name, "skipped");
+        toast.success("Saved offline. Will sync when online.");
+      } catch (idbErr) {
+        console.error("[Schedule] IndexedDB save failed:", idbErr);
+        toast.error("Failed to save. Please try again.");
+      }
     }
   };
 
@@ -228,6 +327,7 @@ function ScheduleItemRow({ item, repId, scheduleDate, onRefresh }: { item: any; 
 
 export default function DailySchedule() {
   const { repId } = useAuth();
+  const isOnline = useOnlineStatus();
   const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().split("T")[0]);
   const [schedule, setSchedule] = useState<any>(null);
   const [items, setItems] = useState<any[]>([]);
@@ -244,29 +344,45 @@ export default function DailySchedule() {
   const [adHocNotes, setAdHocNotes] = useState("");
   const [adHocSubmitting, setAdHocSubmitting] = useState(false);
 
+  // Optimistic local update for schedule items
+  const handleLocalUpdate = useCallback((itemId: string, updates: any) => {
+    setItems((prev) =>
+      prev.map((it) => (it.id === itemId ? { ...it, ...updates } : it))
+    );
+  }, []);
+
   const autoGenerateSchedule = useCallback(async () => {
     if (!repId) return null;
-    const { data, error } = await supabase.rpc("auto_generate_daily_schedule", {
-      p_rep_id: repId,
-      p_schedule_date: scheduleDate,
-    });
-    if (error) { console.error("Auto-generate error:", error.message); return null; }
-    return data as string | null;
+    try {
+      const { data, error } = await supabase.rpc("auto_generate_daily_schedule", {
+        p_rep_id: repId,
+        p_schedule_date: scheduleDate,
+      });
+      if (error) { console.error("Auto-generate error:", error.message); return null; }
+      return data as string | null;
+    } catch (err) {
+      console.warn("[Schedule] Offline, cannot auto-generate schedule");
+      return null;
+    }
   }, [repId, scheduleDate]);
 
   const fetchWeekName = async () => {
-    const { data: setting } = await supabase
-      .from("app_settings")
-      .select("setting_value")
-      .eq("setting_key", "current_week_order")
-      .maybeSingle();
-    if (setting) {
-      const { data: wk } = await supabase
-        .from("weekly_templates")
-        .select("name")
-        .eq("sort_order", parseInt(setting.setting_value))
+    try {
+      const { data: setting } = await supabase
+        .from("app_settings")
+        .select("setting_value")
+        .eq("setting_key", "current_week_order")
         .maybeSingle();
-      if (wk) setCurrentWeekName(wk.name);
+      if (setting) {
+        const { data: wk } = await supabase
+          .from("weekly_templates")
+          .select("name")
+          .eq("sort_order", parseInt(setting.setting_value))
+          .maybeSingle();
+        if (wk) setCurrentWeekName(wk.name);
+      }
+    } catch {
+      // Offline - ignore
     }
   };
 
@@ -290,45 +406,54 @@ export default function DailySchedule() {
   const fetchSchedule = async () => {
     if (!repId) return;
     setLoading(true);
-    const { data } = await supabase
-      .from("daily_schedules")
-      .select("*, schedule_items(*, customers(customer_name))")
-      .eq("rep_id", repId)
-      .eq("schedule_date", scheduleDate)
-      .maybeSingle();
+    try {
+      const { data } = await supabase
+        .from("daily_schedules")
+        .select("*, schedule_items(*, customers(customer_name))")
+        .eq("rep_id", repId)
+        .eq("schedule_date", scheduleDate)
+        .maybeSingle();
 
-    if (data) {
-      setSchedule(data);
-      setItems((data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
-      setLoading(false);
-    } else {
-      setGenerating(true);
-      const newId = await autoGenerateSchedule();
-      setGenerating(false);
-      if (newId) {
-        const { data: newData } = await supabase
-          .from("daily_schedules")
-          .select("*, schedule_items(*, customers(customer_name))")
-          .eq("id", newId)
-          .maybeSingle();
-        setSchedule(newData);
-        setItems((newData?.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
+      if (data) {
+        setSchedule(data);
+        setItems((data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
+        setLoading(false);
       } else {
-        setSchedule(null);
-        setItems([]);
+        setGenerating(true);
+        const newId = await autoGenerateSchedule();
+        setGenerating(false);
+        if (newId) {
+          const { data: newData } = await supabase
+            .from("daily_schedules")
+            .select("*, schedule_items(*, customers(customer_name))")
+            .eq("id", newId)
+            .maybeSingle();
+          setSchedule(newData);
+          setItems((newData?.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
+        } else {
+          setSchedule(null);
+          setItems([]);
+        }
+        setLoading(false);
       }
+    } catch (err) {
+      console.warn("[Schedule] Offline, using cached schedule state");
       setLoading(false);
     }
   };
 
   const fetchAdHocCustomers = async () => {
     if (!repId) return;
-    const { data } = await supabase
-      .from("customer_assignments")
-      .select("customer_id, customers(id, customer_name, is_active)")
-      .eq("rep_id", repId);
-    if (data) {
-      setAdHocCustomers(data.filter((d: any) => d.customers?.is_active).map((d: any) => d.customers));
+    try {
+      const { data } = await supabase
+        .from("customer_assignments")
+        .select("customer_id, customers(id, customer_name, is_active)")
+        .eq("rep_id", repId);
+      if (data) {
+        setAdHocCustomers(data.filter((d: any) => d.customers?.is_active).map((d: any) => d.customers));
+      }
+    } catch {
+      // Offline - keep existing state
     }
   };
 
@@ -349,25 +474,53 @@ export default function DailySchedule() {
     const dur = calcDuration(adHocArrival, adHocLeaving);
     if (dur <= 0) { toast.error("Leaving must be after arrival"); return; }
     setAdHocSubmitting(true);
-    const { error } = await supabase.from("visits").insert({
-      rep_id: repId,
-      customer_id: adHocCustomerId,
-      visit_date: scheduleDate,
-      arrival_time: adHocArrival,
-      leaving_time: adHocLeaving,
-      duration_minutes: dur,
-      notes: adHocNotes || null,
-    });
-    if (error) toast.error(error.message);
-    else {
-      toast.success("Ad-hoc visit logged");
-      setAdHocOpen(false);
-      setAdHocCustomerId("");
-      setAdHocArrival("");
-      setAdHocLeaving("");
-      setAdHocNotes("");
+
+    const customerName = adHocCustomers.find((c) => c.id === adHocCustomerId)?.customer_name;
+
+    try {
+      const { error } = await supabase.from("visits").insert({
+        rep_id: repId,
+        customer_id: adHocCustomerId,
+        visit_date: scheduleDate,
+        arrival_time: adHocArrival,
+        leaving_time: adHocLeaving,
+        duration_minutes: dur,
+        notes: adHocNotes || null,
+      });
+
+      if (error) {
+        if (isOfflineError(error)) {
+          await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrival, adHocLeaving, dur, adHocNotes || null, customerName);
+          toast.success("Saved offline. Will sync when online.");
+          resetAdHoc();
+        } else {
+          toast.error(error.message);
+        }
+      } else {
+        toast.success("Ad-hoc visit logged");
+        resetAdHoc();
+      }
+    } catch (err: any) {
+      console.warn("[Schedule] Network error on ad-hoc:", err?.message);
+      try {
+        await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrival, adHocLeaving, dur, adHocNotes || null, customerName);
+        toast.success("Saved offline. Will sync when online.");
+        resetAdHoc();
+      } catch (idbErr) {
+        console.error("[Schedule] IndexedDB save failed:", idbErr);
+        toast.error("Failed to save visit. Please try again.");
+      }
     }
+
     setAdHocSubmitting(false);
+  };
+
+  const resetAdHoc = () => {
+    setAdHocOpen(false);
+    setAdHocCustomerId("");
+    setAdHocArrival("");
+    setAdHocLeaving("");
+    setAdHocNotes("");
   };
 
   return (
@@ -403,7 +556,14 @@ export default function DailySchedule() {
           ) : (
             <div className="space-y-3">
               {items.map((item) => (
-                <ScheduleItemRow key={item.id} item={item} repId={repId!} scheduleDate={scheduleDate} onRefresh={fetchSchedule} />
+                <ScheduleItemRow
+                  key={item.id}
+                  item={item}
+                  repId={repId!}
+                  scheduleDate={scheduleDate}
+                  onRefresh={fetchSchedule}
+                  onLocalUpdate={handleLocalUpdate}
+                />
               ))}
             </div>
           )}
