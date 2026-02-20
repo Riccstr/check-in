@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -20,37 +21,62 @@ import AdminExports from "@/pages/admin/AdminExports";
 import AdminAccount from "@/pages/admin/AdminAccount";
 import AdminUsers from "@/pages/admin/AdminUsers";
 import NotFound from "@/pages/NotFound";
+import { toast } from "sonner";
 
 const queryClient = new QueryClient();
+
+function GlobalErrorBoundary({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      const msg = String(event.reason?.message || event.reason || "");
+      const lower = msg.toLowerCase();
+      if (lower.includes("load failed") || lower.includes("failed to fetch") || lower.includes("networkerror")) {
+        console.warn("[Global] Suppressed offline rejection:", msg);
+        event.preventDefault();
+        return;
+      }
+      console.error("[Global] Unhandled rejection:", msg);
+      toast.error("An unexpected error occurred.");
+      event.preventDefault();
+    };
+
+    window.addEventListener("unhandledrejection", handleRejection);
+    return () => window.removeEventListener("unhandledrejection", handleRejection);
+  }, []);
+
+  return <>{children}</>;
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AuthProvider>
-          <Routes>
-            <Route path="/auth" element={<Auth />} />
-            <Route element={<AppLayout />}>
-              <Route path="/" element={<Index />} />
-              <Route path="/log-visit" element={<LogVisit />} />
-              <Route path="/schedule" element={<DailySchedule />} />
-              <Route path="/my-visits" element={<MyVisits />} />
-              <Route path="/averages" element={<Averages />} />
-              <Route path="/admin/customers" element={<AdminCustomers />} />
-              <Route path="/admin/reps" element={<AdminReps />} />
-              <Route path="/admin/assignments" element={<AdminAssignments />} />
-              <Route path="/admin/schedules" element={<AdminSchedules />} />
-              <Route path="/admin/visits" element={<AdminVisits />} />
-              <Route path="/admin/reports" element={<AdminExports />} />
-              <Route path="/admin/account" element={<AdminAccount />} />
-              <Route path="/admin/users" element={<AdminUsers />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </AuthProvider>
-      </BrowserRouter>
+      <GlobalErrorBoundary>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <AuthProvider>
+            <Routes>
+              <Route path="/auth" element={<Auth />} />
+              <Route element={<AppLayout />}>
+                <Route path="/" element={<Index />} />
+                <Route path="/log-visit" element={<LogVisit />} />
+                <Route path="/schedule" element={<DailySchedule />} />
+                <Route path="/my-visits" element={<MyVisits />} />
+                <Route path="/averages" element={<Averages />} />
+                <Route path="/admin/customers" element={<AdminCustomers />} />
+                <Route path="/admin/reps" element={<AdminReps />} />
+                <Route path="/admin/assignments" element={<AdminAssignments />} />
+                <Route path="/admin/schedules" element={<AdminSchedules />} />
+                <Route path="/admin/visits" element={<AdminVisits />} />
+                <Route path="/admin/reports" element={<AdminExports />} />
+                <Route path="/admin/account" element={<AdminAccount />} />
+                <Route path="/admin/users" element={<AdminUsers />} />
+              </Route>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </AuthProvider>
+        </BrowserRouter>
+      </GlobalErrorBoundary>
     </TooltipProvider>
   </QueryClientProvider>
 );
