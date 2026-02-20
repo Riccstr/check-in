@@ -11,142 +11,12 @@ import { CalendarDays, Clock, Check, SkipForward, Plus, Loader2 } from "lucide-r
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
-export default function DailySchedule() {
-  const { repId } = useAuth();
-  const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().split("T")[0]);
-  const [schedule, setSchedule] = useState<any>(null);
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [currentWeekName, setCurrentWeekName] = useState<string>("");
-
-  // Ad-hoc visit state
-  const [adHocOpen, setAdHocOpen] = useState(false);
-  const [adHocCustomers, setAdHocCustomers] = useState<any[]>([]);
-  const [adHocCustomerId, setAdHocCustomerId] = useState("");
-  const [adHocArrival, setAdHocArrival] = useState("");
-  const [adHocLeaving, setAdHocLeaving] = useState("");
-  const [adHocNotes, setAdHocNotes] = useState("");
-  const [adHocSubmitting, setAdHocSubmitting] = useState(false);
-
-  const autoGenerateSchedule = useCallback(async () => {
-    if (!repId) return null;
-
-    const { data, error } = await supabase.rpc("auto_generate_daily_schedule", {
-      p_rep_id: repId,
-      p_schedule_date: scheduleDate,
-    });
-
-    if (error) {
-      console.error("Auto-generate error:", error.message);
-      return null;
-    }
-
-    return data as string | null;
-  }, [repId, scheduleDate]);
-
-  const fetchWeekName = async () => {
-    const { data: setting } = await supabase
-      .from("app_settings")
-      .select("setting_value")
-      .eq("setting_key", "current_week_order")
-      .maybeSingle();
-    if (setting) {
-      const { data: wk } = await supabase
-        .from("weekly_templates")
-        .select("name")
-        .eq("sort_order", parseInt(setting.setting_value))
-        .maybeSingle();
-      if (wk) setCurrentWeekName(wk.name);
-    }
-  };
+function ScheduleItemRow({ item, repId, scheduleDate, onRefresh }: { item: any; repId: string; scheduleDate: string; onRefresh: () => void }) {
+  const [localNotes, setLocalNotes] = useState(item.notes || "");
 
   useEffect(() => {
-    if (repId) {
-      fetchSchedule();
-      fetchAdHocCustomers();
-      fetchWeekName();
-    }
-  }, [repId, scheduleDate]);
-
-  // Realtime subscription for schedule_items changes (e.g. admin edits)
-  useEffect(() => {
-    if (!schedule?.id) return;
-    const channel = supabase
-      .channel(`schedule-items-${schedule.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "schedule_items",
-          filter: `schedule_id=eq.${schedule.id}`,
-        },
-        () => {
-          fetchSchedule();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [schedule?.id]);
-
-  const fetchSchedule = async () => {
-    if (!repId) return;
-    setLoading(true);
-
-    const { data } = await supabase
-      .from("daily_schedules")
-      .select("*, schedule_items(*, customers(customer_name))")
-      .eq("rep_id", repId)
-      .eq("schedule_date", scheduleDate)
-      .maybeSingle();
-
-    if (data) {
-      setSchedule(data);
-      setItems(
-        (data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order)
-      );
-      setLoading(false);
-    } else {
-      // Try auto-generating via server-side function
-      setGenerating(true);
-      const newId = await autoGenerateSchedule();
-      setGenerating(false);
-
-      if (newId) {
-        const { data: newData } = await supabase
-          .from("daily_schedules")
-          .select("*, schedule_items(*, customers(customer_name))")
-          .eq("id", newId)
-          .maybeSingle();
-
-        setSchedule(newData);
-        setItems(
-          (newData?.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order)
-        );
-      } else {
-        setSchedule(null);
-        setItems([]);
-      }
-      setLoading(false);
-    }
-  };
-
-  const fetchAdHocCustomers = async () => {
-    if (!repId) return;
-    const { data } = await supabase
-      .from("customer_assignments")
-      .select("customer_id, customers(id, customer_name, is_active)")
-      .eq("rep_id", repId);
-    if (data) {
-      setAdHocCustomers(
-        data.filter((d: any) => d.customers?.is_active).map((d: any) => d.customers)
-      );
-    }
-  };
+    setLocalNotes(item.notes || "");
+  }, [item.notes]);
 
   const nowTime = () => {
     const now = new Date();
@@ -160,9 +30,8 @@ export default function DailySchedule() {
     return (lh * 60 + lm) - (ah * 60 + am);
   };
 
-  const updateItem = async (item: any, updates: Partial<{ arrival_time: string; leaving_time: string; notes: string; status: string; duration_minutes: number }>) => {
+  const updateItem = async (updates: Partial<{ arrival_time: string; leaving_time: string; notes: string; status: string; duration_minutes: number }>) => {
     const newItem = { ...item, ...updates };
-
     if (newItem.arrival_time && newItem.leaving_time) {
       newItem.duration_minutes = calcDuration(newItem.arrival_time, newItem.leaving_time);
     }
@@ -191,7 +60,7 @@ export default function DailySchedule() {
           }).eq("id", item.visit_id);
         } else {
           const { data: visit } = await supabase.from("visits").insert({
-            rep_id: repId!,
+            rep_id: repId,
             customer_id: item.customer_id,
             visit_date: scheduleDate,
             arrival_time: newItem.arrival_time,
@@ -205,56 +74,253 @@ export default function DailySchedule() {
           }
         }
       }
-      fetchSchedule();
+      onRefresh();
     }
   };
 
-  const markArrived = (item: any) => {
-    updateItem(item, { arrival_time: nowTime(), status: "visited" });
+  const commitNotes = () => {
+    if (localNotes !== (item.notes || "")) {
+      updateItem({ notes: localNotes });
+    }
   };
 
-  const markLeft = (item: any) => {
-    updateItem(item, { leaving_time: nowTime() });
-  };
+  const markArrived = () => updateItem({ arrival_time: nowTime(), status: "visited" });
+  const markLeft = () => updateItem({ leaving_time: nowTime() });
 
-  const skipItem = async (item: any) => {
-    if (!item.notes || item.notes.trim() === "") {
+  const skipItem = async () => {
+    if (!localNotes.trim()) {
       toast.error("Please provide a reason in the notes before skipping");
       return;
     }
 
-    // Update schedule item status
     const { error } = await supabase
       .from("schedule_items")
-      .update({ status: "skipped", notes: item.notes })
+      .update({ status: "skipped", notes: localNotes })
       .eq("id", item.id);
 
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
+    if (error) { toast.error(error.message); return; }
 
-    // Log a skipped visit record
     await supabase.from("visits").insert({
-      rep_id: repId!,
+      rep_id: repId,
       customer_id: item.customer_id,
       visit_date: scheduleDate,
       arrival_time: "00:00",
       leaving_time: "00:00",
       duration_minutes: 0,
-      notes: item.notes,
+      notes: localNotes,
       status: "skipped",
     } as any);
 
-    fetchSchedule();
+    onRefresh();
   };
 
-  // Ad-hoc visit
+  const markVisited = () => updateItem({ status: "visited", notes: localNotes });
+
+  return (
+    <div
+      className={`border rounded-lg p-3 space-y-2 ${
+        item.status === "visited" ? "border-primary/30 bg-primary/5" :
+        item.status === "skipped" ? "border-muted bg-muted/30 opacity-60" :
+        "border-border"
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <span className="font-medium">{item.customers?.customer_name}</span>
+        <Badge variant={item.status === "visited" ? "default" : item.status === "skipped" ? "secondary" : "outline"}>
+          {item.status}
+        </Badge>
+      </div>
+
+      {item.status !== "skipped" && (
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs text-muted-foreground">Arrival</label>
+            <div className="flex gap-1">
+              <Input
+                type="time"
+                value={item.arrival_time || ""}
+                onChange={(e) => updateItem({ arrival_time: e.target.value })}
+                className="h-8 text-sm"
+              />
+              {!item.arrival_time && (
+                <Button size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={markArrived}>
+                  <Clock className="h-3 w-3 mr-1" /> Now
+                </Button>
+              )}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Leaving</label>
+            <div className="flex gap-1">
+              <Input
+                type="time"
+                value={item.leaving_time || ""}
+                onChange={(e) => updateItem({ leaving_time: e.target.value })}
+                className="h-8 text-sm"
+              />
+              {item.arrival_time && !item.leaving_time && (
+                <Button size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={markLeft}>
+                  <Clock className="h-3 w-3 mr-1" /> Now
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {item.status !== "skipped" && item.duration_minutes > 0 && (
+        <div className="text-xs text-muted-foreground">Duration: {item.duration_minutes} min</div>
+      )}
+
+      {item.status !== "skipped" && (
+        <Textarea
+          placeholder="Notes..."
+          value={localNotes}
+          onChange={(e) => setLocalNotes(e.target.value)}
+          onBlur={commitNotes}
+          rows={1}
+          className="text-sm"
+        />
+      )}
+
+      {item.status === "pending" && (
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={skipItem}>
+            <SkipForward className="h-3 w-3 mr-1" /> Skip
+          </Button>
+          {item.arrival_time && item.leaving_time && calcDuration(item.arrival_time, item.leaving_time) > 0 && (
+            <Button size="sm" onClick={markVisited}>
+              <Check className="h-3 w-3 mr-1" /> Mark Visited
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function DailySchedule() {
+  const { repId } = useAuth();
+  const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().split("T")[0]);
+  const [schedule, setSchedule] = useState<any>(null);
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [currentWeekName, setCurrentWeekName] = useState<string>("");
+
+  // Ad-hoc visit state
+  const [adHocOpen, setAdHocOpen] = useState(false);
+  const [adHocCustomers, setAdHocCustomers] = useState<any[]>([]);
+  const [adHocCustomerId, setAdHocCustomerId] = useState("");
+  const [adHocArrival, setAdHocArrival] = useState("");
+  const [adHocLeaving, setAdHocLeaving] = useState("");
+  const [adHocNotes, setAdHocNotes] = useState("");
+  const [adHocSubmitting, setAdHocSubmitting] = useState(false);
+
+  const autoGenerateSchedule = useCallback(async () => {
+    if (!repId) return null;
+    const { data, error } = await supabase.rpc("auto_generate_daily_schedule", {
+      p_rep_id: repId,
+      p_schedule_date: scheduleDate,
+    });
+    if (error) { console.error("Auto-generate error:", error.message); return null; }
+    return data as string | null;
+  }, [repId, scheduleDate]);
+
+  const fetchWeekName = async () => {
+    const { data: setting } = await supabase
+      .from("app_settings")
+      .select("setting_value")
+      .eq("setting_key", "current_week_order")
+      .maybeSingle();
+    if (setting) {
+      const { data: wk } = await supabase
+        .from("weekly_templates")
+        .select("name")
+        .eq("sort_order", parseInt(setting.setting_value))
+        .maybeSingle();
+      if (wk) setCurrentWeekName(wk.name);
+    }
+  };
+
+  useEffect(() => {
+    if (repId) {
+      fetchSchedule();
+      fetchAdHocCustomers();
+      fetchWeekName();
+    }
+  }, [repId, scheduleDate]);
+
+  useEffect(() => {
+    if (!schedule?.id) return;
+    const channel = supabase
+      .channel(`schedule-items-${schedule.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "schedule_items", filter: `schedule_id=eq.${schedule.id}` }, () => { fetchSchedule(); })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [schedule?.id]);
+
+  const fetchSchedule = async () => {
+    if (!repId) return;
+    setLoading(true);
+    const { data } = await supabase
+      .from("daily_schedules")
+      .select("*, schedule_items(*, customers(customer_name))")
+      .eq("rep_id", repId)
+      .eq("schedule_date", scheduleDate)
+      .maybeSingle();
+
+    if (data) {
+      setSchedule(data);
+      setItems((data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
+      setLoading(false);
+    } else {
+      setGenerating(true);
+      const newId = await autoGenerateSchedule();
+      setGenerating(false);
+      if (newId) {
+        const { data: newData } = await supabase
+          .from("daily_schedules")
+          .select("*, schedule_items(*, customers(customer_name))")
+          .eq("id", newId)
+          .maybeSingle();
+        setSchedule(newData);
+        setItems((newData?.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
+      } else {
+        setSchedule(null);
+        setItems([]);
+      }
+      setLoading(false);
+    }
+  };
+
+  const fetchAdHocCustomers = async () => {
+    if (!repId) return;
+    const { data } = await supabase
+      .from("customer_assignments")
+      .select("customer_id, customers(id, customer_name, is_active)")
+      .eq("rep_id", repId);
+    if (data) {
+      setAdHocCustomers(data.filter((d: any) => d.customers?.is_active).map((d: any) => d.customers));
+    }
+  };
+
+  const nowTime = () => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  };
+
+  const calcDuration = (arr: string, lv: string) => {
+    if (!arr || !lv) return 0;
+    const [ah, am] = arr.split(":").map(Number);
+    const [lh, lm] = lv.split(":").map(Number);
+    return (lh * 60 + lm) - (ah * 60 + am);
+  };
+
   const submitAdHoc = async () => {
     if (!repId || !adHocCustomerId || !adHocArrival || !adHocLeaving) return;
     const dur = calcDuration(adHocArrival, adHocLeaving);
     if (dur <= 0) { toast.error("Leaving must be after arrival"); return; }
-
     setAdHocSubmitting(true);
     const { error } = await supabase.from("visits").insert({
       rep_id: repId,
@@ -265,7 +331,6 @@ export default function DailySchedule() {
       duration_minutes: dur,
       notes: adHocNotes || null,
     });
-
     if (error) toast.error(error.message);
     else {
       toast.success("Ad-hoc visit logged");
@@ -311,85 +376,7 @@ export default function DailySchedule() {
           ) : (
             <div className="space-y-3">
               {items.map((item) => (
-                <div
-                  key={item.id}
-                  className={`border rounded-lg p-3 space-y-2 ${
-                    item.status === "visited" ? "border-primary/30 bg-primary/5" :
-                    item.status === "skipped" ? "border-muted bg-muted/30 opacity-60" :
-                    "border-border"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{item.customers?.customer_name}</span>
-                    <Badge variant={item.status === "visited" ? "default" : item.status === "skipped" ? "secondary" : "outline"}>
-                      {item.status}
-                    </Badge>
-                  </div>
-
-                  {item.status !== "skipped" && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs text-muted-foreground">Arrival</label>
-                        <div className="flex gap-1">
-                          <Input
-                            type="time"
-                            value={item.arrival_time || ""}
-                            onChange={(e) => updateItem(item, { arrival_time: e.target.value })}
-                            className="h-8 text-sm"
-                          />
-                          {!item.arrival_time && (
-                            <Button size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={() => markArrived(item)}>
-                              <Clock className="h-3 w-3 mr-1" /> Now
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground">Leaving</label>
-                        <div className="flex gap-1">
-                          <Input
-                            type="time"
-                            value={item.leaving_time || ""}
-                            onChange={(e) => updateItem(item, { leaving_time: e.target.value })}
-                            className="h-8 text-sm"
-                          />
-                          {item.arrival_time && !item.leaving_time && (
-                            <Button size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={() => markLeft(item)}>
-                              <Clock className="h-3 w-3 mr-1" /> Now
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {item.status !== "skipped" && item.duration_minutes > 0 && (
-                    <div className="text-xs text-muted-foreground">Duration: {item.duration_minutes} min</div>
-                  )}
-
-                  {item.status !== "skipped" && (
-                    <Textarea
-                      placeholder="Notes..."
-                      value={item.notes || ""}
-                      onChange={(e) => updateItem(item, { notes: e.target.value })}
-                      rows={1}
-                      className="text-sm"
-                    />
-                  )}
-
-                  {item.status === "pending" && (
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => skipItem(item)}>
-                        <SkipForward className="h-3 w-3 mr-1" /> Skip
-                      </Button>
-                      {item.arrival_time && item.leaving_time && calcDuration(item.arrival_time, item.leaving_time) > 0 && (
-                        <Button size="sm" onClick={() => updateItem(item, { status: "visited" })}>
-                          <Check className="h-3 w-3 mr-1" /> Mark Visited
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                </div>
+                <ScheduleItemRow key={item.id} item={item} repId={repId!} scheduleDate={scheduleDate} onRefresh={fetchSchedule} />
               ))}
             </div>
           )}
