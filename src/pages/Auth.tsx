@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { ClipboardCheck } from "lucide-react";
+import logoImg from "@/assets/logo.png";
 
 export default function Auth() {
   const { user, loading, signIn } = useAuth();
@@ -35,9 +35,7 @@ export default function Auth() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
-            <ClipboardCheck className="h-6 w-6 text-primary-foreground" />
-          </div>
+          <img src={logoImg} alt="Check-In Tracker" className="mx-auto mb-2 h-16 w-16" />
           <CardTitle className="text-2xl">Check-In Tracker</CardTitle>
           <CardDescription>Sign in to your account</CardDescription>
         </CardHeader>
