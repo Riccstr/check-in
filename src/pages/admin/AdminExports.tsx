@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Download } from "lucide-react";
+import { Download, FileSpreadsheet } from "lucide-react";
+import * as XLSX from "xlsx";
 
 function downloadCSV(filename: string, headers: string[], rows: string[][]) {
   const csv = [headers.join(","), ...rows.map((r) => r.map((c) => `"${(c ?? "").replace(/"/g, '""')}"`).join(","))].join("\n");
@@ -67,6 +68,153 @@ export default function AdminExports() {
     toast.success("Averages exported");
   };
 
+  const formatTime12h = (time: string | null) => {
+    if (!time) return "";
+    const [h, m] = time.split(":").map(Number);
+    const ampm = h >= 12 ? "PM" : "AM";
+    const h12 = h % 12 || 12;
+    return `${String(h12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${ampm}`;
+  };
+
+  const formatDuration = (mins: number) => {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  };
+
+  const exportReportExcel = async () => {
+    if (repFilter === "all") { toast.error("Please select a specific rep for the Excel report"); return; }
+    if (!dateFrom) { toast.error("Please select a 'From' date for the Excel report"); return; }
+
+    const selectedRep = reps.find((r) => r.id === repFilter);
+    const repName = selectedRep?.rep_name || "Unknown";
+    const reportDate = dateFrom;
+
+    let q = supabase
+      .from("visits")
+      .select("*, reps(rep_name), customers(customer_name, area)")
+      .eq("rep_id", repFilter)
+      .order("arrival_time", { ascending: true });
+    if (dateFrom) q = q.gte("visit_date", dateFrom);
+    if (dateTo) q = q.lte("visit_date", dateTo);
+    if (custFilter !== "all") q = q.eq("customer_id", custFilter);
+
+    const { data } = await q;
+    if (!data || data.length === 0) { toast.error("No data to export"); return; }
+
+    const wb = XLSX.utils.book_new();
+    const colCount = 6; // Customer Name, Area, Time In, Time Out, Duration, Notes
+
+    // Build rows array
+    const wsData: any[][] = [];
+
+    // Row 1: Title
+    wsData.push(["Daily Visit Report", "", "", "", "", ""]);
+    // Row 2: Rep & Date
+    const formattedDate = new Date(reportDate + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+    wsData.push([`Rep: ${repName} | Date: ${formattedDate}`, "", "", "", "", ""]);
+    // Row 3: Spacer
+    wsData.push(["", "", "", "", "", ""]);
+    // Row 4: Headers
+    wsData.push(["Customer Name", "Area", "Time In", "Time Out", "Duration", "Notes"]);
+
+    // Data rows
+    let totalProductiveMins = 0;
+    for (const v of data as any[]) {
+      const isSkipped = v.status === "skipped";
+      const dur = v.duration_minutes || 0;
+      if (!isSkipped) totalProductiveMins += dur;
+      wsData.push([
+        v.customers?.customer_name || "",
+        v.customers?.area || "",
+        formatTime12h(v.arrival_time),
+        formatTime12h(v.leaving_time),
+        dur > 0 ? formatDuration(dur) : "",
+        v.notes || "",
+      ]);
+    }
+
+    // Totals row
+    const totalsRowIdx = wsData.length;
+    wsData.push(["Total Productive Time", "", "", "", formatDuration(totalProductiveMins), ""]);
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Merge cells
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } }, // Title
+      { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } }, // Rep/Date
+      { s: { r: totalsRowIdx, c: 0 }, e: { r: totalsRowIdx, c: 3 } }, // Totals label
+    ];
+
+    // Column widths
+    ws["!cols"] = [
+      { wch: 25 }, // Customer Name
+      { wch: 18 }, // Area
+      { wch: 14 }, // Time In
+      { wch: 14 }, // Time Out
+      { wch: 12 }, // Duration
+      { wch: 35 }, // Notes
+    ];
+
+    // Apply styles (SheetJS community edition has limited style support, using cell properties)
+    // Title row
+    const titleCell = ws[XLSX.utils.encode_cell({ r: 0, c: 0 })];
+    if (titleCell) { titleCell.s = { font: { bold: true, sz: 16 }, alignment: { horizontal: "center" } }; }
+    // Sub-title
+    const subCell = ws[XLSX.utils.encode_cell({ r: 1, c: 0 })];
+    if (subCell) { subCell.s = { font: { italic: true, sz: 12 }, alignment: { horizontal: "center" } }; }
+
+    // Header row (row index 3)
+    const darkBlue = { rgb: "1B3A5C" };
+    const white = { rgb: "FFFFFF" };
+    for (let c = 0; c < colCount; c++) {
+      const ref = XLSX.utils.encode_cell({ r: 3, c });
+      if (ws[ref]) {
+        ws[ref].s = {
+          font: { bold: true, color: white, sz: 11 },
+          fill: { fgColor: darkBlue },
+          alignment: { horizontal: "center" },
+        };
+      }
+    }
+
+    // Data rows styling
+    const lightGrey = { rgb: "F2F2F2" };
+    const redBg = { rgb: "FFCCCC" };
+    for (let r = 4; r < totalsRowIdx; r++) {
+      const visitIdx = r - 4;
+      const v = data[visitIdx] as any;
+      const isSkipped = v?.status === "skipped";
+      const isOddRow = (r - 4) % 2 === 1;
+      for (let c = 0; c < colCount; c++) {
+        const ref = XLSX.utils.encode_cell({ r, c });
+        if (ws[ref]) {
+          ws[ref].s = {
+            fill: isSkipped ? { fgColor: redBg } : isOddRow ? { fgColor: lightGrey } : undefined,
+            alignment: { horizontal: c === 5 ? "left" : "center" },
+          };
+        }
+      }
+    }
+
+    // Totals row styling
+    for (let c = 0; c < colCount; c++) {
+      const ref = XLSX.utils.encode_cell({ r: totalsRowIdx, c });
+      if (ws[ref]) {
+        ws[ref].s = {
+          font: { bold: true, color: white, sz: 11 },
+          fill: { fgColor: darkBlue },
+          alignment: { horizontal: "center" },
+        };
+      }
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws, "Visit Report");
+    XLSX.writeFile(wb, `visit_report_${repName.replace(/\s+/g, "_")}_${reportDate}.xlsx`);
+    toast.success("Excel report exported");
+  };
+
   return (
     <Card>
       <CardHeader><CardTitle className="flex items-center gap-2"><Download className="h-5 w-5 text-accent" /> Export Data</CardTitle></CardHeader>
@@ -82,6 +230,7 @@ export default function AdminExports() {
         <div className="flex flex-wrap gap-3">
           <Button onClick={exportVisits}><Download className="h-4 w-4 mr-2" /> Export Visits CSV</Button>
           <Button variant="outline" onClick={exportAverages}><Download className="h-4 w-4 mr-2" /> Export Averages CSV</Button>
+          <Button onClick={exportReportExcel} className="bg-accent hover:bg-accent/90 text-accent-foreground"><FileSpreadsheet className="h-4 w-4 mr-2" /> Export Report (Excel)</Button>
         </div>
       </CardContent>
     </Card>
