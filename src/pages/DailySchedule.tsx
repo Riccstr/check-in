@@ -122,7 +122,7 @@ function ScheduleItemRow({
       }
 
       // Online success: also handle visit record
-      if (newItem.status === "visited" && newItem.arrival_time && newItem.leaving_time && newItem.duration_minutes > 0) {
+      if (newItem.status === "visited" && newItem.arrival_time && newItem.leaving_time && newItem.duration_minutes >= 0) {
         if (item.visit_id) {
           await supabase.from("visits").update({
             arrival_time: newItem.arrival_time,
