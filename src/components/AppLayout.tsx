@@ -9,7 +9,7 @@ import OfflineStatusBar from "@/components/OfflineStatusBar";
 import { setupAutoSync } from "@/lib/syncEngine";
 
 export default function AppLayout() {
-  const { user, role, loading, signOut } = useAuth();
+  const { user, role, repName, loading, signOut } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -34,7 +34,6 @@ export default function AppLayout() {
   const repLinks = [
     { to: "/schedule", label: "Schedule", icon: CalendarDays },
     { to: "/my-visits", label: "My Visits", icon: Eye },
-    { to: "/averages", label: "Averages", icon: BarChart3 },
   ];
 
   const adminLinks = [
@@ -74,7 +73,7 @@ export default function AppLayout() {
           <div className="flex items-center gap-2">
             <OfflineStatusBar />
             <span className="hidden sm:inline text-xs font-medium uppercase tracking-wide px-2 py-1 rounded-full bg-secondary text-secondary-foreground">
-              {role}
+              {role === "rep" && repName ? repName : role}
             </span>
             <Button variant="ghost" size="icon" onClick={signOut} title="Sign out">
               <LogOut className="h-4 w-4" />

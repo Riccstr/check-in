@@ -62,7 +62,7 @@ const App = () => (
                 <Route path="/log-visit" element={<LogVisit />} />
                 <Route path="/schedule" element={<DailySchedule />} />
                 <Route path="/my-visits" element={<MyVisits />} />
-                <Route path="/averages" element={<Averages />} />
+                
                 <Route path="/admin/customers" element={<AdminCustomers />} />
                 <Route path="/admin/reps" element={<AdminReps />} />
                 <Route path="/admin/assignments" element={<AdminAssignments />} />
