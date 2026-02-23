@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { CalendarDays, Clock, Check, SkipForward, Plus, Loader2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { v4 as uuidv4 } from "uuid";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -554,18 +555,48 @@ export default function DailySchedule() {
               <p>No schedule for this date</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {items.map((item) => (
-                <ScheduleItemRow
-                  key={item.id}
-                  item={item}
-                  repId={repId!}
-                  scheduleDate={scheduleDate}
-                  onRefresh={fetchSchedule}
-                  onLocalUpdate={handleLocalUpdate}
-                />
-              ))}
-            </div>
+            <Tabs defaultValue="schedule" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="schedule">
+                  Schedule {items.filter(i => i.status === "pending").length > 0 && `(${items.filter(i => i.status === "pending").length})`}
+                </TabsTrigger>
+                <TabsTrigger value="completed">
+                  Completed {items.filter(i => i.status === "visited" || i.status === "skipped").length > 0 && `(${items.filter(i => i.status === "visited" || i.status === "skipped").length})`}
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="schedule" className="space-y-3 mt-3">
+                {items.filter(i => i.status === "pending").length === 0 ? (
+                  <p className="text-center text-muted-foreground py-4">All visits completed for today!</p>
+                ) : (
+                  items.filter(i => i.status === "pending").map((item) => (
+                    <ScheduleItemRow
+                      key={item.id}
+                      item={item}
+                      repId={repId!}
+                      scheduleDate={scheduleDate}
+                      onRefresh={fetchSchedule}
+                      onLocalUpdate={handleLocalUpdate}
+                    />
+                  ))
+                )}
+              </TabsContent>
+              <TabsContent value="completed" className="space-y-3 mt-3">
+                {items.filter(i => i.status === "visited" || i.status === "skipped").length === 0 ? (
+                  <p className="text-center text-muted-foreground py-4">No completed visits yet</p>
+                ) : (
+                  items.filter(i => i.status === "visited" || i.status === "skipped").map((item) => (
+                    <ScheduleItemRow
+                      key={item.id}
+                      item={item}
+                      repId={repId!}
+                      scheduleDate={scheduleDate}
+                      onRefresh={fetchSchedule}
+                      onLocalUpdate={handleLocalUpdate}
+                    />
+                  ))
+                )}
+              </TabsContent>
+            </Tabs>
           )}
         </CardContent>
       </Card>
