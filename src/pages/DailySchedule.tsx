@@ -255,7 +255,10 @@ function ScheduleItemRow({
       }`}
     >
       <div className="flex items-center justify-between">
-        <span className="font-medium">{item.customers?.customer_name}</span>
+        <span className="font-medium">
+          {item.customers?.account_number && <span className="text-muted-foreground text-xs mr-1">({item.customers.account_number})</span>}
+          {item.customers?.customer_name}
+        </span>
         {item.status === "visited" ? (
           <Badge variant="default" className="bg-green-600 text-white gap-1">
             <Check className="h-3 w-3" /> Visited
@@ -425,7 +428,7 @@ export default function DailySchedule() {
     try {
       const { data } = await supabase
         .from("daily_schedules")
-        .select("*, schedule_items(*, customers(customer_name))")
+        .select("*, schedule_items(*, customers(customer_name, account_number))")
         .eq("rep_id", repId)
         .eq("schedule_date", scheduleDate)
         .maybeSingle();
@@ -441,7 +444,7 @@ export default function DailySchedule() {
         if (newId) {
           const { data: newData } = await supabase
             .from("daily_schedules")
-            .select("*, schedule_items(*, customers(customer_name))")
+            .select("*, schedule_items(*, customers(customer_name, account_number))")
             .eq("id", newId)
             .maybeSingle();
           setSchedule(newData);

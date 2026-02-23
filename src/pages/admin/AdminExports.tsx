@@ -34,15 +34,15 @@ export default function AdminExports() {
   }, []);
 
   const exportVisits = async () => {
-    let q = supabase.from("visits").select("*, reps(rep_name), customers(customer_name)").order("visit_date", { ascending: false });
+    let q = supabase.from("visits").select("*, reps(rep_name), customers(customer_name, account_number)").order("visit_date", { ascending: false });
     if (repFilter !== "all") q = q.eq("rep_id", repFilter);
     if (custFilter !== "all") q = q.eq("customer_id", custFilter);
     if (dateFrom) q = q.gte("visit_date", dateFrom);
     if (dateTo) q = q.lte("visit_date", dateTo);
     const { data } = await q;
     if (!data || data.length === 0) { toast.error("No data to export"); return; }
-    const headers = ["visit_date", "rep_name", "customer_name", "arrival_time", "leaving_time", "duration_minutes", "notes", "created_at"];
-    const rows = data.map((v: any) => [v.visit_date, v.reps?.rep_name, v.customers?.customer_name, v.arrival_time, v.leaving_time, String(v.duration_minutes), v.notes || "", v.created_at]);
+    const headers = ["visit_date", "rep_name", "customer_name", "account_number", "arrival_time", "leaving_time", "duration_minutes", "notes", "created_at"];
+    const rows = data.map((v: any) => [v.visit_date, v.reps?.rep_name, v.customers?.customer_name, v.customers?.account_number || "", v.arrival_time, v.leaving_time, String(v.duration_minutes), v.notes || "", v.created_at]);
     downloadCSV("visits_export.csv", headers, rows);
     toast.success("Visits exported");
   };
@@ -92,7 +92,7 @@ export default function AdminExports() {
 
     let q = supabase
       .from("visits")
-      .select("*, reps(rep_name), customers(customer_name, area)")
+      .select("*, reps(rep_name), customers(customer_name, area, account_number)")
       .eq("rep_id", repFilter)
       .order("arrival_time", { ascending: true });
     if (dateFrom) q = q.gte("visit_date", dateFrom);
@@ -103,20 +103,17 @@ export default function AdminExports() {
     if (!data || data.length === 0) { toast.error("No data to export"); return; }
 
     const wb = XLSX.utils.book_new();
-    const colCount = 6; // Customer Name, Area, Time In, Time Out, Duration, Notes
+    const colCount = 7; // Account #, Customer Name, Area, Time In, Time Out, Duration, Notes
 
     // Build rows array
     const wsData: any[][] = [];
 
     // Row 1: Title
-    wsData.push(["Daily Visit Report", "", "", "", "", ""]);
-    // Row 2: Rep & Date
+    wsData.push(["Daily Visit Report", "", "", "", "", "", ""]);
     const formattedDate = new Date(reportDate + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-    wsData.push([`Rep: ${repName} | Date: ${formattedDate}`, "", "", "", "", ""]);
-    // Row 3: Spacer
-    wsData.push(["", "", "", "", "", ""]);
-    // Row 4: Headers
-    wsData.push(["Customer Name", "Area", "Time In", "Time Out", "Duration", "Notes"]);
+    wsData.push([`Rep: ${repName} | Date: ${formattedDate}`, "", "", "", "", "", ""]);
+    wsData.push(["", "", "", "", "", "", ""]);
+    wsData.push(["Account #", "Customer Name", "Area", "Time In", "Time Out", "Duration", "Notes"]);
 
     // Data rows
     let totalProductiveMins = 0;
@@ -125,6 +122,7 @@ export default function AdminExports() {
       const dur = v.duration_minutes || 0;
       if (!isSkipped) totalProductiveMins += dur;
       wsData.push([
+        v.customers?.account_number || "",
         v.customers?.customer_name || "",
         v.customers?.area || "",
         formatTime12h(v.arrival_time),
@@ -136,19 +134,20 @@ export default function AdminExports() {
 
     // Totals row
     const totalsRowIdx = wsData.length;
-    wsData.push(["Total Productive Time", "", "", "", formatDuration(totalProductiveMins), ""]);
+    wsData.push(["Total Productive Time", "", "", "", "", formatDuration(totalProductiveMins), ""]);
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
     // Merge cells
     ws["!merges"] = [
       { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } }, // Title
-      { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } }, // Rep/Date
-      { s: { r: totalsRowIdx, c: 0 }, e: { r: totalsRowIdx, c: 3 } }, // Totals label
+      { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
+      { s: { r: totalsRowIdx, c: 0 }, e: { r: totalsRowIdx, c: 4 } },
     ];
 
     // Column widths
     ws["!cols"] = [
+      { wch: 14 }, // Account #
       { wch: 25 }, // Customer Name
       { wch: 18 }, // Area
       { wch: 14 }, // Time In
@@ -192,7 +191,7 @@ export default function AdminExports() {
         if (ws[ref]) {
           ws[ref].s = {
             fill: isSkipped ? { fgColor: redBg } : isOddRow ? { fgColor: lightGrey } : undefined,
-            alignment: { horizontal: c === 5 ? "left" : "center" },
+            alignment: { horizontal: c === 6 ? "left" : "center" },
           };
         }
       }

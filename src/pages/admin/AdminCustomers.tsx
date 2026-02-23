@@ -25,6 +25,7 @@ export default function AdminCustomers() {
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [area, setArea] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
   const [selectedRepId, setSelectedRepId] = useState<string>("none");
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   
@@ -77,9 +78,9 @@ export default function AdminCustomers() {
     return Array.from(set).sort();
   }, [customerRepMap]);
 
-  const openNew = () => { setEditId(null); setName(""); setArea(""); setSelectedRepId("none"); setDialogOpen(true); };
+  const openNew = () => { setEditId(null); setName(""); setArea(""); setAccountNumber(""); setSelectedRepId("none"); setDialogOpen(true); };
   const openEdit = (c: any) => {
-    setEditId(c.id); setName(c.customer_name); setArea(c.area || "");
+    setEditId(c.id); setName(c.customer_name); setArea(c.area || ""); setAccountNumber(c.account_number || "");
     const assignedRep = assignments.find((a) => a.customer_id === c.id);
     setSelectedRepId(assignedRep?.rep_id || "none");
     setDialogOpen(true);
@@ -87,7 +88,7 @@ export default function AdminCustomers() {
 
   const save = async () => {
     if (!name.trim()) { toast.error("Name required"); return; }
-    const payload: any = { customer_name: name.trim(), area: area.trim() || null };
+    const payload: any = { customer_name: name.trim(), area: area.trim() || null, account_number: accountNumber.trim() || null };
     let customerId = editId;
     if (editId) {
       const { error } = await supabase.from("customers").update(payload).eq("id", editId);
@@ -241,9 +242,9 @@ export default function AdminCustomers() {
             <TableHeader>
               <TableRow>
                 <TableHead><SortButton label="Name" sortId="customer_name" /></TableHead>
+                <TableHead>Acc #</TableHead>
                 <TableHead><SortButton label="Area" sortId="area" /></TableHead>
                 <TableHead><SortButton label="Rep" sortId="rep" /></TableHead>
-                
                 <TableHead>Status</TableHead>
                 <TableHead></TableHead>
               </TableRow>
@@ -252,6 +253,7 @@ export default function AdminCustomers() {
               {filtered.map((c) => (
                 <TableRow key={c.id}>
                   <TableCell className="font-medium">{c.customer_name}</TableCell>
+                  <TableCell className="text-muted-foreground">{c.account_number || "—"}</TableCell>
                   <TableCell>{c.area || "—"}</TableCell>
                   <TableCell className="text-muted-foreground">{customerRepMap[c.id] || "Unassigned"}</TableCell>
                   
@@ -274,6 +276,7 @@ export default function AdminCustomers() {
           <DialogHeader><DialogTitle>{editId ? "Edit" : "Add"} Customer</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>Name *</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
+            <div><Label>Account Number</Label><Input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder="e.g. ACC-001" /></div>
             <div><Label>Area</Label><Input value={area} onChange={(e) => setArea(e.target.value)} placeholder="e.g. Johannesburg North" /></div>
             <div>
               <Label>Assign to Rep</Label>
