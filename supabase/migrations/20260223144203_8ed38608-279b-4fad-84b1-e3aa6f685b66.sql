@@ -1,0 +1,1 @@
+ALTER TABLE public.customers ADD COLUMN account_number text NULL;

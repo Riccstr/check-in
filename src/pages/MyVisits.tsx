@@ -52,7 +52,7 @@ export default function MyVisits() {
     // Fetch server visits
     let q = supabase
       .from("visits")
-      .select("*, customers(customer_name)")
+      .select("*, customers(customer_name, account_number)")
       .eq("rep_id", repId)
       .order("visit_date", { ascending: false });
     if (dateFrom) q = q.gte("visit_date", dateFrom);
@@ -207,8 +207,9 @@ export default function MyVisits() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date</TableHead>
+                     <TableHead>Date</TableHead>
                     <TableHead>Customer</TableHead>
+                    <TableHead>Acc #</TableHead>
                     <TableHead>Arrival</TableHead>
                     <TableHead>Leaving</TableHead>
                     <TableHead>Duration</TableHead>
@@ -227,6 +228,7 @@ export default function MyVisits() {
                           {v.status === "skipped" && <Badge variant="destructive" className="text-xs">Skipped</Badge>}
                         </div>
                       </TableCell>
+                      <TableCell className="text-muted-foreground">{(v as any).customers?.account_number || "—"}</TableCell>
                       <TableCell>{v.status === "skipped" ? "—" : v.arrival_time?.slice(0,5)}</TableCell>
                       <TableCell>{v.status === "skipped" ? "—" : v.leaving_time?.slice(0,5)}</TableCell>
                       <TableCell>{v.status === "skipped" ? "—" : `${v.duration_minutes} min`}</TableCell>

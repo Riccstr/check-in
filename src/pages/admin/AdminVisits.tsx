@@ -29,7 +29,7 @@ export default function AdminVisits() {
 
   const fetchVisits = async () => {
     setLoading(true);
-    let q = supabase.from("visits").select("*, reps(rep_name), customers(customer_name)").order("visit_date", { ascending: false });
+    let q = supabase.from("visits").select("*, reps(rep_name), customers(customer_name, account_number)").order("visit_date", { ascending: false });
     if (repFilter !== "all") q = q.eq("rep_id", repFilter);
     if (custFilter !== "all") q = q.eq("customer_id", custFilter);
     if (dateFrom) q = q.gte("visit_date", dateFrom);
@@ -81,7 +81,7 @@ export default function AdminVisits() {
         {loading ? <p className="text-muted-foreground py-8 text-center">Loading...</p> : (
           <div className="overflow-x-auto">
             <Table>
-              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Rep</TableHead><TableHead>Customer</TableHead><TableHead>Arrival</TableHead><TableHead>Leaving</TableHead><TableHead>Duration</TableHead><TableHead>Notes</TableHead><TableHead></TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Rep</TableHead><TableHead>Customer</TableHead><TableHead>Acc #</TableHead><TableHead>Arrival</TableHead><TableHead>Leaving</TableHead><TableHead>Duration</TableHead><TableHead>Notes</TableHead><TableHead></TableHead></TableRow></TableHeader>
               <TableBody>
                 {visits.map((v: any) => (
                    <TableRow key={v.id} className={v.status === "skipped" ? "bg-destructive/10" : ""}>
@@ -93,6 +93,7 @@ export default function AdminVisits() {
                         {v.status === "skipped" && <Badge variant="destructive" className="text-xs">Skipped</Badge>}
                       </div>
                     </TableCell>
+                    <TableCell className="text-muted-foreground">{v.customers?.account_number || "—"}</TableCell>
                     <TableCell>{v.status === "skipped" ? "—" : v.arrival_time?.slice(0,5)}</TableCell>
                     <TableCell>{v.status === "skipped" ? "—" : v.leaving_time?.slice(0,5)}</TableCell>
                     <TableCell>{v.status === "skipped" ? "—" : `${v.duration_minutes} min`}</TableCell>

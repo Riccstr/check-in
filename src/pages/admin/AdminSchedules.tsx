@@ -92,7 +92,7 @@ export default function AdminSchedules() {
     if (!selectedRep || !selectedWeeklyTemplate) return;
     const { data } = await supabase
       .from("schedule_templates")
-      .select("*, schedule_template_items(*, customers(customer_name))")
+      .select("*, schedule_template_items(*, customers(customer_name, account_number))")
       .eq("rep_id", selectedRep)
       .eq("weekly_template_id", selectedWeeklyTemplate)
       .order("day_of_week");
@@ -102,7 +102,7 @@ export default function AdminSchedules() {
   const fetchDailySchedules = async () => {
     const { data } = await supabase
       .from("daily_schedules")
-      .select("*, schedule_items(*, customers(customer_name))")
+      .select("*, schedule_items(*, customers(customer_name, account_number))")
       .eq("rep_id", selectedRep)
       .order("schedule_date", { ascending: false })
       .limit(30);
@@ -346,7 +346,7 @@ export default function AdminSchedules() {
                         <TableCell>
                           <div className="flex flex-wrap gap-1">
                             {t.schedule_template_items?.map((i: any) => (
-                              <Badge key={i.id} variant="secondary" className="text-xs">{i.customers?.customer_name}</Badge>
+                              <Badge key={i.id} variant="secondary" className="text-xs">{i.customers?.account_number ? `(${i.customers.account_number}) ` : ""}{i.customers?.customer_name}</Badge>
                             ))}
                           </div>
                         </TableCell>
@@ -386,7 +386,7 @@ export default function AdminSchedules() {
                             <div className="flex flex-wrap gap-1">
                               {items.map((i: any) => (
                                 <Badge key={i.id} variant={i.status === "visited" ? "default" : "secondary"} className="text-xs">
-                                  {i.customers?.customer_name}
+                                  {i.customers?.account_number ? `(${i.customers.account_number}) ` : ""}{i.customers?.customer_name}
                                 </Badge>
                               ))}
                             </div>
@@ -434,7 +434,7 @@ export default function AdminSchedules() {
                     return (
                       <div key={cid} className="flex items-center gap-1 py-0.5 px-2 rounded bg-muted text-xs">
                         <GripVertical className="h-3 w-3 text-muted-foreground shrink-0" />
-                        <span className="flex-1 truncate">{cust?.customer_name}{cust?.area ? ` (${cust.area})` : ""}</span>
+                        <span className="flex-1 truncate">{cust?.account_number ? `(${cust.account_number}) ` : ""}{cust?.customer_name}{cust?.area ? ` — ${cust.area}` : ""}</span>
                         <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0} onClick={() => moveCustomerInList(idx, "up")}>
                           <ArrowUp className="h-3 w-3" />
                         </Button>
@@ -481,8 +481,8 @@ export default function AdminSchedules() {
                       checked={templateCustomers.includes(c.id)}
                       onCheckedChange={() => toggleCustomer(templateCustomers, setTemplateCustomers, c.id)}
                     />
-                    <span className="text-xs">{c.customer_name}</span>
-                    {c.area && <span className="text-[11px] text-muted-foreground">({c.area})</span>}
+                    <span className="text-xs">{c.account_number ? `(${c.account_number}) ` : ""}{c.customer_name}</span>
+                    {c.area && <span className="text-[11px] text-muted-foreground">— {c.area}</span>}
                   </label>
                 ))}
                 {filteredDialogCustomers.length === 0 && (

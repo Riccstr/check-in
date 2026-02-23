@@ -76,6 +76,7 @@ export type Database = {
       }
       customers: {
         Row: {
+          account_number: string | null
           area: string | null
           created_at: string
           customer_name: string
@@ -84,6 +85,7 @@ export type Database = {
           price_category: string | null
         }
         Insert: {
+          account_number?: string | null
           area?: string | null
           created_at?: string
           customer_name: string
@@ -92,6 +94,7 @@ export type Database = {
           price_category?: string | null
         }
         Update: {
+          account_number?: string | null
           area?: string | null
           created_at?: string
           customer_name?: string
