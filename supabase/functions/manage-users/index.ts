@@ -57,20 +57,19 @@ Deno.serve(async (req) => {
       });
     }
 
-    const token = authHeader.replace("Bearer ", "");
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const callerClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
-    const { data: claimsData, error: claimsError } = await callerClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims?.sub) {
-      console.error("Auth error:", claimsError?.message || "No claims");
+    const { data: { user: caller }, error: userError } = await callerClient.auth.getUser();
+    if (userError || !caller) {
+      console.error("Auth error:", userError?.message || "No user");
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const callerId = claimsData.claims.sub as string;
+    const callerId = caller.id;
 
     const { data: roleData } = await supabaseAdmin
       .from("user_roles")
