@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { CalendarDays, Clock, Check, SkipForward, Plus, Loader2 } from "lucide-react";
+import { CalendarDays, Clock, Check, SkipForward, Plus, Loader2, CircleDot } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
@@ -243,19 +243,34 @@ function ScheduleItemRow({
 
   const markVisited = () => updateItem({ status: "visited", notes: localNotes });
 
-  return (
+    const isInProgress = item.status === "pending" && item.arrival_time && !item.leaving_time;
+
+    return (
     <div
       className={`border rounded-lg p-3 space-y-2 ${
-        item.status === "visited" ? "border-primary/30 bg-primary/5" :
-        item.status === "skipped" ? "border-muted bg-muted/30 opacity-60" :
+        item.status === "visited" ? "border-green-500/30 bg-green-500/10" :
+        item.status === "skipped" ? "border-red-500/30 bg-red-500/10" :
+        isInProgress ? "border-orange-500/30 bg-orange-500/10" :
         "border-border"
       }`}
     >
       <div className="flex items-center justify-between">
         <span className="font-medium">{item.customers?.customer_name}</span>
-        <Badge variant={item.status === "visited" ? "default" : item.status === "skipped" ? "secondary" : "outline"}>
-          {item.status}
-        </Badge>
+        {item.status === "visited" ? (
+          <Badge variant="default" className="bg-green-600 text-white gap-1">
+            <Check className="h-3 w-3" /> Visited
+          </Badge>
+        ) : item.status === "skipped" ? (
+          <Badge variant="secondary" className="bg-red-500/20 text-red-700 border-red-500/30 gap-1">
+            <SkipForward className="h-3 w-3" /> Skipped
+          </Badge>
+        ) : isInProgress ? (
+          <Badge variant="outline" className="bg-orange-500/20 text-orange-700 border-orange-500/30 gap-1">
+            <CircleDot className="h-3 w-3" /> In Progress
+          </Badge>
+        ) : (
+          <Badge variant="outline">Pending</Badge>
+        )}
       </div>
 
       {item.status !== "skipped" && (
