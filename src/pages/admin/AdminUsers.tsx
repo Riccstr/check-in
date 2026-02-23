@@ -75,8 +75,8 @@ export default function AdminUsers() {
       toast.error("Email and password are required");
       return;
     }
-    if (createPassword.length < 8) {
-      toast.error("Password must be at least 8 characters");
+    if (createPassword.length < 6) {
+      toast.error("Password must be at least 6 characters");
       return;
     }
     setSaving(true);
@@ -138,8 +138,8 @@ export default function AdminUsers() {
       toast.error("Password required");
       return;
     }
-    if (newPassword.length < 8) {
-      toast.error("Password must be at least 8 characters");
+    if (newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters");
       return;
     }
     setSaving(true);
@@ -268,7 +268,7 @@ export default function AdminUsers() {
             </div>
             <div>
               <Label>Password *</Label>
-              <Input type="password" value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} placeholder="Min 8 characters" />
+              <Input type="password" value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} placeholder="Min 6 characters" />
             </div>
             <div>
               <Label>Role</Label>
@@ -325,7 +325,7 @@ export default function AdminUsers() {
           <div className="space-y-3">
             <div>
               <Label>New Password</Label>
-              <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min 8 characters" />
+              <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min 6 characters" />
             </div>
           </div>
           <DialogFooter>
