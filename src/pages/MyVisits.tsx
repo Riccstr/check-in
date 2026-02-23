@@ -22,6 +22,7 @@ interface Visit {
   leaving_time: string;
   duration_minutes: number;
   notes: string | null;
+  status: string;
   customer_id: string;
   customers: { customer_name: string } | null;
   _offline?: boolean;
@@ -84,6 +85,7 @@ export default function MyVisits() {
         leaving_time: ov.payload.leaving_time,
         duration_minutes: ov.payload.duration_minutes,
         notes: ov.payload.notes,
+        status: (ov.payload as any).status || "visited",
         customer_id: ov.payload.customer_id,
         customers: { customer_name: ov.customer_name || "Unknown" },
         _offline: true,
@@ -217,12 +219,17 @@ export default function MyVisits() {
                 </TableHeader>
                 <TableBody>
                   {visits.map((v) => (
-                    <TableRow key={v.id} className={v._offline ? "opacity-80" : ""}>
+                    <TableRow key={v.id} className={`${v._offline ? "opacity-80" : ""} ${v.status === "skipped" ? "bg-destructive/10" : ""}`}>
                       <TableCell>{v.visit_date}</TableCell>
-                      <TableCell>{v.customers?.customer_name}</TableCell>
-                      <TableCell>{v.arrival_time?.slice(0,5)}</TableCell>
-                      <TableCell>{v.leaving_time?.slice(0,5)}</TableCell>
-                      <TableCell>{v.duration_minutes} min</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {v.customers?.customer_name}
+                          {v.status === "skipped" && <Badge variant="destructive" className="text-xs">Skipped</Badge>}
+                        </div>
+                      </TableCell>
+                      <TableCell>{v.status === "skipped" ? "—" : v.arrival_time?.slice(0,5)}</TableCell>
+                      <TableCell>{v.status === "skipped" ? "—" : v.leaving_time?.slice(0,5)}</TableCell>
+                      <TableCell>{v.status === "skipped" ? "—" : `${v.duration_minutes} min`}</TableCell>
                       <TableCell className="max-w-[200px] truncate">{v.notes || "—"}</TableCell>
                       <TableCell>
                         {v._offline ? (

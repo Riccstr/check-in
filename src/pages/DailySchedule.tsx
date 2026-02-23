@@ -184,8 +184,8 @@ function ScheduleItemRow({
     }
   };
 
-  const markArrived = () => updateItem({ arrival_time: nowTime(), status: "visited" });
-  const markLeft = () => updateItem({ leaving_time: nowTime() });
+  const markArrived = () => updateItem({ arrival_time: nowTime() });
+  const markLeft = () => updateItem({ leaving_time: nowTime(), status: "visited" });
 
   const skipItem = async () => {
     if (!localNotes.trim()) {
@@ -573,17 +573,17 @@ export default function DailySchedule() {
             <Tabs defaultValue="schedule" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="schedule">
-                  Schedule {items.filter(i => i.status === "pending").length > 0 && `(${items.filter(i => i.status === "pending").length})`}
+                  Schedule {items.filter(i => i.status === "pending" || (i.status !== "visited" && i.status !== "skipped")).length > 0 && `(${items.filter(i => i.status === "pending" || (i.status !== "visited" && i.status !== "skipped")).length})`}
                 </TabsTrigger>
                 <TabsTrigger value="completed">
                   Completed {items.filter(i => i.status === "visited" || i.status === "skipped").length > 0 && `(${items.filter(i => i.status === "visited" || i.status === "skipped").length})`}
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="schedule" className="space-y-3 mt-3">
-                {items.filter(i => i.status === "pending").length === 0 ? (
+                {items.filter(i => i.status !== "visited" && i.status !== "skipped").length === 0 ? (
                   <p className="text-center text-muted-foreground py-4">All visits completed for today!</p>
                 ) : (
-                  items.filter(i => i.status === "pending").map((item) => (
+                  items.filter(i => i.status !== "visited" && i.status !== "skipped").map((item) => (
                     <ScheduleItemRow
                       key={item.id}
                       item={item}
