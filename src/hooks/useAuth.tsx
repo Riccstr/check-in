@@ -9,6 +9,7 @@ interface AuthContextType {
   session: Session | null;
   role: AppRole | null;
   repId: string | null;
+  repName: string | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
@@ -22,12 +23,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
   const [repId, setRepId] = useState<string | null>(null);
+  const [repName, setRepName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchRoleAndRep = async (userId: string) => {
     const [rolesRes, repRes] = await Promise.all([
       supabase.from("user_roles").select("role").eq("user_id", userId),
-      supabase.from("reps").select("id").eq("user_id", userId).maybeSingle(),
+      supabase.from("reps").select("id, rep_name").eq("user_id", userId).maybeSingle(),
     ]);
     if (rolesRes.data && rolesRes.data.length > 0) {
       setRole(rolesRes.data[0].role);
@@ -35,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRole(null);
     }
     setRepId(repRes.data?.id ?? null);
+    setRepName(repRes.data?.rep_name ?? null);
   };
 
   useEffect(() => {
@@ -83,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, role, repId, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, session, role, repId, repName, loading, signIn, signUp, signOut }}>
       {children}
     </AuthContext.Provider>
   );
