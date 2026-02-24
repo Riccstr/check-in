@@ -67,10 +67,18 @@ function ScheduleItemRow({
   onLocalUpdate: (itemId: string, updates: any) => void;
 }) {
   const [localNotes, setLocalNotes] = useState(item.notes || "");
+  const [localArrival, setLocalArrival] = useState(item.arrival_time || "");
+  const [localLeaving, setLocalLeaving] = useState(item.leaving_time || "");
   const [actionInProgress, setActionInProgress] = useState(false);
   useEffect(() => {
     setLocalNotes(item.notes || "");
   }, [item.notes]);
+  useEffect(() => {
+    setLocalArrival(item.arrival_time || "");
+  }, [item.arrival_time]);
+  useEffect(() => {
+    setLocalLeaving(item.leaving_time || "");
+  }, [item.leaving_time]);
 
   const nowTime = () => {
     const now = new Date();
@@ -187,8 +195,28 @@ function ScheduleItemRow({
     }
   };
 
-  const markArrived = () => updateItem({ arrival_time: nowTime() });
-  const markLeft = () => updateItem({ leaving_time: nowTime(), status: "visited" });
+  const commitArrival = () => {
+    if (localArrival !== (item.arrival_time || "")) {
+      updateItem({ arrival_time: localArrival });
+    }
+  };
+
+  const commitLeaving = () => {
+    if (localLeaving !== (item.leaving_time || "")) {
+      updateItem({ leaving_time: localLeaving });
+    }
+  };
+
+  const markArrived = () => {
+    const t = nowTime();
+    setLocalArrival(t);
+    updateItem({ arrival_time: t });
+  };
+  const markLeft = () => {
+    const t = nowTime();
+    setLocalLeaving(t);
+    updateItem({ leaving_time: t, status: "visited" });
+  };
 
   const skipItem = async () => {
     if (actionInProgress) return;
@@ -248,7 +276,7 @@ function ScheduleItemRow({
     }
   };
 
-  const markVisited = () => updateItem({ status: "visited", notes: localNotes });
+  const markVisited = () => updateItem({ status: "visited", arrival_time: localArrival, leaving_time: localLeaving, notes: localNotes });
 
     const isInProgress = item.status === "pending" && item.arrival_time && !item.leaving_time;
 
@@ -290,11 +318,12 @@ function ScheduleItemRow({
             <div className="flex gap-1">
               <Input
                 type="time"
-                value={item.arrival_time || ""}
-                onChange={(e) => updateItem({ arrival_time: e.target.value })}
+                value={localArrival}
+                onChange={(e) => setLocalArrival(e.target.value)}
+                onBlur={commitArrival}
                 className="h-8 text-sm"
               />
-              {!item.arrival_time && (
+              {!localArrival && (
                 <Button size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={markArrived}>
                   <Clock className="h-3 w-3 mr-1" /> Now
                 </Button>
@@ -306,11 +335,12 @@ function ScheduleItemRow({
             <div className="flex gap-1">
               <Input
                 type="time"
-                value={item.leaving_time || ""}
-                onChange={(e) => updateItem({ leaving_time: e.target.value })}
+                value={localLeaving}
+                onChange={(e) => setLocalLeaving(e.target.value)}
+                onBlur={commitLeaving}
                 className="h-8 text-sm"
               />
-              {item.arrival_time && !item.leaving_time && (
+              {localArrival && !localLeaving && (
                 <Button size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={markLeft}>
                   <Clock className="h-3 w-3 mr-1" /> Now
                 </Button>
@@ -340,7 +370,7 @@ function ScheduleItemRow({
           <Button size="sm" variant="outline" onClick={skipItem}>
             <SkipForward className="h-3 w-3 mr-1" /> Skip
           </Button>
-          {item.arrival_time && item.leaving_time && calcDuration(item.arrival_time, item.leaving_time) > 0 && (
+          {localArrival && localLeaving && calcDuration(localArrival, localLeaving) > 0 && (
             <Button size="sm" onClick={markVisited}>
               <Check className="h-3 w-3 mr-1" /> Mark Visited
             </Button>
