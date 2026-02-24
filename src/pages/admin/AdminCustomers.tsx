@@ -28,6 +28,8 @@ export default function AdminCustomers() {
   const [accountNumber, setAccountNumber] = useState("");
   const [selectedRepId, setSelectedRepId] = useState<string>("none");
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [accountNumberError, setAccountNumberError] = useState<string>("");
+  const [checkingAccount, setCheckingAccount] = useState(false);
   
   const [sortKey, setSortKey] = useState<SortKey>("customer_name");
   const [sortAsc, setSortAsc] = useState(true);
@@ -78,9 +80,29 @@ export default function AdminCustomers() {
     return Array.from(set).sort();
   }, [customerRepMap]);
 
-  const openNew = () => { setEditId(null); setName(""); setArea(""); setAccountNumber(""); setSelectedRepId("none"); setDialogOpen(true); };
+  // Real-time account number uniqueness check
+  useEffect(() => {
+    const trimmed = accountNumber.trim();
+    if (!trimmed) { setAccountNumberError(""); return; }
+    setCheckingAccount(true);
+    const timeout = setTimeout(async () => {
+      let query = supabase.from("customers").select("id").eq("account_number", trimmed);
+      if (editId) query = query.neq("id", editId);
+      const { data } = await query.limit(1);
+      if (data && data.length > 0) {
+        setAccountNumberError("This account number is already in use");
+      } else {
+        setAccountNumberError("");
+      }
+      setCheckingAccount(false);
+    }, 300);
+    return () => { clearTimeout(timeout); setCheckingAccount(false); };
+  }, [accountNumber, editId]);
+
+  const openNew = () => { setEditId(null); setName(""); setArea(""); setAccountNumber(""); setSelectedRepId("none"); setAccountNumberError(""); setDialogOpen(true); };
   const openEdit = (c: any) => {
     setEditId(c.id); setName(c.customer_name); setArea(c.area || ""); setAccountNumber(c.account_number || "");
+    setAccountNumberError("");
     const assignedRep = assignments.find((a) => a.customer_id === c.id);
     setSelectedRepId(assignedRep?.rep_id || "none");
     setDialogOpen(true);
@@ -88,6 +110,8 @@ export default function AdminCustomers() {
 
   const save = async () => {
     if (!name.trim()) { toast.error("Name required"); return; }
+    if (accountNumberError) { toast.error("Account number is already in use — it must be unique"); return; }
+    if (checkingAccount) { toast.error("Still checking account number, please wait"); return; }
     const payload: any = { customer_name: name.trim(), area: area.trim() || null, account_number: accountNumber.trim() || null };
     let customerId = editId;
     if (editId) {
@@ -276,7 +300,11 @@ export default function AdminCustomers() {
           <DialogHeader><DialogTitle>{editId ? "Edit" : "Add"} Customer</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>Name *</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
-            <div><Label>Account Number</Label><Input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder="e.g. ACC-001" /></div>
+            <div>
+              <Label>Account Number</Label>
+              <Input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder="e.g. ACC-001" className={accountNumberError ? "border-destructive" : ""} />
+              {accountNumberError && <p className="text-destructive text-xs mt-1">{accountNumberError}</p>}
+            </div>
             <div><Label>Area</Label><Input value={area} onChange={(e) => setArea(e.target.value)} placeholder="e.g. Johannesburg North" /></div>
             <div>
               <Label>Assign to Rep</Label>
