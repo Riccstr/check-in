@@ -160,10 +160,13 @@ Deno.serve(async (req) => {
 
       const { data: allRoles } = await supabaseAdmin.from("user_roles").select("*");
       const { data: allReps } = await supabaseAdmin.from("reps").select("id, rep_name, surname, user_id");
+      const { data: allProfiles } = await supabaseAdmin.from("profiles").select("id, login_updated_at, login_updated_by");
 
       const enrichedUsers = users.map((u) => {
         const userRole = allRoles?.find((r) => r.user_id === u.id);
         const linkedRep = allReps?.find((r) => r.user_id === u.id);
+        const profile = allProfiles?.find((p) => p.id === u.id);
+        const updatedByUser = profile?.login_updated_by ? users.find((x) => x.id === profile.login_updated_by) : null;
         return {
           id: u.id,
           email: u.email,
@@ -175,6 +178,8 @@ Deno.serve(async (req) => {
           created_at: u.created_at,
           last_sign_in_at: u.last_sign_in_at,
           email_confirmed_at: u.email_confirmed_at,
+          login_updated_at: profile?.login_updated_at || null,
+          login_updated_by_name: updatedByUser?.user_metadata?.full_name || updatedByUser?.email || null,
         };
       });
 
@@ -213,6 +218,41 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action === "update_email") {
+      const { user_id, email } = body;
+      if (!user_id || typeof user_id !== "string") {
+        return new Response(JSON.stringify({ error: "Valid user_id required" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const emailErr = validateEmail(email);
+      if (emailErr) {
+        return new Response(JSON.stringify({ error: emailErr }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { error } = await supabaseAdmin.auth.admin.updateUserById(user_id, {
+        email: email.trim(),
+        email_confirm: true,
+      });
+      if (error) {
+        console.error("Update email error:", error.message);
+        return new Response(JSON.stringify({ error: sanitizeError(error) }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      await supabaseAdmin.from("profiles").update({
+        login_updated_at: new Date().toISOString(),
+        login_updated_by: callerId,
+      }).eq("id", user_id);
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (action === "reset_password") {
       const { user_id, password } = body;
       if (!user_id || typeof user_id !== "string") {
@@ -231,10 +271,14 @@ Deno.serve(async (req) => {
       if (error) {
         console.error("Reset password error:", error.message);
         return new Response(JSON.stringify({ error: "Failed to reset password" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+
+      await supabaseAdmin.from("profiles").update({
+        login_updated_at: new Date().toISOString(),
+        login_updated_by: callerId,
+      }).eq("id", user_id);
 
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
