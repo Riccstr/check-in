@@ -9,8 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Users, Shield, KeyRound, Trash2, UserPlus } from "lucide-react";
+import { Users, Shield, KeyRound, Trash2, UserPlus, Mail, Info } from "lucide-react";
 import { format } from "date-fns";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface UserAccount {
   id: string;
@@ -23,6 +24,8 @@ interface UserAccount {
   created_at: string;
   last_sign_in_at: string | null;
   email_confirmed_at: string | null;
+  login_updated_at: string | null;
+  login_updated_by_name: string | null;
 }
 
 export default function AdminUsers() {
@@ -33,10 +36,12 @@ export default function AdminUsers() {
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
   const [selectedUser, setSelectedUser] = useState<UserAccount | null>(null);
   const [selectedRole, setSelectedRole] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [newEmail, setNewEmail] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Create user form state
@@ -112,6 +117,12 @@ export default function AdminUsers() {
     setPasswordDialogOpen(true);
   };
 
+  const openEmailDialog = (u: UserAccount) => {
+    setSelectedUser(u);
+    setNewEmail(u.email);
+    setEmailDialogOpen(true);
+  };
+
   const openDeleteDialog = (u: UserAccount) => {
     setSelectedUser(u);
     setDeleteDialogOpen(true);
@@ -153,6 +164,30 @@ export default function AdminUsers() {
     }
     setSaving(false);
     setPasswordDialogOpen(false);
+    fetchUsers();
+  };
+
+  const updateEmail = async () => {
+    if (!selectedUser || !newEmail.trim()) {
+      toast.error("Email required");
+      return;
+    }
+    if (newEmail.trim() === selectedUser.email) {
+      setEmailDialogOpen(false);
+      return;
+    }
+    setSaving(true);
+    const res = await supabase.functions.invoke("manage-users", {
+      body: { action: "update_email", user_id: selectedUser.id, email: newEmail.trim() },
+    });
+    if (res.error || res.data?.error) {
+      toast.error(res.data?.error || res.error?.message || "Failed");
+    } else {
+      toast.success("Email updated");
+    }
+    setSaving(false);
+    setEmailDialogOpen(false);
+    fetchUsers();
   };
 
   const deleteUser = async () => {
@@ -208,7 +243,16 @@ export default function AdminUsers() {
             <TableBody>
               {users.map((u) => (
                 <TableRow key={u.id}>
-                  <TableCell className="font-medium">{u.email}</TableCell>
+                  <TableCell>
+                    <div className="font-medium">{u.email}</div>
+                    {u.login_updated_at && (
+                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                        <Info className="h-3 w-3" />
+                        Login changed {format(new Date(u.login_updated_at), "dd MMM yyyy HH:mm")}
+                        {u.login_updated_by_name && <> by {u.login_updated_by_name}</>}
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell>{u.full_name || "—"}</TableCell>
                   <TableCell>
                     <Badge variant={roleBadgeVariant(u.role)}>
@@ -227,15 +271,38 @@ export default function AdminUsers() {
                       : "Never"}
                   </TableCell>
                   <TableCell className="text-right space-x-1">
-                    <Button variant="ghost" size="icon" onClick={() => openRoleDialog(u)} title="Change role">
-                      <Shield className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => openPasswordDialog(u)} title="Reset password">
-                      <KeyRound className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(u)} title="Delete user">
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" onClick={() => openEmailDialog(u)}>
+                          <Mail className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Change email</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" onClick={() => openRoleDialog(u)}>
+                          <Shield className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Change role</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" onClick={() => openPasswordDialog(u)}>
+                          <KeyRound className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Reset password</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(u)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Delete user</TooltipContent>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))}
@@ -290,6 +357,26 @@ export default function AdminUsers() {
         </DialogContent>
       </Dialog>
 
+      {/* Email Dialog */}
+      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change Email</DialogTitle>
+            <DialogDescription>Update the login email for {selectedUser?.full_name || selectedUser?.email}. No confirmation email will be sent.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>New Email</Label>
+              <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="new@example.com" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailDialogOpen(false)}>Cancel</Button>
+            <Button onClick={updateEmail} disabled={saving}>{saving ? "Saving..." : "Update Email"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Role Dialog */}
       <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
         <DialogContent>
@@ -320,7 +407,7 @@ export default function AdminUsers() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Reset Password</DialogTitle>
-            <DialogDescription>Set a new password for {selectedUser?.email}</DialogDescription>
+            <DialogDescription>Set a new password for {selectedUser?.email}. No confirmation email will be sent.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div>
