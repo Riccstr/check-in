@@ -67,7 +67,7 @@ function ScheduleItemRow({
   onLocalUpdate: (itemId: string, updates: any) => void;
 }) {
   const [localNotes, setLocalNotes] = useState(item.notes || "");
-
+  const [actionInProgress, setActionInProgress] = useState(false);
   useEffect(() => {
     setLocalNotes(item.notes || "");
   }, [item.notes]);
@@ -85,6 +85,9 @@ function ScheduleItemRow({
   };
 
   const updateItem = async (updates: Partial<{ arrival_time: string; leaving_time: string; notes: string; status: string; duration_minutes: number }>) => {
+    if (actionInProgress) return;
+    setActionInProgress(true);
+
     const newItem = { ...item, ...updates };
     if (newItem.arrival_time && newItem.leaving_time) {
       newItem.duration_minutes = calcDuration(newItem.arrival_time, newItem.leaving_time);
@@ -113,7 +116,6 @@ function ScheduleItemRow({
 
       if (error) {
         if (isOfflineError(error)) {
-          // Offline: save visit to IndexedDB if we have complete visit data
           await handleOfflineVisitSave(newItem);
           return;
         }
@@ -149,14 +151,15 @@ function ScheduleItemRow({
       onRefresh();
     } catch (err: any) {
       console.warn("[Schedule] Network error on update:", err?.message);
-      // Offline: save visit to IndexedDB if we have complete visit data
       await handleOfflineVisitSave(newItem);
+    } finally {
+      setActionInProgress(false);
     }
   };
 
   const handleOfflineVisitSave = async (newItem: any) => {
     // Only save a visit record if we have both times (complete visit)
-    if (newItem.arrival_time && newItem.leaving_time && newItem.duration_minutes > 0) {
+    if (newItem.arrival_time && newItem.leaving_time && newItem.duration_minutes >= 0) {
       try {
         await saveVisitOffline(
           repId,
@@ -188,10 +191,12 @@ function ScheduleItemRow({
   const markLeft = () => updateItem({ leaving_time: nowTime(), status: "visited" });
 
   const skipItem = async () => {
+    if (actionInProgress) return;
     if (!localNotes.trim()) {
       toast.error("Please provide a reason in the notes before skipping");
       return;
     }
+    setActionInProgress(true);
 
     // Optimistic local update
     onLocalUpdate(item.id, { status: "skipped", notes: localNotes });
@@ -238,6 +243,8 @@ function ScheduleItemRow({
         console.error("[Schedule] IndexedDB save failed:", idbErr);
         toast.error("Failed to save. Please try again.");
       }
+    } finally {
+      setActionInProgress(false);
     }
   };
 
@@ -413,6 +420,7 @@ export default function DailySchedule() {
     }
   }, [repId, scheduleDate]);
 
+  // Realtime: listen for schedule_items changes AND daily_schedules changes for this rep
   useEffect(() => {
     if (!schedule?.id) return;
     const channel = supabase
@@ -421,6 +429,16 @@ export default function DailySchedule() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [schedule?.id]);
+
+  // Realtime: listen for new daily_schedules created for this rep (admin creating/updating)
+  useEffect(() => {
+    if (!repId) return;
+    const channel = supabase
+      .channel(`daily-schedules-${repId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "daily_schedules", filter: `rep_id=eq.${repId}` }, () => { fetchSchedule(); })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [repId, scheduleDate]);
 
   const fetchSchedule = async () => {
     if (!repId) return;
