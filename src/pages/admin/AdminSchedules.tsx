@@ -212,10 +212,43 @@ export default function AdminSchedules() {
     }));
     const { error: itemErr } = await supabase.from("schedule_template_items").insert(items);
     if (itemErr) toast.error(itemErr.message);
-    else toast.success(`${WEEKDAYS.find(d => d.value === day)?.label} template saved`);
+    else {
+      toast.success(`${WEEKDAYS.find(d => d.value === day)?.label} template saved`);
+      // Auto-regenerate: delete future daily schedules for this rep/day that have no started items
+      await regenerateAffectedSchedules(selectedRep, day, selectedWeeklyTemplate);
+    }
 
     setTemplateDialogOpen(false);
     fetchTemplates();
+    if (selectedRep) fetchDailySchedules();
+  };
+
+  const regenerateAffectedSchedules = async (repId: string, dayOfWeek: number, weeklyTemplateId: string) => {
+    const today = new Date().toISOString().split("T")[0];
+    // Find daily schedules for this rep from today onwards
+    const { data: schedules } = await supabase
+      .from("daily_schedules")
+      .select("id, schedule_date, schedule_items(id, status)")
+      .eq("rep_id", repId)
+      .gte("schedule_date", today);
+
+    if (!schedules) return;
+
+    for (const ds of schedules) {
+      // Check if this schedule's date matches the day of week
+      const schedDow = new Date(ds.schedule_date + "T12:00:00").getDay();
+      // Convert JS getDay (0=Sun) to ISO (1=Mon..7=Sun)
+      const isoDow = schedDow === 0 ? 7 : schedDow;
+      if (isoDow !== dayOfWeek) continue;
+
+      // Only delete if no items have been visited or skipped (not started)
+      const items = ds.schedule_items || [];
+      const hasStarted = items.some((i: any) => i.status === "visited" || i.status === "skipped" || i.arrival_time);
+      if (hasStarted) continue;
+
+      // Delete the schedule (cascade deletes items) — rep's realtime will auto-regenerate
+      await supabase.from("daily_schedules").delete().eq("id", ds.id);
+    }
   };
 
   const editTemplate = (t: any) => {
