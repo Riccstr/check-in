@@ -31,6 +31,25 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
           continue;
         }
 
+        // Duplicate check: same rep + customer + date within 2 minutes
+        const payload = visit.payload as any;
+        const { data: recentDupe } = await supabase
+          .from("visits")
+          .select("id")
+          .eq("rep_id", payload.rep_id)
+          .eq("customer_id", payload.customer_id)
+          .eq("visit_date", payload.visit_date)
+          .eq("arrival_time", payload.arrival_time)
+          .eq("leaving_time", payload.leaving_time)
+          .maybeSingle();
+
+        if (recentDupe) {
+          // Already exists (duplicate), mark as synced
+          await updateVisitSyncStatus(visit.client_generated_id, "synced");
+          synced++;
+          continue;
+        }
+
         const { error } = await supabase.from("visits").insert(visit.payload);
 
         if (error) {

@@ -201,7 +201,7 @@ export default function LogVisit() {
             </div>
 
             <Button type="submit" className="w-full" disabled={submitting || !customerId || !arrivalTime || !leavingTime || duration <= 0}>
-              {submitting ? "Saving..." : isOnline ? "Log Visit" : "Save Offline"}
+              {submitting ? "Saving…" : isOnline ? "Log Visit" : "Save Offline"}
             </Button>
           </form>
         </CardContent>
