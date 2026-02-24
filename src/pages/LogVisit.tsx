@@ -29,26 +29,39 @@ export default function LogVisit() {
 
     const loadCustomers = async () => {
       if (isOnline) {
-        const { data } = await supabase
-          .from("customer_assignments")
-          .select("customer_id, customers(id, customer_name, is_active)")
-          .eq("rep_id", repId);
-        if (data) {
-          const active = data
-            .filter((d: any) => d.customers?.is_active)
-            .map((d: any) => ({ id: d.customers.id, customer_name: d.customers.customer_name }));
-          setCustomers(active);
-          // Cache for offline use
-          await setCachedCustomers(active);
+        try {
+          const { data } = await supabase
+            .from("customer_assignments")
+            .select("customer_id, customers(id, customer_name, account_number, area, is_active)")
+            .eq("rep_id", repId);
+          if (data) {
+            const active = data
+              .filter((d: any) => d.customers?.is_active)
+              .map((d: any) => ({ id: d.customers.id, customer_name: d.customers.customer_name }));
+            setCustomers(active);
+            // Cache for offline use (with full details)
+            await setCachedCustomers(data
+              .filter((d: any) => d.customers?.is_active)
+              .map((d: any) => ({
+                id: d.customers.id,
+                customer_name: d.customers.customer_name,
+                account_number: d.customers.account_number || null,
+                area: d.customers.area || null,
+              })));
+          }
+        } catch {
+          // Network error, fall through to cache
+          await loadFromCache();
         }
       } else {
-        // Load from cache
-        const cached = await getCachedCustomers();
-        if (cached.length > 0) {
-          setCustomers(cached);
-        } else {
-          toast.info("Connect to the internet once to load your customers.");
-        }
+        await loadFromCache();
+      }
+    };
+
+    const loadFromCache = async () => {
+      const cached = await getCachedCustomers();
+      if (cached.length > 0) {
+        setCustomers(cached.map((c) => ({ id: c.id, customer_name: c.customer_name })));
       }
     };
 
