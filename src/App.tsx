@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
 import Auth from "@/pages/Auth";
@@ -24,6 +24,8 @@ import NotFound from "@/pages/NotFound";
 import { toast } from "sonner";
 
 const queryClient = new QueryClient();
+
+const ROUTE_STORAGE_KEY = "checkin-tracker-last-route";
 
 function GlobalErrorBoundary({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -47,6 +49,35 @@ function GlobalErrorBoundary({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Persists the current route to sessionStorage so the app resumes on the same screen after minimize/restore */
+function RoutePersistence() {
+  const location = useLocation();
+
+  useEffect(() => {
+    // Don't persist the auth page
+    if (location.pathname !== "/auth") {
+      sessionStorage.setItem(ROUTE_STORAGE_KEY, location.pathname);
+    }
+  }, [location.pathname]);
+
+  return null;
+}
+
+/** On initial load, restore to the last visited route if we're on "/" and have a saved route */
+function RouteRestorer() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const savedRoute = sessionStorage.getItem(ROUTE_STORAGE_KEY);
+    if (savedRoute && savedRoute !== "/" && location.pathname === "/") {
+      navigate(savedRoute, { replace: true });
+    }
+  }, []); // Only run once on mount
+
+  return null;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -54,6 +85,8 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <RoutePersistence />
+          <RouteRestorer />
           <AuthProvider>
             <Routes>
               <Route path="/auth" element={<Auth />} />

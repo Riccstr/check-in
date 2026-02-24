@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from "idb";
 
 const DB_NAME = "checkin-tracker-offline";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export interface OfflineVisit {
   client_generated_id: string;
@@ -19,13 +19,23 @@ export interface OfflineVisit {
   sync_status: "pending" | "synced" | "error";
   last_sync_attempt: string | null;
   error_message: string | null;
-  // For UI display
   customer_name?: string;
 }
 
 export interface CachedCustomer {
   id: string;
   customer_name: string;
+  account_number?: string | null;
+  area?: string | null;
+}
+
+export interface CachedSchedule {
+  key: string; // repId + "_" + date
+  rep_id: string;
+  schedule_date: string;
+  schedule_id: string | null;
+  data: any; // full schedule + items
+  cached_at: string;
 }
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
@@ -33,12 +43,15 @@ let dbPromise: Promise<IDBPDatabase> | null = null;
 function getDb() {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db) {
+      upgrade(db, oldVersion) {
         if (!db.objectStoreNames.contains("offline_visits_queue")) {
           db.createObjectStore("offline_visits_queue", { keyPath: "client_generated_id" });
         }
         if (!db.objectStoreNames.contains("cached_customers")) {
           db.createObjectStore("cached_customers", { keyPath: "id" });
+        }
+        if (!db.objectStoreNames.contains("cached_schedules")) {
+          db.createObjectStore("cached_schedules", { keyPath: "key" });
         }
       },
     });
@@ -83,6 +96,18 @@ export async function removeOfflineVisit(clientId: string): Promise<void> {
   await db.delete("offline_visits_queue", clientId);
 }
 
+export async function removeSyncedVisits(): Promise<number> {
+  const all = await getAllOfflineVisits();
+  const synced = all.filter((v) => v.sync_status === "synced");
+  const db = await getDb();
+  const tx = db.transaction("offline_visits_queue", "readwrite");
+  for (const v of synced) {
+    await tx.store.delete(v.client_generated_id);
+  }
+  await tx.done;
+  return synced.length;
+}
+
 // === Cached Customers ===
 
 export async function setCachedCustomers(customers: CachedCustomer[]): Promise<void> {
@@ -98,4 +123,24 @@ export async function setCachedCustomers(customers: CachedCustomer[]): Promise<v
 export async function getCachedCustomers(): Promise<CachedCustomer[]> {
   const db = await getDb();
   return db.getAll("cached_customers");
+}
+
+// === Cached Schedules ===
+
+export async function setCachedSchedule(repId: string, date: string, data: any): Promise<void> {
+  const db = await getDb();
+  await db.put("cached_schedules", {
+    key: `${repId}_${date}`,
+    rep_id: repId,
+    schedule_date: date,
+    schedule_id: data?.id || null,
+    data,
+    cached_at: new Date().toISOString(),
+  });
+}
+
+export async function getCachedSchedule(repId: string, date: string): Promise<any | null> {
+  const db = await getDb();
+  const cached = await db.get("cached_schedules", `${repId}_${date}`);
+  return cached?.data || null;
 }

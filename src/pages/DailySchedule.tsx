@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { v4 as uuidv4 } from "uuid";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { addOfflineVisit } from "@/lib/offlineDb";
+import { addOfflineVisit, getCachedCustomers, setCachedCustomers, setCachedSchedule, getCachedSchedule } from "@/lib/offlineDb";
 
 function isOfflineError(err: any): boolean {
   const msg = String(err?.message || err || "").toLowerCase();
@@ -484,6 +484,8 @@ export default function DailySchedule() {
       if (data) {
         setSchedule(data);
         setItems((data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
+        // Cache for offline use
+        await setCachedSchedule(repId, scheduleDate, data);
         setLoading(false);
       } else {
         setGenerating(true);
@@ -497,6 +499,7 @@ export default function DailySchedule() {
             .maybeSingle();
           setSchedule(newData);
           setItems((newData?.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
+          if (newData) await setCachedSchedule(repId, scheduleDate, newData);
         } else {
           setSchedule(null);
           setItems([]);
@@ -504,7 +507,21 @@ export default function DailySchedule() {
         setLoading(false);
       }
     } catch (err) {
-      console.warn("[Schedule] Offline, using cached schedule state");
+      console.warn("[Schedule] Offline, loading cached schedule");
+      // Load from cache
+      try {
+        const cached = await getCachedSchedule(repId, scheduleDate);
+        if (cached) {
+          setSchedule(cached);
+          setItems((cached.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
+        } else {
+          setSchedule(null);
+          setItems([]);
+        }
+      } catch {
+        setSchedule(null);
+        setItems([]);
+      }
       setLoading(false);
     }
   };
@@ -514,13 +531,29 @@ export default function DailySchedule() {
     try {
       const { data } = await supabase
         .from("customer_assignments")
-        .select("customer_id, customers(id, customer_name, is_active)")
+        .select("customer_id, customers(id, customer_name, account_number, area, is_active)")
         .eq("rep_id", repId);
       if (data) {
-        setAdHocCustomers(data.filter((d: any) => d.customers?.is_active).map((d: any) => d.customers));
+        const active = data.filter((d: any) => d.customers?.is_active).map((d: any) => d.customers);
+        setAdHocCustomers(active);
+        // Cache for offline use
+        await setCachedCustomers(active.map((c: any) => ({
+          id: c.id,
+          customer_name: c.customer_name,
+          account_number: c.account_number || null,
+          area: c.area || null,
+        })));
       }
     } catch {
-      // Offline - keep existing state
+      // Offline - load from cache
+      try {
+        const cached = await getCachedCustomers();
+        if (cached.length > 0) {
+          setAdHocCustomers(cached.map((c) => ({ id: c.id, customer_name: c.customer_name, is_active: true })));
+        }
+      } catch {
+        // Keep existing state
+      }
     }
   };
 

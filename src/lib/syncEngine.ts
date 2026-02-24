@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
-import { getPendingVisits, updateVisitSyncStatus } from "./offlineDb";
+import { getPendingVisits, updateVisitSyncStatus, removeSyncedVisits } from "./offlineDb";
+import { toast } from "sonner";
 
 let syncing = false;
 
@@ -12,6 +13,8 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
 
   try {
     const pending = await getPendingVisits();
+    if (pending.length === 0) return { synced: 0, errors: 0 };
+
     // Sort by created_at_local chronological order
     pending.sort((a, b) => a.created_at_local.localeCompare(b.created_at_local));
 
@@ -25,13 +28,12 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
           .maybeSingle();
 
         if (existing) {
-          // Already synced
           await updateVisitSyncStatus(visit.client_generated_id, "synced");
           synced++;
           continue;
         }
 
-        // Duplicate check: same rep + customer + date within 2 minutes
+        // Duplicate check: same rep + customer + date + times
         const payload = visit.payload as any;
         const { data: recentDupe } = await supabase
           .from("visits")
@@ -44,7 +46,6 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
           .maybeSingle();
 
         if (recentDupe) {
-          // Already exists (duplicate), mark as synced
           await updateVisitSyncStatus(visit.client_generated_id, "synced");
           synced++;
           continue;
@@ -68,6 +69,11 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
         errors++;
       }
     }
+
+    // Clean up synced visits from IDB
+    if (synced > 0) {
+      await removeSyncedVisits();
+    }
   } finally {
     syncing = false;
   }
@@ -75,17 +81,33 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
   return { synced, errors };
 }
 
-// Setup auto-sync on online event and app load
+// Setup auto-sync on online event, visibility change, and app load
 export function setupAutoSync(onSyncComplete?: () => void) {
   const doSync = async () => {
     if (!navigator.onLine) return;
     const result = await syncPendingVisits();
-    if (result.synced > 0 || result.errors > 0) {
+    if (result.synced > 0) {
+      toast.success(`${result.synced} offline visit(s) synced`);
+      onSyncComplete?.();
+    }
+    if (result.errors > 0) {
       onSyncComplete?.();
     }
   };
 
-  window.addEventListener("online", doSync);
+  const handleOnline = () => {
+    // Small delay to let connection stabilize
+    setTimeout(doSync, 1500);
+  };
+
+  const handleVisibility = () => {
+    if (document.visibilityState === "visible" && navigator.onLine) {
+      setTimeout(doSync, 1000);
+    }
+  };
+
+  window.addEventListener("online", handleOnline);
+  document.addEventListener("visibilitychange", handleVisibility);
 
   // Sync on load if online
   if (navigator.onLine) {
@@ -93,6 +115,7 @@ export function setupAutoSync(onSyncComplete?: () => void) {
   }
 
   return () => {
-    window.removeEventListener("online", doSync);
+    window.removeEventListener("online", handleOnline);
+    document.removeEventListener("visibilitychange", handleVisibility);
   };
 }
