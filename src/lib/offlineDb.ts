@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from "idb";
 
 const DB_NAME = "checkin-tracker-offline";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export interface OfflineVisit {
   client_generated_id: string;
@@ -52,6 +52,9 @@ function getDb() {
         }
         if (!db.objectStoreNames.contains("cached_schedules")) {
           db.createObjectStore("cached_schedules", { keyPath: "key" });
+        }
+        if (!db.objectStoreNames.contains("cached_user_auth")) {
+          db.createObjectStore("cached_user_auth", { keyPath: "user_id" });
         }
       },
     });
@@ -123,6 +126,31 @@ export async function setCachedCustomers(customers: CachedCustomer[]): Promise<v
 export async function getCachedCustomers(): Promise<CachedCustomer[]> {
   const db = await getDb();
   return db.getAll("cached_customers");
+}
+
+// === Cached User Auth ===
+
+export interface CachedUserAuth {
+  user_id: string;
+  role: "admin" | "rep" | null;
+  rep_id: string | null;
+  rep_name: string | null;
+  cached_at: string;
+}
+
+export async function setCachedUserAuth(auth: CachedUserAuth): Promise<void> {
+  const db = await getDb();
+  await db.put("cached_user_auth", auth);
+}
+
+export async function getCachedUserAuth(userId: string): Promise<CachedUserAuth | null> {
+  const db = await getDb();
+  return (await db.get("cached_user_auth", userId)) || null;
+}
+
+export async function clearCachedUserAuth(userId: string): Promise<void> {
+  const db = await getDb();
+  await db.delete("cached_user_auth", userId);
 }
 
 // === Cached Schedules ===

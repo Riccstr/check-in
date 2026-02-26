@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
+import { getCachedUserAuth, setCachedUserAuth } from "@/lib/offlineDb";
 
 type AppRole = "admin" | "rep";
 
@@ -25,19 +26,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [repId, setRepId] = useState<string | null>(null);
   const [repName, setRepName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const roleFetchedRef = useRef(false);
 
-  const fetchRoleAndRep = async (userId: string) => {
-    const [rolesRes, repRes] = await Promise.all([
-      supabase.from("user_roles").select("role").eq("user_id", userId),
-      supabase.from("reps").select("id, rep_name").eq("user_id", userId).maybeSingle(),
-    ]);
-    if (rolesRes.data && rolesRes.data.length > 0) {
-      setRole(rolesRes.data[0].role);
-    } else {
-      setRole(null);
+  const fetchRoleAndRep = async (userId: string): Promise<boolean> => {
+    try {
+      const [rolesRes, repRes] = await Promise.all([
+        supabase.from("user_roles").select("role").eq("user_id", userId),
+        supabase.from("reps").select("id, rep_name").eq("user_id", userId).maybeSingle(),
+      ]);
+
+      const fetchedRole = rolesRes.data && rolesRes.data.length > 0 ? rolesRes.data[0].role : null;
+      const fetchedRepId = repRes.data?.id ?? null;
+      const fetchedRepName = repRes.data?.rep_name ?? null;
+
+      setRole(fetchedRole);
+      setRepId(fetchedRepId);
+      setRepName(fetchedRepName);
+      roleFetchedRef.current = true;
+
+      // Cache to IndexedDB for offline use
+      await setCachedUserAuth({
+        user_id: userId,
+        role: fetchedRole,
+        rep_id: fetchedRepId,
+        rep_name: fetchedRepName,
+        cached_at: new Date().toISOString(),
+      });
+
+      return true;
+    } catch (err) {
+      console.warn("[Auth] Failed to fetch role from server, trying cache:", err);
+      return false;
     }
-    setRepId(repRes.data?.id ?? null);
-    setRepName(repRes.data?.rep_name ?? null);
+  };
+
+  const loadCachedRole = async (userId: string): Promise<boolean> => {
+    try {
+      const cached = await getCachedUserAuth(userId);
+      if (cached) {
+        setRole(cached.role);
+        setRepId(cached.rep_id);
+        setRepName(cached.rep_name);
+        roleFetchedRef.current = true;
+        return true;
+      }
+    } catch (err) {
+      console.warn("[Auth] Failed to load cached role:", err);
+    }
+    return false;
   };
 
   useEffect(() => {
@@ -46,20 +82,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
-          setTimeout(() => fetchRoleAndRep(session.user.id), 0);
+          const userId = session.user.id;
+          // Try server first, fall back to cache
+          const serverOk = await fetchRoleAndRep(userId);
+          if (!serverOk) {
+            await loadCachedRole(userId);
+          }
         } else {
           setRole(null);
           setRepId(null);
+          setRepName(null);
+          roleFetchedRef.current = false;
         }
         setLoading(false);
       }
     );
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchRoleAndRep(session.user.id);
+        const userId = session.user.id;
+        const serverOk = await fetchRoleAndRep(userId);
+        if (!serverOk) {
+          await loadCachedRole(userId);
+        }
       }
       setLoading(false);
     });

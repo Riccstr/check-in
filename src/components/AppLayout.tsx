@@ -1,15 +1,17 @@
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate, Outlet, Link, useLocation } from "react-router-dom";
-import { LogOut, MapPin, BarChart3, Users, UserCog, Link2, Eye, Download, Menu, X, CalendarDays, Settings, ShieldCheck } from "lucide-react";
+import { LogOut, MapPin, BarChart3, Users, UserCog, Link2, Eye, Download, Menu, X, CalendarDays, Settings, ShieldCheck, WifiOff } from "lucide-react";
 import logoImg from "@/assets/logo.png";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import OfflineStatusBar from "@/components/OfflineStatusBar";
 import { setupAutoSync } from "@/lib/syncEngine";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 export default function AppLayout() {
   const { user, role, repName, loading, signOut } = useAuth();
+  const isOnline = useOnlineStatus();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -24,8 +26,18 @@ export default function AppLayout() {
   if (!role) return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="text-center space-y-2">
-        <h2 className="text-xl font-semibold">No Role Assigned</h2>
-        <p className="text-muted-foreground">An admin needs to assign you a role.</p>
+        {!isOnline ? (
+          <>
+            <WifiOff className="h-10 w-10 mx-auto text-muted-foreground" />
+            <h2 className="text-xl font-semibold">You're Offline</h2>
+            <p className="text-muted-foreground">Please connect to the internet and sign in once to enable offline access.</p>
+          </>
+        ) : (
+          <>
+            <h2 className="text-xl font-semibold">No Role Assigned</h2>
+            <p className="text-muted-foreground">An admin needs to assign you a role.</p>
+          </>
+        )}
         <Button variant="outline" onClick={signOut}>Sign Out</Button>
       </div>
     </div>
