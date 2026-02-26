@@ -1,8 +1,99 @@
 import { supabase } from "@/integrations/supabase/client";
-import { getPendingVisits, updateVisitSyncStatus, removeSyncedVisits } from "./offlineDb";
+import {
+  getPendingVisits,
+  updateVisitSyncStatus,
+  removeSyncedVisits,
+  getPendingScheduleItemUpdates,
+  updateScheduleItemUpdateSyncStatus,
+  removeSyncedScheduleItemUpdates,
+} from "./offlineDb";
 import { toast } from "sonner";
 
 let syncing = false;
+
+async function syncPendingScheduleItemUpdates(): Promise<{ synced: number; errors: number }> {
+  const pending = await getPendingScheduleItemUpdates();
+  if (pending.length === 0) return { synced: 0, errors: 0 };
+
+  pending.sort((a, b) => a.created_at_local.localeCompare(b.created_at_local));
+
+  let synced = 0;
+  let errors = 0;
+
+  for (const update of pending) {
+    try {
+      const { error } = await supabase
+        .from("schedule_items")
+        .update({
+          arrival_time: update.payload.arrival_time,
+          leaving_time: update.payload.leaving_time,
+          duration_minutes: update.payload.duration_minutes,
+          notes: update.payload.notes,
+          status: update.payload.status,
+        })
+        .eq("id", update.schedule_item_id);
+
+      if (error) {
+        await updateScheduleItemUpdateSyncStatus(update.schedule_item_id, "error", error.message);
+        errors++;
+      } else {
+        await updateScheduleItemUpdateSyncStatus(update.schedule_item_id, "synced");
+        synced++;
+      }
+    } catch (err: any) {
+      await updateScheduleItemUpdateSyncStatus(
+        update.schedule_item_id,
+        "error",
+        err?.message || "Unknown schedule sync error"
+      );
+      errors++;
+    }
+  }
+
+  if (synced > 0) {
+    await removeSyncedScheduleItemUpdates();
+  }
+
+  return { synced, errors };
+}
+
+async function linkVisitToScheduleItem(visitId: string, payload: any): Promise<void> {
+  try {
+    const { data: schedule } = await supabase
+      .from("daily_schedules")
+      .select("id")
+      .eq("rep_id", payload.rep_id)
+      .eq("schedule_date", payload.visit_date)
+      .maybeSingle();
+
+    if (!schedule?.id) return;
+
+    const { data: scheduleItem } = await supabase
+      .from("schedule_items")
+      .select("id")
+      .eq("schedule_id", schedule.id)
+      .eq("customer_id", payload.customer_id)
+      .order("sort_order", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (!scheduleItem?.id) return;
+
+    await supabase
+      .from("schedule_items")
+      .update({
+        visit_id: visitId,
+        arrival_time: payload.arrival_time,
+        leaving_time: payload.leaving_time,
+        duration_minutes: payload.duration_minutes,
+        notes: payload.notes,
+        status: payload.status || "visited",
+      })
+      .eq("id", scheduleItem.id);
+  } catch (err) {
+    console.warn("[Sync] Failed to link visit to schedule item:", err);
+  }
+}
 
 export async function syncPendingVisits(): Promise<{ synced: number; errors: number }> {
   if (syncing) return { synced: 0, errors: 0 };
@@ -10,12 +101,10 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
 
   let synced = 0;
   let errors = 0;
+  let syncedVisitsCount = 0;
 
   try {
     const pending = await getPendingVisits();
-    if (pending.length === 0) return { synced: 0, errors: 0 };
-
-    // Sort by created_at_local chronological order
     pending.sort((a, b) => a.created_at_local.localeCompare(b.created_at_local));
 
     for (const visit of pending) {
@@ -30,6 +119,7 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
         if (existing) {
           await updateVisitSyncStatus(visit.client_generated_id, "synced");
           synced++;
+          syncedVisitsCount++;
           continue;
         }
 
@@ -48,10 +138,15 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
         if (recentDupe) {
           await updateVisitSyncStatus(visit.client_generated_id, "synced");
           synced++;
+          syncedVisitsCount++;
           continue;
         }
 
-        const { error } = await supabase.from("visits").insert(visit.payload);
+        const { data: insertedVisit, error } = await supabase
+          .from("visits")
+          .insert(visit.payload)
+          .select("id")
+          .maybeSingle();
 
         if (error) {
           await updateVisitSyncStatus(visit.client_generated_id, "error", error.message);
@@ -59,6 +154,11 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
         } else {
           await updateVisitSyncStatus(visit.client_generated_id, "synced");
           synced++;
+          syncedVisitsCount++;
+
+          if (insertedVisit?.id) {
+            await linkVisitToScheduleItem(insertedVisit.id, visit.payload);
+          }
         }
       } catch (err: any) {
         await updateVisitSyncStatus(
@@ -70,10 +170,13 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
       }
     }
 
-    // Clean up synced visits from IDB
-    if (synced > 0) {
+    if (syncedVisitsCount > 0) {
       await removeSyncedVisits();
     }
+
+    const scheduleResult = await syncPendingScheduleItemUpdates();
+    synced += scheduleResult.synced;
+    errors += scheduleResult.errors;
   } finally {
     syncing = false;
   }
@@ -87,7 +190,7 @@ export function setupAutoSync(onSyncComplete?: () => void) {
     if (!navigator.onLine) return;
     const result = await syncPendingVisits();
     if (result.synced > 0) {
-      toast.success(`${result.synced} offline visit(s) synced`);
+      toast.success(`${result.synced} offline change(s) synced`);
       onSyncComplete?.();
     }
     if (result.errors > 0) {

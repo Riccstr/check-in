@@ -1,9 +1,19 @@
-import { createContext, useContext, useEffect, useState, useRef, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
-import { getCachedUserAuth, setCachedUserAuth } from "@/lib/offlineDb";
+import { getCachedUserAuth, setCachedUserAuth, type CachedUserAuth } from "@/lib/offlineDb";
+import { refreshOfflineBootstrap } from "@/lib/offlineBootstrap";
 
 type AppRole = "admin" | "rep";
+type RoleState = "loading" | "ready" | "unassigned" | "offline_bootstrap_required" | "resolving";
+
+interface ResolvedAuthContext {
+  role: AppRole | null;
+  repId: string | null;
+  repName: string | null;
+  profile: CachedUserAuth["profile"];
+  permissions: string[];
+}
 
 interface AuthContextType {
   user: User | null;
@@ -11,13 +21,23 @@ interface AuthContextType {
   role: AppRole | null;
   repId: string | null;
   repName: string | null;
+  profile: CachedUserAuth["profile"];
+  permissions: string[];
+  roleState: RoleState;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  refreshAuthContext: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function buildPermissions(role: AppRole | null): string[] {
+  if (role === "admin") return ["admin:all"];
+  if (role === "rep") return ["rep:schedule", "rep:visits"];
+  return [];
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -25,63 +45,176 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<AppRole | null>(null);
   const [repId, setRepId] = useState<string | null>(null);
   const [repName, setRepName] = useState<string | null>(null);
+  const [profile, setProfile] = useState<CachedUserAuth["profile"]>(null);
+  const [permissions, setPermissions] = useState<string[]>([]);
+  const [roleState, setRoleState] = useState<RoleState>("loading");
   const [loading, setLoading] = useState(true);
-  const roleFetchedRef = useRef(false);
+  const activeSessionRunRef = useRef(0);
 
-  const fetchRoleAndRep = async (userId: string): Promise<boolean> => {
+  const applyResolvedContext = (
+    userId: string,
+    context: ResolvedAuthContext,
+    source: "cache" | "server"
+  ) => {
+    setRole(context.role);
+    setRepId(context.repId);
+    setRepName(context.repName);
+    setProfile(context.profile || null);
+    setPermissions(context.permissions);
+
+    if (context.role) {
+      setRoleState("ready");
+    } else if (source === "server") {
+      setRoleState("unassigned");
+    }
+
+    setCachedUserAuth({
+      user_id: userId,
+      role: context.role,
+      rep_id: context.repId,
+      rep_name: context.repName,
+      profile: context.profile || null,
+      permissions: context.permissions,
+      cached_at: new Date().toISOString(),
+    }).catch((e) => console.warn("[Auth] Failed to cache auth:", e));
+  };
+
+  const fetchServerContext = async (userId: string): Promise<ResolvedAuthContext | null> => {
     try {
-      const [rolesRes, repRes] = await Promise.all([
+      const [rolesRes, repRes, profileRes] = await Promise.all([
         supabase.from("user_roles").select("role").eq("user_id", userId),
         supabase.from("reps").select("id, rep_name").eq("user_id", userId).maybeSingle(),
+        supabase
+          .from("profiles")
+          .select("id, full_name, created_at, login_updated_at, login_updated_by")
+          .eq("id", userId)
+          .maybeSingle(),
       ]);
 
-      const fetchedRole = rolesRes.data && rolesRes.data.length > 0 ? rolesRes.data[0].role : null;
+      const fetchedRole = rolesRes.data && rolesRes.data.length > 0 ? (rolesRes.data[0].role as AppRole) : null;
       const fetchedRepId = repRes.data?.id ?? null;
       const fetchedRepName = repRes.data?.rep_name ?? null;
+      const fetchedProfile = profileRes.data
+        ? {
+            id: profileRes.data.id,
+            full_name: profileRes.data.full_name,
+            created_at: profileRes.data.created_at,
+            login_updated_at: profileRes.data.login_updated_at,
+            login_updated_by: profileRes.data.login_updated_by,
+          }
+        : null;
 
-      setRole(fetchedRole);
-      setRepId(fetchedRepId);
-      setRepName(fetchedRepName);
-      roleFetchedRef.current = true;
-
-      // Cache to IndexedDB for offline use — fire and forget so it never blocks loading
-      setCachedUserAuth({
-        user_id: userId,
+      return {
         role: fetchedRole,
-        rep_id: fetchedRepId,
-        rep_name: fetchedRepName,
-        cached_at: new Date().toISOString(),
-      }).catch((e) => console.warn("[Auth] Failed to cache auth:", e));
-
-      return true;
+        repId: fetchedRepId,
+        repName: fetchedRepName,
+        profile: fetchedProfile,
+        permissions: buildPermissions(fetchedRole),
+      };
     } catch (err) {
-      console.warn("[Auth] Failed to fetch role from server, trying cache:", err);
-      return false;
+      console.warn("[Auth] Failed to fetch role/profile from server:", err);
+      return null;
     }
   };
 
-  const loadCachedRole = async (userId: string): Promise<boolean> => {
+  const loadCachedContext = async (userId: string): Promise<ResolvedAuthContext | null> => {
     try {
       const cached = await getCachedUserAuth(userId);
-      if (cached) {
-        setRole(cached.role);
-        setRepId(cached.rep_id);
-        setRepName(cached.rep_name);
-        roleFetchedRef.current = true;
-        return true;
-      }
+      if (!cached) return null;
+
+      return {
+        role: cached.role,
+        repId: cached.rep_id,
+        repName: cached.rep_name,
+        profile: cached.profile,
+        permissions: cached.permissions,
+      };
     } catch (err) {
-      console.warn("[Auth] Failed to load cached role:", err);
+      console.warn("[Auth] Failed to load cached role/profile:", err);
+      return null;
     }
-    return false;
+  };
+
+  const refreshAuthContext = async () => {
+    if (!user) return;
+    const context = await fetchServerContext(user.id);
+    if (!context) return;
+
+    applyResolvedContext(user.id, context, "server");
+    await refreshOfflineBootstrap(user.id, context.role, context.repId);
   };
 
   useEffect(() => {
     let loadingResolved = false;
+    let listenerDeliveredInitial = false;
+    let disposed = false;
+
     const resolveLoading = () => {
       if (!loadingResolved) {
         loadingResolved = true;
         setLoading(false);
+      }
+    };
+
+    const clearResolvedContext = () => {
+      setRole(null);
+      setRepId(null);
+      setRepName(null);
+      setProfile(null);
+      setPermissions([]);
+      setRoleState("loading");
+    };
+
+    const processSession = async (nextSession: Session | null) => {
+      const runId = ++activeSessionRunRef.current;
+
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+
+      if (!nextSession?.user) {
+        clearResolvedContext();
+        if (!disposed) resolveLoading();
+        return;
+      }
+
+      const userId = nextSession.user.id;
+      const cached = await loadCachedContext(userId);
+      if (disposed || runId !== activeSessionRunRef.current) return;
+
+      const hasCachedRole = Boolean(cached?.role);
+
+      if (hasCachedRole && cached) {
+        applyResolvedContext(userId, cached, "cache");
+        resolveLoading();
+      } else {
+        setRoleState("loading");
+      }
+
+      if (!navigator.onLine && !hasCachedRole) {
+        setRoleState("offline_bootstrap_required");
+        resolveLoading();
+        return;
+      }
+
+      const serverContext = await fetchServerContext(userId);
+      if (disposed || runId !== activeSessionRunRef.current) return;
+
+      if (serverContext) {
+        applyResolvedContext(userId, serverContext, "server");
+        resolveLoading();
+
+        if (serverContext.role) {
+          refreshOfflineBootstrap(userId, serverContext.role, serverContext.repId).catch((e) =>
+            console.warn("[Auth] Failed to refresh offline bootstrap:", e)
+          );
+        }
+      } else if (!hasCachedRole) {
+        if (!navigator.onLine) {
+          setRoleState("offline_bootstrap_required");
+        } else {
+          setRoleState("resolving");
+        }
+        resolveLoading();
       }
     };
 
@@ -93,37 +226,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }, 8000);
 
-    const handleSession = async (session: Session | null) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        const userId = session.user.id;
-        const serverOk = await fetchRoleAndRep(userId);
-        if (!serverOk) {
-          await loadCachedRole(userId);
-        }
-      } else {
-        setRole(null);
-        setRepId(null);
-        setRepName(null);
-        roleFetchedRef.current = false;
-      }
-      resolveLoading();
-    };
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      console.log("[Auth] onAuthStateChange:", _event);
+      setTimeout(() => {
+        listenerDeliveredInitial = true;
+        void processSession(nextSession);
+      }, 0);
+    });
 
-    // Set up listener first (Supabase recommended pattern).
-    // CRITICAL: Use setTimeout to defer async Supabase calls out of the
-    // onAuthStateChange callback — calling supabase.from() inside the
-    // callback synchronously deadlocks the SDK.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        console.log("[Auth] onAuthStateChange:", _event);
-        // Defer to break out of the SDK's internal lock
-        setTimeout(() => handleSession(session), 0);
-      }
-    );
+    supabase.auth
+      .getSession()
+      .then(({ data: { session: currentSession } }) => {
+        if (listenerDeliveredInitial) return;
+        listenerDeliveredInitial = true;
+        setTimeout(() => void processSession(currentSession), 0);
+      })
+      .catch((err) => {
+        console.warn("[Auth] getSession failed:", err);
+        resolveLoading();
+      });
 
     return () => {
+      disposed = true;
       clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
@@ -148,7 +274,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, role, repId, repName, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        session,
+        role,
+        repId,
+        repName,
+        profile,
+        permissions,
+        roleState,
+        loading,
+        signIn,
+        signUp,
+        signOut,
+        refreshAuthContext,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

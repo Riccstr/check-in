@@ -12,8 +12,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { v4 as uuidv4 } from "uuid";
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { addOfflineVisit, getCachedCustomers, setCachedCustomers, setCachedSchedule, getCachedSchedule } from "@/lib/offlineDb";
+import {
+  addOfflineVisit,
+  getCachedCustomers,
+  setCachedCustomers,
+  setCachedSchedule,
+  getCachedSchedule,
+  upsertOfflineScheduleItemUpdate,
+  updateCachedScheduleItem,
+} from "@/lib/offlineDb";
 
 function isOfflineError(err: any): boolean {
   const msg = String(err?.message || err || "").toLowerCase();
@@ -92,6 +99,26 @@ function ScheduleItemRow({
     return (lh * 60 + lm) - (ah * 60 + am);
   };
 
+  const queueScheduleItemUpdate = async (newItem: any) => {
+    await upsertOfflineScheduleItemUpdate({
+      schedule_item_id: item.id,
+      rep_id: repId,
+      schedule_date: scheduleDate,
+      customer_id: item.customer_id,
+      payload: {
+        arrival_time: newItem.arrival_time || null,
+        leaving_time: newItem.leaving_time || null,
+        duration_minutes: newItem.duration_minutes ?? null,
+        notes: newItem.notes || null,
+        status: newItem.status || "pending",
+      },
+      created_at_local: new Date().toISOString(),
+      sync_status: "pending",
+      last_sync_attempt: null,
+      error_message: null,
+    });
+  };
+
   const updateItem = async (updates: Partial<{ arrival_time: string; leaving_time: string; notes: string; status: string; duration_minutes: number }>) => {
     if (actionInProgress) return;
     setActionInProgress(true);
@@ -111,6 +138,12 @@ function ScheduleItemRow({
     });
 
     try {
+      if (!navigator.onLine) {
+        await queueScheduleItemUpdate(newItem);
+        await handleOfflineVisitSave(newItem);
+        return;
+      }
+
       const { error } = await supabase
         .from("schedule_items")
         .update({
@@ -124,6 +157,7 @@ function ScheduleItemRow({
 
       if (error) {
         if (isOfflineError(error)) {
+          await queueScheduleItemUpdate(newItem);
           await handleOfflineVisitSave(newItem);
           return;
         }
@@ -159,6 +193,7 @@ function ScheduleItemRow({
       onRefresh();
     } catch (err: any) {
       console.warn("[Schedule] Network error on update:", err?.message);
+      await queueScheduleItemUpdate(newItem);
       await handleOfflineVisitSave(newItem);
     } finally {
       setActionInProgress(false);
@@ -226,10 +261,25 @@ function ScheduleItemRow({
     }
     setActionInProgress(true);
 
+    const skippedUpdates = {
+      arrival_time: null,
+      leaving_time: null,
+      duration_minutes: 0,
+      notes: localNotes,
+      status: "skipped",
+    };
+
     // Optimistic local update
-    onLocalUpdate(item.id, { status: "skipped", notes: localNotes });
+    onLocalUpdate(item.id, skippedUpdates);
 
     try {
+      if (!navigator.onLine) {
+        await queueScheduleItemUpdate(skippedUpdates);
+        await saveVisitOffline(repId, item.customer_id, scheduleDate, "00:00", "00:00", 0, localNotes, item.customers?.customer_name, "skipped");
+        toast.success("Saved offline. Will sync when online.");
+        return;
+      }
+
       const { error } = await supabase
         .from("schedule_items")
         .update({ status: "skipped", notes: localNotes })
@@ -237,13 +287,9 @@ function ScheduleItemRow({
 
       if (error) {
         if (isOfflineError(error)) {
-          try {
-            await saveVisitOffline(repId, item.customer_id, scheduleDate, "00:00", "00:00", 0, localNotes, item.customers?.customer_name, "skipped");
-            toast.success("Saved offline. Will sync when online.");
-          } catch (idbErr) {
-            console.error("[Schedule] IndexedDB save failed:", idbErr);
-            toast.error("Failed to save. Please try again.");
-          }
+          await queueScheduleItemUpdate(skippedUpdates);
+          await saveVisitOffline(repId, item.customer_id, scheduleDate, "00:00", "00:00", 0, localNotes, item.customers?.customer_name, "skipped");
+          toast.success("Saved offline. Will sync when online.");
           return;
         }
         toast.error(error.message);
@@ -265,6 +311,7 @@ function ScheduleItemRow({
     } catch (err: any) {
       console.warn("[Schedule] Network error on skip:", err?.message);
       try {
+        await queueScheduleItemUpdate(skippedUpdates);
         await saveVisitOffline(repId, item.customer_id, scheduleDate, "00:00", "00:00", 0, localNotes, item.customers?.customer_name, "skipped");
         toast.success("Saved offline. Will sync when online.");
       } catch (idbErr) {
@@ -383,7 +430,6 @@ function ScheduleItemRow({
 
 export default function DailySchedule() {
   const { repId } = useAuth();
-  const isOnline = useOnlineStatus();
   const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().split("T")[0]);
   const [schedule, setSchedule] = useState<any>(null);
   const [items, setItems] = useState<any[]>([]);
@@ -402,10 +448,14 @@ export default function DailySchedule() {
 
   // Optimistic local update for schedule items
   const handleLocalUpdate = useCallback((itemId: string, updates: any) => {
-    setItems((prev) =>
-      prev.map((it) => (it.id === itemId ? { ...it, ...updates } : it))
-    );
-  }, []);
+    setItems((prev) => prev.map((it) => (it.id === itemId ? { ...it, ...updates } : it)));
+
+    if (repId) {
+      updateCachedScheduleItem(repId, scheduleDate, itemId, updates).catch((err) => {
+        console.warn("[Schedule] Failed to persist local schedule update:", err);
+      });
+    }
+  }, [repId, scheduleDate]);
 
   const autoGenerateSchedule = useCallback(async () => {
     if (!repId) return null;
@@ -473,6 +523,30 @@ export default function DailySchedule() {
   const fetchSchedule = async () => {
     if (!repId) return;
     setLoading(true);
+
+    let hasCachedSchedule = false;
+
+    try {
+      const cached = await getCachedSchedule(repId, scheduleDate);
+      if (cached) {
+        hasCachedSchedule = true;
+        setSchedule(cached);
+        setItems((cached.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
+        setLoading(false);
+      }
+    } catch (cacheErr) {
+      console.warn("[Schedule] Failed to read cached schedule:", cacheErr);
+    }
+
+    if (!navigator.onLine) {
+      if (!hasCachedSchedule) {
+        setSchedule(null);
+        setItems([]);
+        setLoading(false);
+      }
+      return;
+    }
+
     try {
       const { data } = await supabase
         .from("daily_schedules")
@@ -484,13 +558,12 @@ export default function DailySchedule() {
       if (data) {
         setSchedule(data);
         setItems((data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
-        // Cache for offline use
         await setCachedSchedule(repId, scheduleDate, data);
-        setLoading(false);
       } else {
         setGenerating(true);
         const newId = await autoGenerateSchedule();
         setGenerating(false);
+
         if (newId) {
           const { data: newData } = await supabase
             .from("daily_schedules")
@@ -504,30 +577,43 @@ export default function DailySchedule() {
           setSchedule(null);
           setItems([]);
         }
-        setLoading(false);
       }
     } catch (err) {
-      console.warn("[Schedule] Offline, loading cached schedule");
-      // Load from cache
-      try {
-        const cached = await getCachedSchedule(repId, scheduleDate);
-        if (cached) {
-          setSchedule(cached);
-          setItems((cached.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
-        } else {
-          setSchedule(null);
-          setItems([]);
-        }
-      } catch {
+      console.warn("[Schedule] Online refresh failed, keeping cached schedule if available", err);
+      if (!hasCachedSchedule) {
         setSchedule(null);
         setItems([]);
       }
+    } finally {
       setLoading(false);
     }
   };
 
   const fetchAdHocCustomers = async () => {
     if (!repId) return;
+
+    const loadFromCache = async () => {
+      try {
+        const cached = await getCachedCustomers();
+        if (cached.length > 0) {
+          setAdHocCustomers(
+            cached.map((c) => ({
+              id: c.id,
+              customer_name: c.customer_name,
+              account_number: c.account_number,
+              area: c.area,
+              is_active: true,
+            }))
+          );
+        }
+      } catch {
+        // Keep existing state
+      }
+    };
+
+    await loadFromCache();
+    if (!navigator.onLine) return;
+
     try {
       const { data } = await supabase
         .from("customer_assignments")
@@ -536,24 +622,17 @@ export default function DailySchedule() {
       if (data) {
         const active = data.filter((d: any) => d.customers?.is_active).map((d: any) => d.customers);
         setAdHocCustomers(active);
-        // Cache for offline use
-        await setCachedCustomers(active.map((c: any) => ({
-          id: c.id,
-          customer_name: c.customer_name,
-          account_number: c.account_number || null,
-          area: c.area || null,
-        })));
+        await setCachedCustomers(
+          active.map((c: any) => ({
+            id: c.id,
+            customer_name: c.customer_name,
+            account_number: c.account_number || null,
+            area: c.area || null,
+          }))
+        );
       }
     } catch {
-      // Offline - load from cache
-      try {
-        const cached = await getCachedCustomers();
-        if (cached.length > 0) {
-          setAdHocCustomers(cached.map((c) => ({ id: c.id, customer_name: c.customer_name, is_active: true })));
-        }
-      } catch {
-        // Keep existing state
-      }
+      // Online fetch failed, keep cached customers already loaded
     }
   };
 

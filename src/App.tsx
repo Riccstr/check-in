@@ -11,7 +11,6 @@ import Index from "@/pages/Index";
 import LogVisit from "@/pages/LogVisit";
 import DailySchedule from "@/pages/DailySchedule";
 import MyVisits from "@/pages/MyVisits";
-import Averages from "@/pages/Averages";
 import AdminCustomers from "@/pages/admin/AdminCustomers";
 import AdminReps from "@/pages/admin/AdminReps";
 import AdminAssignments from "@/pages/admin/AdminAssignments";
@@ -49,16 +48,17 @@ function GlobalErrorBoundary({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/** Persists the current route to sessionStorage so the app resumes on the same screen after minimize/restore */
+/** Persists the current route to localStorage so the app resumes after minimize/restore */
 function RoutePersistence() {
   const location = useLocation();
 
   useEffect(() => {
     // Don't persist the auth page
     if (location.pathname !== "/auth") {
-      sessionStorage.setItem(ROUTE_STORAGE_KEY, location.pathname);
+      const fullPath = `${location.pathname}${location.search}${location.hash}`;
+      localStorage.setItem(ROUTE_STORAGE_KEY, fullPath);
     }
-  }, [location.pathname]);
+  }, [location.pathname, location.search, location.hash]);
 
   return null;
 }
@@ -69,8 +69,8 @@ function RouteRestorer() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const savedRoute = sessionStorage.getItem(ROUTE_STORAGE_KEY);
-    if (savedRoute && savedRoute !== "/" && location.pathname === "/") {
+    const savedRoute = localStorage.getItem(ROUTE_STORAGE_KEY);
+    if (savedRoute && savedRoute.startsWith("/") && savedRoute !== "/" && location.pathname === "/") {
       navigate(savedRoute, { replace: true });
     }
   }, []); // Only run once on mount
@@ -95,7 +95,7 @@ const App = () => (
                 <Route path="/log-visit" element={<LogVisit />} />
                 <Route path="/schedule" element={<DailySchedule />} />
                 <Route path="/my-visits" element={<MyVisits />} />
-                
+
                 <Route path="/admin/customers" element={<AdminCustomers />} />
                 <Route path="/admin/reps" element={<AdminReps />} />
                 <Route path="/admin/assignments" element={<AdminAssignments />} />
