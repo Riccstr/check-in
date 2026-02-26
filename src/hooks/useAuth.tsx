@@ -91,29 +91,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn("[Auth] Safety timeout: forcing loading=false");
         resolveLoading();
       }
-    }, 5000);
+    }, 8000);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          const userId = session.user.id;
-          const serverOk = await fetchRoleAndRep(userId);
-          if (!serverOk) {
-            await loadCachedRole(userId);
-          }
-        } else {
-          setRole(null);
-          setRepId(null);
-          setRepName(null);
-          roleFetchedRef.current = false;
-        }
-        resolveLoading();
-      }
-    );
-
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    const handleSession = async (session: Session | null) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -122,9 +102,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!serverOk) {
           await loadCachedRole(userId);
         }
+      } else {
+        setRole(null);
+        setRepId(null);
+        setRepName(null);
+        roleFetchedRef.current = false;
       }
       resolveLoading();
-    });
+    };
+
+    // Set up listener first (Supabase recommended pattern).
+    // CRITICAL: Use setTimeout to defer async Supabase calls out of the
+    // onAuthStateChange callback — calling supabase.from() inside the
+    // callback synchronously deadlocks the SDK.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        console.log("[Auth] onAuthStateChange:", _event);
+        // Defer to break out of the SDK's internal lock
+        setTimeout(() => handleSession(session), 0);
+      }
+    );
 
     return () => {
       clearTimeout(safetyTimer);
