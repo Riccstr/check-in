@@ -44,14 +44,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRepName(fetchedRepName);
       roleFetchedRef.current = true;
 
-      // Cache to IndexedDB for offline use
-      await setCachedUserAuth({
+      // Cache to IndexedDB for offline use — fire and forget so it never blocks loading
+      setCachedUserAuth({
         user_id: userId,
         role: fetchedRole,
         rep_id: fetchedRepId,
         rep_name: fetchedRepName,
         cached_at: new Date().toISOString(),
-      });
+      }).catch((e) => console.warn("[Auth] Failed to cache auth:", e));
 
       return true;
     } catch (err) {
@@ -77,13 +77,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    let loadingResolved = false;
+    const resolveLoading = () => {
+      if (!loadingResolved) {
+        loadingResolved = true;
+        setLoading(false);
+      }
+    };
+
+    // Safety timeout — never stay stuck on loading spinner
+    const safetyTimer = setTimeout(() => {
+      if (!loadingResolved) {
+        console.warn("[Auth] Safety timeout: forcing loading=false");
+        resolveLoading();
+      }
+    }, 5000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
           const userId = session.user.id;
-          // Try server first, fall back to cache
           const serverOk = await fetchRoleAndRep(userId);
           if (!serverOk) {
             await loadCachedRole(userId);
@@ -94,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setRepName(null);
           roleFetchedRef.current = false;
         }
-        setLoading(false);
+        resolveLoading();
       }
     );
 
@@ -108,10 +123,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await loadCachedRole(userId);
         }
       }
-      setLoading(false);
+      resolveLoading();
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(safetyTimer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
