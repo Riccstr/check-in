@@ -77,7 +77,7 @@ export default function AppLayout() {
     );
   }
 
-  if (!role && roleState === "unassigned") {
+  if (!role && roleState === "unassigned" && isOnline) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="text-center space-y-2">

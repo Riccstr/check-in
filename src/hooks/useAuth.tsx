@@ -91,6 +91,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .maybeSingle(),
       ]);
 
+      if (rolesRes.error || repRes.error || profileRes.error) {
+        throw rolesRes.error || repRes.error || profileRes.error;
+      }
+
       const fetchedRole = rolesRes.data && rolesRes.data.length > 0 ? (rolesRes.data[0].role as AppRole) : null;
       const fetchedRepId = repRes.data?.id ?? null;
       const fetchedRepName = repRes.data?.rep_name ?? null;
