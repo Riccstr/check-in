@@ -35,7 +35,16 @@ export default defineConfig(({ mode }) => ({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,ttf,eot,json}"],
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,ttf,eot,json,webmanifest}"],
+        additionalManifestEntries: [
+          { url: "/", revision: null },
+          { url: "/schedule", revision: null },
+          { url: "/my-visits", revision: null },
+          { url: "/log-visit", revision: null },
+          { url: "/admin/assignments", revision: null },
+          { url: "/admin/schedules", revision: null },
+          { url: "/admin/visits", revision: null },
+        ],
         navigateFallback: "index.html",
         navigateFallbackDenylist: [/^\/~oauth/, /^\/api/],
         skipWaiting: true,
@@ -47,50 +56,56 @@ export default defineConfig(({ mode }) => ({
             urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico|woff|woff2|ttf|eot)$/i,
             handler: "CacheFirst",
             options: {
-              cacheName: "static-assets-v3",
-              expiration: { maxEntries: 100, maxAgeSeconds: 30 * 24 * 60 * 60 },
+              cacheName: "static-assets-v4",
+              expiration: { maxEntries: 120, maxAgeSeconds: 30 * 24 * 60 * 60 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },
-          // Cache-First for JS/CSS bundles (they have hashed filenames)
+          // Cache-First for JS/CSS bundles (hashed filenames)
           {
             urlPattern: /\.(?:js|css)$/i,
             handler: "CacheFirst",
             options: {
-              cacheName: "static-code-v3",
-              expiration: { maxEntries: 50, maxAgeSeconds: 30 * 24 * 60 * 60 },
+              cacheName: "static-code-v4",
+              expiration: { maxEntries: 60, maxAgeSeconds: 30 * 24 * 60 * 60 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },
-          // Network-Only for Supabase API calls — never serve stale API data
+          // Navigation requests: cached app shell fallback when offline
+          {
+            urlPattern: ({ request }) => request.mode === "navigate",
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "app-shell-v4",
+              networkTimeoutSeconds: 2,
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          // Backend API calls: always network, never stale cache
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*/i,
             handler: "NetworkOnly",
           },
-          // Network-Only for Supabase auth
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/auth\/.*/i,
             handler: "NetworkOnly",
           },
-          // Network-Only for Supabase edge functions
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/functions\/.*/i,
             handler: "NetworkOnly",
           },
-          // Network-Only for Supabase storage
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/.*/i,
             handler: "NetworkOnly",
           },
-          // Catch-all: NetworkFirst with fallback for any other requests
+          // Non-critical leftovers
           {
             urlPattern: /./,
-            handler: "NetworkFirst",
+            handler: "StaleWhileRevalidate",
             options: {
-              cacheName: "fallback-v3",
-              expiration: { maxEntries: 50, maxAgeSeconds: 24 * 60 * 60 },
+              cacheName: "fallback-v4",
+              expiration: { maxEntries: 80, maxAgeSeconds: 24 * 60 * 60 },
               cacheableResponse: { statuses: [0, 200] },
-              networkTimeoutSeconds: 5,
             },
           },
         ],
