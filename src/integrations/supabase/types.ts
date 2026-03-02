@@ -438,6 +438,7 @@ export type Database = {
         Returns: string
       }
       get_my_rep_id: { Args: never; Returns: string }
+      get_week_order_for_date: { Args: { p_date: string }; Returns: number }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

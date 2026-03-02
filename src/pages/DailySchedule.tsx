@@ -474,16 +474,14 @@ export default function DailySchedule() {
 
   const fetchWeekName = async () => {
     try {
-      const { data: setting } = await supabase
-        .from("app_settings")
-        .select("setting_value")
-        .eq("setting_key", "current_week_order")
-        .maybeSingle();
-      if (setting) {
+      const { data: weekOrder } = await (supabase.rpc as any)("get_week_order_for_date", {
+        p_date: scheduleDate,
+      });
+      if (weekOrder) {
         const { data: wk } = await supabase
           .from("weekly_templates")
           .select("name")
-          .eq("sort_order", parseInt(setting.setting_value))
+          .eq("sort_order", weekOrder)
           .maybeSingle();
         if (wk) setCurrentWeekName(wk.name);
       }
