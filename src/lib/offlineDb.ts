@@ -15,12 +15,16 @@ export interface OfflineVisit {
     notes: string | null;
     client_generated_id: string;
     status?: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    location_address?: string | null;
   };
   created_at_local: string;
   sync_status: "pending" | "synced" | "error";
   last_sync_attempt: string | null;
   error_message: string | null;
   customer_name?: string;
+  photo_base64?: string | null;
 }
 
 export interface OfflineScheduleItemUpdate {

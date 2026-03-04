@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,11 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { CalendarDays, Clock, Check, SkipForward, Plus, Loader2, CircleDot } from "lucide-react";
+import { CalendarDays, Clock, Check, SkipForward, Plus, Loader2, CircleDot, MapPin, Camera, X } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { v4 as uuidv4 } from "uuid";
+import { captureLocation, reverseGeocode } from "@/lib/geolocation";
+import { compressImage, blobToBase64 } from "@/lib/imageCompressor";
 import {
   addOfflineVisit,
   getCachedCustomers,
@@ -37,6 +39,10 @@ async function saveVisitOffline(
   notes: string | null,
   customerName?: string,
   status?: string,
+  latitude?: number | null,
+  longitude?: number | null,
+  locationAddress?: string | null,
+  photoBase64?: string | null,
 ) {
   const clientId = uuidv4();
   await addOfflineVisit({
@@ -51,12 +57,16 @@ async function saveVisitOffline(
       notes,
       client_generated_id: clientId,
       ...(status ? { status } : {}),
+      latitude: latitude ?? null,
+      longitude: longitude ?? null,
+      location_address: locationAddress ?? null,
     } as any,
     created_at_local: new Date().toISOString(),
     sync_status: "pending",
     last_sync_attempt: null,
     error_message: null,
     customer_name: customerName,
+    photo_base64: photoBase64 ?? null,
   });
 }
 
@@ -77,15 +87,18 @@ function ScheduleItemRow({
   const [localArrival, setLocalArrival] = useState(item.arrival_time || "");
   const [localLeaving, setLocalLeaving] = useState(item.leaving_time || "");
   const [actionInProgress, setActionInProgress] = useState(false);
-  useEffect(() => {
-    setLocalNotes(item.notes || "");
-  }, [item.notes]);
-  useEffect(() => {
-    setLocalArrival(item.arrival_time || "");
-  }, [item.arrival_time]);
-  useEffect(() => {
-    setLocalLeaving(item.leaving_time || "");
-  }, [item.leaving_time]);
+
+  // GPS + Photo state
+  const [capturedLat, setCapturedLat] = useState<number | null>(null);
+  const [capturedLng, setCapturedLng] = useState<number | null>(null);
+  const [capturedAddress, setCapturedAddress] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoBlob, setPhotoBlob] = useState<Blob | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setLocalNotes(item.notes || ""); }, [item.notes]);
+  useEffect(() => { setLocalArrival(item.arrival_time || ""); }, [item.arrival_time]);
+  useEffect(() => { setLocalLeaving(item.leaving_time || ""); }, [item.leaving_time]);
 
   const nowTime = () => {
     const now = new Date();
@@ -117,6 +130,57 @@ function ScheduleItemRow({
       last_sync_attempt: null,
       error_message: null,
     });
+  };
+
+  // Capture GPS (fire-and-forget, never blocks)
+  const doGpsCapture = async () => {
+    const loc = await captureLocation();
+    if (loc) {
+      setCapturedLat(loc.latitude);
+      setCapturedLng(loc.longitude);
+      // Try reverse geocode if online
+      if (navigator.onLine) {
+        const addr = await reverseGeocode(loc.latitude, loc.longitude);
+        if (addr) setCapturedAddress(addr);
+      }
+    }
+  };
+
+  // Photo handling
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImage(file);
+      setPhotoBlob(compressed);
+      const preview = URL.createObjectURL(compressed);
+      setPhotoPreview(preview);
+    } catch {
+      toast.error("Failed to process photo");
+    }
+    // Reset input so same file can be re-selected
+    e.target.value = "";
+  };
+
+  const clearPhoto = () => {
+    setPhotoBlob(null);
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoPreview(null);
+  };
+
+  const uploadPhotoOnline = async (visitId: string): Promise<string | null> => {
+    if (!photoBlob) return null;
+    try {
+      const path = `${repId}/${visitId}.jpg`;
+      const { error } = await supabase.storage
+        .from("visit-photos")
+        .upload(path, photoBlob, { contentType: "image/jpeg", upsert: true });
+      if (error) { console.warn("[Photo] Upload failed:", error.message); return null; }
+      const { data: urlData } = supabase.storage.from("visit-photos").getPublicUrl(path);
+      return urlData?.publicUrl || null;
+    } catch {
+      return null;
+    }
   };
 
   const updateItem = async (updates: Partial<{ arrival_time: string; leaving_time: string; notes: string; status: string; duration_minutes: number }>) => {
@@ -167,26 +231,37 @@ function ScheduleItemRow({
 
       // Online success: also handle visit record
       if (newItem.status === "visited" && newItem.arrival_time && newItem.leaving_time && newItem.duration_minutes >= 0) {
+        const visitData: any = {
+          arrival_time: newItem.arrival_time,
+          leaving_time: newItem.leaving_time,
+          duration_minutes: newItem.duration_minutes,
+          notes: newItem.notes || null,
+          latitude: capturedLat,
+          longitude: capturedLng,
+          location_address: capturedAddress,
+        };
+
         if (item.visit_id) {
-          await supabase.from("visits").update({
-            arrival_time: newItem.arrival_time,
-            leaving_time: newItem.leaving_time,
-            duration_minutes: newItem.duration_minutes,
-            notes: newItem.notes || null,
-          }).eq("id", item.visit_id);
+          await supabase.from("visits").update(visitData).eq("id", item.visit_id);
+          // Upload photo
+          const photoUrl = await uploadPhotoOnline(item.visit_id);
+          if (photoUrl) {
+            await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", item.visit_id);
+          }
         } else {
           const { data: visit } = await supabase.from("visits").insert({
             rep_id: repId,
             customer_id: item.customer_id,
             visit_date: scheduleDate,
-            arrival_time: newItem.arrival_time,
-            leaving_time: newItem.leaving_time,
-            duration_minutes: newItem.duration_minutes,
-            notes: newItem.notes || null,
-          }).select("id").single();
+            ...visitData,
+          } as any).select("id").single();
 
           if (visit) {
             await supabase.from("schedule_items").update({ visit_id: visit.id }).eq("id", item.id);
+            const photoUrl = await uploadPhotoOnline(visit.id);
+            if (photoUrl) {
+              await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", visit.id);
+            }
           }
         }
       }
@@ -201,9 +276,12 @@ function ScheduleItemRow({
   };
 
   const handleOfflineVisitSave = async (newItem: any) => {
-    // Only save a visit record if we have both times (complete visit)
     if (newItem.arrival_time && newItem.leaving_time && newItem.duration_minutes >= 0) {
       try {
+        let photoB64: string | null = null;
+        if (photoBlob) {
+          photoB64 = await blobToBase64(photoBlob);
+        }
         await saveVisitOffline(
           repId,
           item.customer_id,
@@ -213,6 +291,11 @@ function ScheduleItemRow({
           newItem.duration_minutes,
           newItem.notes || null,
           item.customers?.customer_name,
+          undefined,
+          capturedLat,
+          capturedLng,
+          capturedAddress,
+          photoB64,
         );
         toast.success("Saved offline. Will sync when online.");
       } catch (idbErr) {
@@ -220,8 +303,6 @@ function ScheduleItemRow({
         toast.error("Failed to save visit. Please try again.");
       }
     }
-    // For partial updates (just arrival_time), the local UI is already updated optimistically
-    // No error shown - the user sees their time recorded in the UI
   };
 
   const commitNotes = () => {
@@ -246,6 +327,8 @@ function ScheduleItemRow({
     const t = nowTime();
     setLocalArrival(t);
     updateItem({ arrival_time: t });
+    // Fire GPS capture in background — never blocks
+    doGpsCapture();
   };
   const markLeft = () => {
     const t = nowTime();
@@ -394,6 +477,50 @@ function ScheduleItemRow({
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* GPS location confirmation */}
+      {item.status !== "skipped" && capturedLat !== null && (
+        <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
+          <MapPin className="h-3 w-3 shrink-0" />
+          <span className="truncate">{capturedAddress || `${capturedLat.toFixed(5)}, ${capturedLng?.toFixed(5)}`}</span>
+        </div>
+      )}
+
+      {/* Photo capture — only shown when in progress (arrived but not left) */}
+      {item.status !== "skipped" && item.status !== "visited" && localArrival && (
+        <div className="space-y-1">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handlePhotoSelect}
+          />
+          {photoPreview ? (
+            <div className="relative inline-block">
+              <img src={photoPreview} alt="Store photo" className="h-20 w-20 object-cover rounded border border-border" />
+              <button
+                type="button"
+                onClick={clearPhoto}
+                className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Camera className="h-3 w-3 mr-1" /> Take Photo
+            </Button>
+          )}
         </div>
       )}
 
