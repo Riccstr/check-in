@@ -9,8 +9,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Eye, Pencil, Trash2 } from "lucide-react";
+import { Eye, Pencil, Trash2, MapPin, Camera } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { AspectRatio } from "@/components/ui/aspect-ratio";
 
 export default function AdminVisits() {
   const [visits, setVisits] = useState<any[]>([]);
@@ -26,6 +27,7 @@ export default function AdminVisits() {
   const [editLeaving, setEditLeaving] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [editDate, setEditDate] = useState("");
+  const [photoModal, setPhotoModal] = useState<any>(null);
 
   const fetchVisits = async () => {
     setLoading(true);
@@ -66,6 +68,34 @@ export default function AdminVisits() {
     toast.success("Updated"); setEditVisit(null); fetchVisits();
   };
 
+  const renderAddress = (v: any) => {
+    if (v.location_address) return <span className="text-xs">{v.location_address}</span>;
+    if (v.latitude && v.longitude) return <span className="text-xs text-muted-foreground italic">Pending sync</span>;
+    return <span className="text-muted-foreground">—</span>;
+  };
+
+  const renderPhoto = (v: any) => {
+    if (v.photo_url) {
+      return (
+        <button
+          onClick={() => setPhotoModal(v)}
+          className="block rounded overflow-hidden border border-border hover:ring-2 hover:ring-primary/50 transition-all"
+          style={{ width: 40, height: 40 }}
+        >
+          <img
+            src={v.photo_url}
+            alt="Visit photo"
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        </button>
+      );
+    }
+    // Has coordinates but no photo_url could mean pending upload — but photo_url null with no indicator
+    // We simply show dash if no photo was taken
+    return <span className="text-muted-foreground">—</span>;
+  };
+
   return (
     <Card>
       <CardHeader><CardTitle className="flex items-center gap-2"><Eye className="h-5 w-5 text-accent" /> All Visits</CardTitle></CardHeader>
@@ -81,7 +111,21 @@ export default function AdminVisits() {
         {loading ? <p className="text-muted-foreground py-8 text-center">Loading...</p> : (
           <div className="overflow-x-auto">
             <Table>
-              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Rep</TableHead><TableHead>Customer</TableHead><TableHead>Acc #</TableHead><TableHead>Arrival</TableHead><TableHead>Leaving</TableHead><TableHead>Duration</TableHead><TableHead>Notes</TableHead><TableHead></TableHead></TableRow></TableHeader>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Rep</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Acc #</TableHead>
+                  <TableHead>Arrival</TableHead>
+                  <TableHead>Leaving</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead><MapPin className="h-3.5 w-3.5 inline mr-1" />Address</TableHead>
+                  <TableHead><Camera className="h-3.5 w-3.5 inline mr-1" />Photo</TableHead>
+                  <TableHead>Notes</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
               <TableBody>
                 {visits.map((v: any) => (
                    <TableRow key={v.id} className={v.status === "skipped" ? "bg-destructive/10" : ""}>
@@ -97,6 +141,8 @@ export default function AdminVisits() {
                     <TableCell>{v.status === "skipped" ? "—" : v.arrival_time?.slice(0,5)}</TableCell>
                     <TableCell>{v.status === "skipped" ? "—" : v.leaving_time?.slice(0,5)}</TableCell>
                     <TableCell>{v.status === "skipped" ? "—" : `${v.duration_minutes} min`}</TableCell>
+                    <TableCell className="max-w-[180px] truncate">{renderAddress(v)}</TableCell>
+                    <TableCell>{renderPhoto(v)}</TableCell>
                     <TableCell className="max-w-[150px] truncate">{v.notes || "—"}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
@@ -111,6 +157,8 @@ export default function AdminVisits() {
           </div>
         )}
       </CardContent>
+
+      {/* Edit dialog */}
       <Dialog open={!!editVisit} onOpenChange={(o) => !o && setEditVisit(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>Edit Visit</DialogTitle></DialogHeader>
@@ -121,6 +169,31 @@ export default function AdminVisits() {
             <div><Label>Notes</Label><Textarea value={editNotes} onChange={(e) => setEditNotes(e.target.value)} /></div>
           </div>
           <DialogFooter><Button onClick={saveEdit}>Save</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Photo lightbox */}
+      <Dialog open={!!photoModal} onOpenChange={(o) => !o && setPhotoModal(null)}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Visit Photo</DialogTitle>
+          </DialogHeader>
+          {photoModal && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                <span><strong className="text-foreground">Rep:</strong> {photoModal.reps?.rep_name}</span>
+                <span><strong className="text-foreground">Customer:</strong> {photoModal.customers?.customer_name}</span>
+                <span><strong className="text-foreground">Date:</strong> {photoModal.visit_date}</span>
+              </div>
+              <div className="rounded-lg overflow-hidden border border-border">
+                <img
+                  src={photoModal.photo_url}
+                  alt={`Visit photo — ${photoModal.customers?.customer_name}`}
+                  className="w-full h-auto max-h-[70vh] object-contain bg-muted"
+                />
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </Card>
