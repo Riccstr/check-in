@@ -8,6 +8,8 @@ import {
   removeSyncedScheduleItemUpdates,
 } from "./offlineDb";
 import { toast } from "sonner";
+import { reverseGeocode } from "./geolocation";
+import { base64ToBlob } from "./imageCompressor";
 
 let syncing = false;
 
@@ -142,9 +144,17 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
           continue;
         }
 
+        // Attempt reverse geocode if we have coords but no address
+        if (payload.latitude && payload.longitude && !payload.location_address) {
+          try {
+            const addr = await reverseGeocode(payload.latitude, payload.longitude);
+            if (addr) payload.location_address = addr;
+          } catch { /* non-blocking */ }
+        }
+
         const { data: insertedVisit, error } = await supabase
           .from("visits")
-          .insert(visit.payload)
+          .insert(payload)
           .select("id")
           .maybeSingle();
 
@@ -157,7 +167,26 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
           syncedVisitsCount++;
 
           if (insertedVisit?.id) {
-            await linkVisitToScheduleItem(insertedVisit.id, visit.payload);
+            await linkVisitToScheduleItem(insertedVisit.id, payload);
+
+            // Upload photo if stored offline
+            if (visit.photo_base64) {
+              try {
+                const blob = base64ToBlob(visit.photo_base64);
+                const path = `${payload.rep_id}/${insertedVisit.id}.jpg`;
+                const { error: uploadErr } = await supabase.storage
+                  .from("visit-photos")
+                  .upload(path, blob, { contentType: "image/jpeg", upsert: true });
+                if (!uploadErr) {
+                  const { data: urlData } = supabase.storage.from("visit-photos").getPublicUrl(path);
+                  if (urlData?.publicUrl) {
+                    await supabase.from("visits").update({ photo_url: urlData.publicUrl } as any).eq("id", insertedVisit.id);
+                  }
+                }
+              } catch (photoErr) {
+                console.warn("[Sync] Photo upload failed:", photoErr);
+              }
+            }
           }
         }
       } catch (err: any) {

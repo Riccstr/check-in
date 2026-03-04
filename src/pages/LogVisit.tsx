@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -8,10 +8,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { MapPin, Clock } from "lucide-react";
+import { MapPin, Clock, Camera, X } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { addOfflineVisit, setCachedCustomers, getCachedCustomers } from "@/lib/offlineDb";
+import { captureLocation, reverseGeocode } from "@/lib/geolocation";
+import { compressImage, blobToBase64 } from "@/lib/imageCompressor";
 
 export default function LogVisit() {
   const { repId } = useAuth();
@@ -23,6 +25,47 @@ export default function LogVisit() {
   const [leavingTime, setLeavingTime] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // GPS + Photo state
+  const [capturedLat, setCapturedLat] = useState<number | null>(null);
+  const [capturedLng, setCapturedLng] = useState<number | null>(null);
+  const [capturedAddress, setCapturedAddress] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoBlob, setPhotoBlob] = useState<Blob | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Capture GPS on arrival
+  const handleArrivalNow = () => {
+    setArrivalTime(nowTime());
+    captureLocation().then((loc) => {
+      if (loc) {
+        setCapturedLat(loc.latitude);
+        setCapturedLng(loc.longitude);
+        if (isOnline) {
+          reverseGeocode(loc.latitude, loc.longitude).then((addr) => {
+            if (addr) setCapturedAddress(addr);
+          });
+        }
+      }
+    });
+  };
+
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImage(file);
+      setPhotoBlob(compressed);
+      setPhotoPreview(URL.createObjectURL(compressed));
+    } catch { toast.error("Failed to process photo"); }
+    e.target.value = "";
+  };
+
+  const clearPhoto = () => {
+    setPhotoBlob(null);
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoPreview(null);
+  };
 
   useEffect(() => {
     if (!repId) return;
@@ -92,7 +135,7 @@ export default function LogVisit() {
     setSubmitting(true);
 
     const clientId = uuidv4();
-    const visitPayload = {
+    const visitPayload: any = {
       rep_id: repId,
       customer_id: customerId,
       visit_date: visitDate,
@@ -101,11 +144,14 @@ export default function LogVisit() {
       duration_minutes: duration,
       notes: notes || null,
       client_generated_id: clientId,
+      latitude: capturedLat,
+      longitude: capturedLng,
+      location_address: capturedAddress,
     };
 
     // Always try online first, but catch ALL errors and fall back to offline
     try {
-      const { error } = await supabase.from("visits").insert(visitPayload);
+      const { data: insertedVisit, error } = await supabase.from("visits").insert(visitPayload).select("id").maybeSingle();
       if (error) {
         const msg = error.message?.toLowerCase() || "";
         if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed") || msg.includes("load") || !isOnline) {
@@ -115,11 +161,23 @@ export default function LogVisit() {
           toast.error(error.message);
         }
       } else {
+        // Upload photo online
+        if (insertedVisit?.id && photoBlob) {
+          try {
+            const path = `${repId}/${insertedVisit.id}.jpg`;
+            const { error: upErr } = await supabase.storage.from("visit-photos").upload(path, photoBlob, { contentType: "image/jpeg", upsert: true });
+            if (!upErr) {
+              const { data: urlData } = supabase.storage.from("visit-photos").getPublicUrl(path);
+              if (urlData?.publicUrl) {
+                await supabase.from("visits").update({ photo_url: urlData.publicUrl } as any).eq("id", insertedVisit.id);
+              }
+            }
+          } catch { /* non-blocking */ }
+        }
         toast.success("Visit logged!");
         resetForm();
       }
     } catch (err: any) {
-      // Catch TypeError: Failed to fetch / TypeError: Load failed / any network error
       console.warn("[LogVisit] Network exception, saving offline:", err?.message);
       try {
         await saveOffline(clientId, visitPayload);
@@ -134,6 +192,10 @@ export default function LogVisit() {
 
   const saveOffline = async (clientId: string, payload: any) => {
     const customerName = customers.find((c) => c.id === payload.customer_id)?.customer_name;
+    let photoB64: string | null = null;
+    if (photoBlob) {
+      photoB64 = await blobToBase64(photoBlob);
+    }
     await addOfflineVisit({
       client_generated_id: clientId,
       payload,
@@ -142,6 +204,7 @@ export default function LogVisit() {
       last_sync_attempt: null,
       error_message: null,
       customer_name: customerName,
+      photo_base64: photoB64,
     });
     toast.success("Saved offline. Will sync when online.");
     resetForm();
@@ -152,6 +215,10 @@ export default function LogVisit() {
     setArrivalTime("");
     setLeavingTime("");
     setNotes("");
+    setCapturedLat(null);
+    setCapturedLng(null);
+    setCapturedAddress(null);
+    clearPhoto();
   };
 
   return (
@@ -186,7 +253,7 @@ export default function LogVisit() {
               <Label>Arrival Time *</Label>
               <div className="flex gap-2">
                 <Input type="time" value={arrivalTime} onChange={(e) => setArrivalTime(e.target.value)} className="flex-1" required />
-                <Button type="button" variant="outline" size="sm" className="shrink-0 border-accent text-accent hover:bg-accent hover:text-accent-foreground" onClick={() => setArrivalTime(nowTime())}>
+                <Button type="button" variant="outline" size="sm" className="shrink-0 border-accent text-accent hover:bg-accent hover:text-accent-foreground" onClick={handleArrivalNow}>
                   <Clock className="h-4 w-4 mr-1" /> Arrived Now
                 </Button>
               </div>
@@ -202,11 +269,48 @@ export default function LogVisit() {
               </div>
             </div>
 
+            {/* GPS location confirmation */}
+            {capturedLat !== null && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1.5">
+                <MapPin className="h-3 w-3 shrink-0" />
+                <span className="truncate">{capturedAddress || `${capturedLat.toFixed(5)}, ${capturedLng?.toFixed(5)}`}</span>
+              </div>
+            )}
+
             {arrivalTime && leavingTime && (
               <div className={`text-sm font-medium px-3 py-2 rounded-md ${duration > 0 ? "bg-secondary text-foreground" : "bg-destructive/10 text-destructive"}`}>
                 Duration: {duration > 0 ? `${duration} minutes` : "Invalid (leaving must be after arrival)"}
               </div>
             )}
+
+            {/* Photo capture */}
+            <div className="space-y-2">
+              <Label>Store Photo (optional)</Label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handlePhotoSelect}
+              />
+              {photoPreview ? (
+                <div className="relative inline-block">
+                  <img src={photoPreview} alt="Store photo" className="h-24 w-24 object-cover rounded border border-border" />
+                  <button
+                    type="button"
+                    onClick={clearPhoto}
+                    className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ) : (
+                <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                  <Camera className="h-4 w-4 mr-1" /> Take Photo
+                </Button>
+              )}
+            </div>
 
             <div className="space-y-2">
               <Label>Notes (optional)</Label>

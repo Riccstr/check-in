@@ -355,8 +355,12 @@ export type Database = {
           customer_id: string
           duration_minutes: number | null
           id: string
+          latitude: number | null
           leaving_time: string | null
+          location_address: string | null
+          longitude: number | null
           notes: string | null
+          photo_url: string | null
           rep_id: string
           status: string
           visit_date: string
@@ -368,8 +372,12 @@ export type Database = {
           customer_id: string
           duration_minutes?: number | null
           id?: string
+          latitude?: number | null
           leaving_time?: string | null
+          location_address?: string | null
+          longitude?: number | null
           notes?: string | null
+          photo_url?: string | null
           rep_id: string
           status?: string
           visit_date?: string
@@ -381,8 +389,12 @@ export type Database = {
           customer_id?: string
           duration_minutes?: number | null
           id?: string
+          latitude?: number | null
           leaving_time?: string | null
+          location_address?: string | null
+          longitude?: number | null
           notes?: string | null
+          photo_url?: string | null
           rep_id?: string
           status?: string
           visit_date?: string
