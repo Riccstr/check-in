@@ -9,9 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Eye, Pencil, Trash2, MapPin, Camera } from "lucide-react";
+import { Eye, Pencil, Trash2, Camera } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { AspectRatio } from "@/components/ui/aspect-ratio";
 
 export default function AdminVisits() {
   const [visits, setVisits] = useState<any[]>([]);
@@ -68,12 +67,6 @@ export default function AdminVisits() {
     toast.success("Updated"); setEditVisit(null); fetchVisits();
   };
 
-  const renderAddress = (v: any) => {
-    if (v.location_address) return <span className="text-xs">{v.location_address}</span>;
-    if (v.latitude && v.longitude) return <span className="text-xs text-muted-foreground italic">Pending sync</span>;
-    return <span className="text-muted-foreground">—</span>;
-  };
-
   const renderPhoto = (v: any) => {
     if (v.photo_url) {
       return (
@@ -91,8 +84,6 @@ export default function AdminVisits() {
         </button>
       );
     }
-    // Has coordinates but no photo_url could mean pending upload — but photo_url null with no indicator
-    // We simply show dash if no photo was taken
     return <span className="text-muted-foreground">—</span>;
   };
 
@@ -120,7 +111,6 @@ export default function AdminVisits() {
                   <TableHead>Arrival</TableHead>
                   <TableHead>Leaving</TableHead>
                   <TableHead>Duration</TableHead>
-                  <TableHead><MapPin className="h-3.5 w-3.5 inline mr-1" />Address</TableHead>
                   <TableHead><Camera className="h-3.5 w-3.5 inline mr-1" />Photo</TableHead>
                   <TableHead>Notes</TableHead>
                   <TableHead></TableHead>
@@ -141,7 +131,6 @@ export default function AdminVisits() {
                     <TableCell>{v.status === "skipped" ? "—" : v.arrival_time?.slice(0,5)}</TableCell>
                     <TableCell>{v.status === "skipped" ? "—" : v.leaving_time?.slice(0,5)}</TableCell>
                     <TableCell>{v.status === "skipped" ? "—" : `${v.duration_minutes} min`}</TableCell>
-                    <TableCell className="max-w-[180px] truncate">{renderAddress(v)}</TableCell>
                     <TableCell>{renderPhoto(v)}</TableCell>
                     <TableCell className="max-w-[150px] truncate">{v.notes || "—"}</TableCell>
                     <TableCell>

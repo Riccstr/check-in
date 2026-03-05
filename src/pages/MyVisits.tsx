@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Eye, Pencil, Trash2, RefreshCw } from "lucide-react";
+import { Eye, Pencil, Trash2, RefreshCw, Camera } from "lucide-react";
 import { getAllOfflineVisits, type OfflineVisit } from "@/lib/offlineDb";
 import { syncPendingVisits } from "@/lib/syncEngine";
 
@@ -25,6 +25,7 @@ interface Visit {
   status: string;
   customer_id: string;
   customers: { customer_name: string } | null;
+  photo_url?: string | null;
   _offline?: boolean;
   _sync_status?: "pending" | "synced" | "error";
   _error_message?: string | null;
@@ -44,12 +45,12 @@ export default function MyVisits() {
   const [editLeaving, setEditLeaving] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [editDate, setEditDate] = useState("");
+  const [photoModal, setPhotoModal] = useState<Visit | null>(null);
 
   const fetchVisits = useCallback(async () => {
     if (!repId) return;
     setLoading(true);
 
-    // Fetch server visits
     let q = supabase
       .from("visits")
       .select("*, customers(customer_name, account_number)")
@@ -70,7 +71,7 @@ export default function MyVisits() {
     // Fetch offline visits
     const offlineVisits = await getAllOfflineVisits();
     const offlineAsVisits: Visit[] = offlineVisits
-      .filter((ov) => ov.sync_status !== "synced") // Don't show synced offline visits (they should be in server data)
+      .filter((ov) => ov.sync_status !== "synced")
       .filter((ov) => ov.payload.rep_id === repId)
       .filter((ov) => {
         if (customerFilter && customerFilter !== "all" && ov.payload.customer_id !== customerFilter) return false;
@@ -88,6 +89,7 @@ export default function MyVisits() {
         status: (ov.payload as any).status || "visited",
         customer_id: ov.payload.customer_id,
         customers: { customer_name: ov.customer_name || "Unknown" },
+        photo_url: null,
         _offline: true,
         _sync_status: ov.sync_status,
         _error_message: ov.error_message,
@@ -129,7 +131,7 @@ export default function MyVisits() {
   };
 
   const openEdit = (v: Visit) => {
-    if (v._offline) return; // Can't edit offline visits
+    if (v._offline) return;
     setEditVisit(v);
     setEditArrival(v.arrival_time);
     setEditLeaving(v.leaving_time);
@@ -162,6 +164,26 @@ export default function MyVisits() {
   };
 
   const hasPendingOffline = visits.some((v) => v._offline);
+
+  const renderPhoto = (v: Visit) => {
+    if (v.photo_url) {
+      return (
+        <button
+          onClick={() => setPhotoModal(v)}
+          className="block rounded overflow-hidden border border-border hover:ring-2 hover:ring-primary/50 transition-all"
+          style={{ width: 40, height: 40 }}
+        >
+          <img
+            src={v.photo_url}
+            alt="Visit photo"
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        </button>
+      );
+    }
+    return <span className="text-muted-foreground">—</span>;
+  };
 
   return (
     <div>
@@ -213,6 +235,7 @@ export default function MyVisits() {
                     <TableHead>Arrival</TableHead>
                     <TableHead>Leaving</TableHead>
                     <TableHead>Duration</TableHead>
+                    <TableHead><Camera className="h-3.5 w-3.5 inline mr-1" />Photo</TableHead>
                     <TableHead>Notes</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead></TableHead>
@@ -232,6 +255,7 @@ export default function MyVisits() {
                       <TableCell>{v.status === "skipped" ? "—" : v.arrival_time?.slice(0,5)}</TableCell>
                       <TableCell>{v.status === "skipped" ? "—" : v.leaving_time?.slice(0,5)}</TableCell>
                       <TableCell>{v.status === "skipped" ? "—" : `${v.duration_minutes} min`}</TableCell>
+                      <TableCell>{renderPhoto(v)}</TableCell>
                       <TableCell className="max-w-[200px] truncate">{v.notes || "—"}</TableCell>
                       <TableCell>
                         {v._offline ? (
@@ -269,6 +293,30 @@ export default function MyVisits() {
             <div><Label>Notes</Label><Textarea value={editNotes} onChange={(e) => setEditNotes(e.target.value)} /></div>
           </div>
           <DialogFooter><Button onClick={saveEdit}>Save</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Photo lightbox */}
+      <Dialog open={!!photoModal} onOpenChange={(o) => !o && setPhotoModal(null)}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Visit Photo</DialogTitle>
+          </DialogHeader>
+          {photoModal && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                <span><strong className="text-foreground">Customer:</strong> {photoModal.customers?.customer_name}</span>
+                <span><strong className="text-foreground">Date:</strong> {photoModal.visit_date}</span>
+              </div>
+              <div className="rounded-lg overflow-hidden border border-border">
+                <img
+                  src={photoModal.photo_url!}
+                  alt={`Visit photo — ${photoModal.customers?.customer_name}`}
+                  className="w-full h-auto max-h-[70vh] object-contain bg-muted"
+                />
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

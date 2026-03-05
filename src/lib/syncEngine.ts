@@ -8,7 +8,6 @@ import {
   removeSyncedScheduleItemUpdates,
 } from "./offlineDb";
 import { toast } from "sonner";
-import { reverseGeocode } from "./geolocation";
 import { base64ToBlob } from "./imageCompressor";
 
 let syncing = false;
@@ -144,14 +143,6 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
           continue;
         }
 
-        // Attempt reverse geocode if we have coords but no address
-        if (payload.latitude && payload.longitude && !payload.location_address) {
-          try {
-            const addr = await reverseGeocode(payload.latitude, payload.longitude);
-            if (addr) payload.location_address = addr;
-          } catch { /* non-blocking */ }
-        }
-
         const { data: insertedVisit, error } = await supabase
           .from("visits")
           .insert(payload)
@@ -228,7 +219,6 @@ export function setupAutoSync(onSyncComplete?: () => void) {
   };
 
   const handleOnline = () => {
-    // Small delay to let connection stabilize
     setTimeout(doSync, 1500);
   };
 
@@ -241,7 +231,6 @@ export function setupAutoSync(onSyncComplete?: () => void) {
   window.addEventListener("online", handleOnline);
   document.addEventListener("visibilitychange", handleVisibility);
 
-  // Sync on load if online
   if (navigator.onLine) {
     setTimeout(doSync, 2000);
   }
