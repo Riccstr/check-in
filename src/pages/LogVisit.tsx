@@ -8,11 +8,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { MapPin, Clock, Camera, X } from "lucide-react";
+import { Clock, Camera, X, ClipboardList } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { addOfflineVisit, setCachedCustomers, getCachedCustomers } from "@/lib/offlineDb";
-import { captureLocation, reverseGeocode } from "@/lib/geolocation";
 import { compressImage, blobToBase64 } from "@/lib/imageCompressor";
 
 export default function LogVisit() {
@@ -26,29 +25,10 @@ export default function LogVisit() {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // GPS + Photo state
-  const [capturedLat, setCapturedLat] = useState<number | null>(null);
-  const [capturedLng, setCapturedLng] = useState<number | null>(null);
-  const [capturedAddress, setCapturedAddress] = useState<string | null>(null);
+  // Photo state
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBlob, setPhotoBlob] = useState<Blob | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Capture GPS on arrival
-  const handleArrivalNow = () => {
-    setArrivalTime(nowTime());
-    captureLocation().then((loc) => {
-      if (loc) {
-        setCapturedLat(loc.latitude);
-        setCapturedLng(loc.longitude);
-        if (isOnline) {
-          reverseGeocode(loc.latitude, loc.longitude).then((addr) => {
-            if (addr) setCapturedAddress(addr);
-          });
-        }
-      }
-    });
-  };
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -82,7 +62,6 @@ export default function LogVisit() {
               .filter((d: any) => d.customers?.is_active)
               .map((d: any) => ({ id: d.customers.id, customer_name: d.customers.customer_name }));
             setCustomers(active);
-            // Cache for offline use (with full details)
             await setCachedCustomers(data
               .filter((d: any) => d.customers?.is_active)
               .map((d: any) => ({
@@ -93,7 +72,6 @@ export default function LogVisit() {
               })));
           }
         } catch {
-          // Network error, fall through to cache
           await loadFromCache();
         }
       } else {
@@ -144,18 +122,13 @@ export default function LogVisit() {
       duration_minutes: duration,
       notes: notes || null,
       client_generated_id: clientId,
-      latitude: capturedLat,
-      longitude: capturedLng,
-      location_address: capturedAddress,
     };
 
-    // Always try online first, but catch ALL errors and fall back to offline
     try {
       const { data: insertedVisit, error } = await supabase.from("visits").insert(visitPayload).select("id").maybeSingle();
       if (error) {
         const msg = error.message?.toLowerCase() || "";
         if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed") || msg.includes("load") || !isOnline) {
-          console.warn("[LogVisit] Supabase error while offline-ish, saving offline:", error.message);
           await saveOffline(clientId, visitPayload);
         } else {
           toast.error(error.message);
@@ -178,11 +151,9 @@ export default function LogVisit() {
         resetForm();
       }
     } catch (err: any) {
-      console.warn("[LogVisit] Network exception, saving offline:", err?.message);
       try {
         await saveOffline(clientId, visitPayload);
       } catch (idbErr: any) {
-        console.error("[LogVisit] IndexedDB save also failed:", idbErr?.message);
         toast.error("Failed to save visit. Please try again.");
       }
     }
@@ -215,9 +186,6 @@ export default function LogVisit() {
     setArrivalTime("");
     setLeavingTime("");
     setNotes("");
-    setCapturedLat(null);
-    setCapturedLng(null);
-    setCapturedAddress(null);
     clearPhoto();
   };
 
@@ -226,7 +194,7 @@ export default function LogVisit() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <MapPin className="h-5 w-5 text-accent" />
+            <ClipboardList className="h-5 w-5 text-accent" />
             Log a Visit
           </CardTitle>
         </CardHeader>
@@ -253,7 +221,7 @@ export default function LogVisit() {
               <Label>Arrival Time *</Label>
               <div className="flex gap-2">
                 <Input type="time" value={arrivalTime} onChange={(e) => setArrivalTime(e.target.value)} className="flex-1" required />
-                <Button type="button" variant="outline" size="sm" className="shrink-0 border-accent text-accent hover:bg-accent hover:text-accent-foreground" onClick={handleArrivalNow}>
+                <Button type="button" variant="outline" size="sm" className="shrink-0 border-accent text-accent hover:bg-accent hover:text-accent-foreground" onClick={() => setArrivalTime(nowTime())}>
                   <Clock className="h-4 w-4 mr-1" /> Arrived Now
                 </Button>
               </div>
@@ -268,14 +236,6 @@ export default function LogVisit() {
                 </Button>
               </div>
             </div>
-
-            {/* GPS location confirmation */}
-            {capturedLat !== null && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1.5">
-                <MapPin className="h-3 w-3 shrink-0" />
-                <span className="truncate">{capturedAddress || `${capturedLat.toFixed(5)}, ${capturedLng?.toFixed(5)}`}</span>
-              </div>
-            )}
 
             {arrivalTime && leavingTime && (
               <div className={`text-sm font-medium px-3 py-2 rounded-md ${duration > 0 ? "bg-secondary text-foreground" : "bg-destructive/10 text-destructive"}`}>

@@ -15,9 +15,6 @@ export interface OfflineVisit {
     notes: string | null;
     client_generated_id: string;
     status?: string;
-    latitude?: number | null;
-    longitude?: number | null;
-    location_address?: string | null;
   };
   created_at_local: string;
   sync_status: "pending" | "synced" | "error";
@@ -53,11 +50,11 @@ export interface CachedCustomer {
 }
 
 export interface CachedSchedule {
-  key: string; // repId + "_" + date
+  key: string;
   rep_id: string;
   schedule_date: string;
   schedule_id: string | null;
-  data: any; // full schedule + items
+  data: any;
   cached_at: string;
 }
 

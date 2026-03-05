@@ -7,12 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { CalendarDays, Clock, Check, SkipForward, Plus, Loader2, CircleDot, MapPin, Camera, X } from "lucide-react";
+import { CalendarDays, Clock, Check, SkipForward, Plus, Loader2, CircleDot, Camera, X } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { v4 as uuidv4 } from "uuid";
-import { captureLocation, reverseGeocode } from "@/lib/geolocation";
 import { compressImage, blobToBase64 } from "@/lib/imageCompressor";
 import {
   addOfflineVisit,
@@ -39,9 +38,6 @@ async function saveVisitOffline(
   notes: string | null,
   customerName?: string,
   status?: string,
-  latitude?: number | null,
-  longitude?: number | null,
-  locationAddress?: string | null,
   photoBase64?: string | null,
 ) {
   const clientId = uuidv4();
@@ -57,9 +53,6 @@ async function saveVisitOffline(
       notes,
       client_generated_id: clientId,
       ...(status ? { status } : {}),
-      latitude: latitude ?? null,
-      longitude: longitude ?? null,
-      location_address: locationAddress ?? null,
     } as any,
     created_at_local: new Date().toISOString(),
     sync_status: "pending",
@@ -89,9 +82,6 @@ function ScheduleItemRow({
   const [actionInProgress, setActionInProgress] = useState(false);
 
   // GPS + Photo state
-  const [capturedLat, setCapturedLat] = useState<number | null>(null);
-  const [capturedLng, setCapturedLng] = useState<number | null>(null);
-  const [capturedAddress, setCapturedAddress] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBlob, setPhotoBlob] = useState<Blob | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -130,20 +120,6 @@ function ScheduleItemRow({
       last_sync_attempt: null,
       error_message: null,
     });
-  };
-
-  // Capture GPS (fire-and-forget, never blocks)
-  const doGpsCapture = async () => {
-    const loc = await captureLocation();
-    if (loc) {
-      setCapturedLat(loc.latitude);
-      setCapturedLng(loc.longitude);
-      // Try reverse geocode if online
-      if (navigator.onLine) {
-        const addr = await reverseGeocode(loc.latitude, loc.longitude);
-        if (addr) setCapturedAddress(addr);
-      }
-    }
   };
 
   // Photo handling
@@ -236,9 +212,6 @@ function ScheduleItemRow({
           leaving_time: newItem.leaving_time,
           duration_minutes: newItem.duration_minutes,
           notes: newItem.notes || null,
-          latitude: capturedLat,
-          longitude: capturedLng,
-          location_address: capturedAddress,
         };
 
         if (item.visit_id) {
@@ -292,9 +265,6 @@ function ScheduleItemRow({
           newItem.notes || null,
           item.customers?.customer_name,
           undefined,
-          capturedLat,
-          capturedLng,
-          capturedAddress,
           photoB64,
         );
         toast.success("Saved offline. Will sync when online.");
@@ -327,8 +297,6 @@ function ScheduleItemRow({
     const t = nowTime();
     setLocalArrival(t);
     updateItem({ arrival_time: t });
-    // Fire GPS capture in background — never blocks
-    doGpsCapture();
   };
   const markLeft = () => {
     const t = nowTime();
@@ -480,13 +448,8 @@ function ScheduleItemRow({
         </div>
       )}
 
-      {/* GPS location confirmation */}
-      {item.status !== "skipped" && capturedLat !== null && (
-        <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
-          <MapPin className="h-3 w-3 shrink-0" />
-          <span className="truncate">{capturedAddress || `${capturedLat.toFixed(5)}, ${capturedLng?.toFixed(5)}`}</span>
-        </div>
-      )}
+
+
 
       {/* Photo capture — only shown when in progress (arrived but not left) */}
       {item.status !== "skipped" && item.status !== "visited" && localArrival && (
