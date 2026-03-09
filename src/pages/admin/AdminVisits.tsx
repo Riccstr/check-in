@@ -6,11 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Eye, Pencil, Trash2, Camera } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export default function AdminVisits() {
   const [visits, setVisits] = useState<any[]>([]);
@@ -132,7 +133,16 @@ export default function AdminVisits() {
                     <TableCell>{v.status === "skipped" ? "—" : v.leaving_time?.slice(0,5)}</TableCell>
                     <TableCell>{v.status === "skipped" ? "—" : `${v.duration_minutes} min`}</TableCell>
                     <TableCell>{renderPhoto(v)}</TableCell>
-                    <TableCell className="max-w-[150px] truncate">{v.notes || "—"}</TableCell>
+                    <TableCell className="max-w-[150px]">
+                      {v.notes ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="truncate block cursor-default">{v.notes}</span>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs whitespace-pre-wrap">{v.notes}</TooltipContent>
+                        </Tooltip>
+                      ) : "—"}
+                    </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openEdit(v)}><Pencil className="h-4 w-4" /></Button>
@@ -150,7 +160,7 @@ export default function AdminVisits() {
       {/* Edit dialog */}
       <Dialog open={!!editVisit} onOpenChange={(o) => !o && setEditVisit(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Edit Visit</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Edit Visit</DialogTitle><DialogDescription>Update the visit date, times, and notes.</DialogDescription></DialogHeader>
           <div className="space-y-3">
             <div><Label>Date</Label><Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} /></div>
             <div><Label>Arrival</Label><Input type="time" value={editArrival} onChange={(e) => setEditArrival(e.target.value)} /></div>
@@ -166,6 +176,7 @@ export default function AdminVisits() {
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Visit Photo</DialogTitle>
+            <DialogDescription>Photo taken during the visit.</DialogDescription>
           </DialogHeader>
           {photoModal && (
             <div className="space-y-3">

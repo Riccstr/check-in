@@ -1,5 +1,55 @@
 
 /**
+ * Burn a timestamp label into the bottom-right corner of an image blob.
+ * The text is rendered directly onto the pixels so it cannot be stripped
+ * without re-editing the image itself.
+ */
+export function stampImage(blob: Blob, label: string): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { reject(new Error("Canvas not supported")); return; }
+      ctx.drawImage(img, 0, 0);
+
+      const fontSize = Math.max(14, Math.round(img.width * 0.028));
+      ctx.font = `bold ${fontSize}px monospace`;
+
+      const padding = Math.round(fontSize * 0.5);
+      const metrics = ctx.measureText(label);
+      const textW = metrics.width;
+      const textH = fontSize;
+
+      const boxX = img.width - textW - padding * 2 - padding;
+      const boxY = img.height - textH - padding * 2 - padding;
+      const boxW = textW + padding * 2;
+      const boxH = textH + padding * 2;
+
+      // Semi-transparent dark background
+      ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+      ctx.fillRect(boxX, boxY, boxW, boxH);
+
+      // White text
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(label, boxX + padding, boxY + padding + textH - Math.round(fontSize * 0.15));
+
+      canvas.toBlob(
+        (b) => { if (b) resolve(b); else reject(new Error("Stamp failed")); },
+        "image/jpeg",
+        0.88
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Image load failed")); };
+    img.src = url;
+  });
+}
+
+/**
  * Compress an image file/blob to a target max dimension and quality.
  * Returns a Blob (JPEG).
  */

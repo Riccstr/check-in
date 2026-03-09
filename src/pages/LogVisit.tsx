@@ -12,7 +12,7 @@ import { Clock, Camera, X, ClipboardList } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { addOfflineVisit, setCachedCustomers, getCachedCustomers } from "@/lib/offlineDb";
-import { compressImage, blobToBase64 } from "@/lib/imageCompressor";
+import { compressImage, stampImage, blobToBase64 } from "@/lib/imageCompressor";
 
 export default function LogVisit() {
   const { repId } = useAuth();
@@ -35,8 +35,14 @@ export default function LogVisit() {
     if (!file) return;
     try {
       const compressed = await compressImage(file);
-      setPhotoBlob(compressed);
-      setPhotoPreview(URL.createObjectURL(compressed));
+      const now = new Date();
+      const label = now.toLocaleString("en-US", {
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+      });
+      const stamped = await stampImage(compressed, label);
+      setPhotoBlob(stamped);
+      setPhotoPreview(URL.createObjectURL(stamped));
     } catch { toast.error("Failed to process photo"); }
     e.target.value = "";
   };
