@@ -91,8 +91,42 @@ export function CameraCapture({ onCapture, triggerClassName }: CameraCaptureProp
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    // 1. Draw the raw video frame.
     ctx.drawImage(video, 0, 0);
 
+    // 2. Burn the timestamp onto the canvas so it is part of the image data.
+    //    Use local time at the exact moment of capture.
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const stamp =
+      `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ` +
+      `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+    // Scale font size relative to image width so it stays legible on any
+    // resolution — minimum 18 px, roughly 2.5 % of width on a typical photo.
+    const fontSize = Math.max(18, Math.round(canvas.width * 0.025));
+    ctx.font = `bold ${fontSize}px sans-serif`;
+
+    const padding = Math.round(fontSize * 0.5);
+    const textMetrics = ctx.measureText(stamp);
+    const textW = textMetrics.width;
+    const textH = fontSize; // ascent height approximation
+
+    const rectX = padding;
+    const rectY = canvas.height - textH - padding * 2.5;
+    const rectW = textW + padding * 2;
+    const rectH = textH + padding;
+
+    // Semi-transparent black background so the text is readable on any photo.
+    ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+    ctx.fillRect(rectX, rectY, rectW, rectH);
+
+    // White bold text on top of the background rectangle.
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(stamp, rectX + padding, rectY + textH);
+
+    // 3. Convert the stamped canvas to a JPEG blob — this is what gets uploaded.
     canvas.toBlob(
       (blob) => {
         if (blob) {
