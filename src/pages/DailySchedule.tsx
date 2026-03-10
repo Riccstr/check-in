@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { CalendarDays, Clock, Check, SkipForward, Plus, Loader2, CircleDot, Camera, X } from "lucide-react";
+import { CalendarDays, Clock, Check, SkipForward, Plus, Loader2, CircleDot, X } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
@@ -85,7 +85,6 @@ function ScheduleItemRow({
   // Photo state
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBlob, setPhotoBlob] = useState<Blob | null>(null);
-  const [showCamera, setShowCamera] = useState(false);
 
   useEffect(() => { setLocalNotes(item.notes || ""); }, [item.notes]);
   useEffect(() => { setLocalArrival(item.arrival_time || ""); }, [item.arrival_time]);
@@ -125,7 +124,6 @@ function ScheduleItemRow({
 
   // Photo handling
   const handleCameraCapture = async (blob: Blob) => {
-    setShowCamera(false);
     try {
       const compressed = await compressImage(blob);
       setPhotoBlob(compressed);
@@ -463,20 +461,9 @@ function ScheduleItemRow({
               </button>
             </div>
           ) : (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs"
-              onClick={() => setShowCamera(true)}
-            >
-              <Camera className="h-3 w-3 mr-1" /> Take Photo
-            </Button>
-          )}
-          {showCamera && (
             <CameraCapture
               onCapture={handleCameraCapture}
-              onClose={() => setShowCamera(false)}
+              triggerClassName="h-7 text-xs"
             />
           )}
         </div>

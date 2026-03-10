@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Clock, Camera, X, ClipboardList } from "lucide-react";
+import { Clock, X, ClipboardList } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { addOfflineVisit, setCachedCustomers, getCachedCustomers } from "@/lib/offlineDb";
@@ -29,10 +29,8 @@ export default function LogVisit() {
   // Photo state
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBlob, setPhotoBlob] = useState<Blob | null>(null);
-  const [showCamera, setShowCamera] = useState(false);
 
   const handleCameraCapture = async (blob: Blob) => {
-    setShowCamera(false);
     try {
       const compressed = await compressImage(blob);
       const now = new Date();
@@ -265,17 +263,9 @@ export default function LogVisit() {
                   </button>
                 </div>
               ) : (
-                <Button type="button" variant="outline" size="sm" onClick={() => setShowCamera(true)}>
-                  <Camera className="h-4 w-4 mr-1" /> Take Photo
-                </Button>
+                <CameraCapture onCapture={handleCameraCapture} />
               )}
             </div>
-            {showCamera && (
-              <CameraCapture
-                onCapture={handleCameraCapture}
-                onClose={() => setShowCamera(false)}
-              />
-            )}
 
             <div className="space-y-2">
               <Label>Notes (optional)</Label>

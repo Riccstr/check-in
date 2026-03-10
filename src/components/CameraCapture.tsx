@@ -4,59 +4,83 @@ import { Camera, X } from "lucide-react";
 
 interface CameraCaptureProps {
   onCapture: (blob: Blob) => void;
-  onClose: () => void;
+  /** Extra classes applied to the trigger button (e.g. to match the calling component's sizing). */
+  triggerClassName?: string;
 }
 
-export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
+export function CameraCapture({ onCapture, triggerClassName }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [streamReady, setStreamReady] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Assign the stream to the video element and start playback once both
+  // the overlay is visible AND the stream has been obtained.
   useEffect(() => {
-    let cancelled = false;
+    if (!isOpen || !streamReady) return;
+    const video = videoRef.current;
+    if (!video || !streamRef.current) return;
 
-    const startCamera = async () => {
-      if (!videoRef.current) {
-        console.log("[Camera] Video ref is null — skipping getUserMedia");
-        return;
-      }
+    video.srcObject = streamRef.current;
+    video
+      .play()
+      .then(() => setReady(true))
+      .catch((err) => console.error("[Camera] play() failed:", err));
+  }, [isOpen, streamReady]);
 
-      console.log("[Camera] Calling getUserMedia...");
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
-          audio: false,
-        });
-        console.log("[Camera] getUserMedia succeeded:", stream);
-
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-
-        streamRef.current = stream;
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setReady(true);
-      } catch (err) {
-        console.error("[Camera] getUserMedia failed:", err);
-        if (!cancelled) {
-          setError("Camera access denied or unavailable. Please allow camera permissions and try again.");
-        }
-      }
-    };
-
-    startCamera();
-
+  // Stop all tracks when the component unmounts.
+  useEffect(() => {
     return () => {
-      cancelled = true;
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
+      streamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
+
+  /**
+   * Called directly from the trigger button's onClick.
+   * getUserMedia MUST be the very first expression evaluated here —
+   * iOS Safari requires the call to originate synchronously from a user
+   * gesture with no async gap before it.
+   */
+  const openCamera = () => {
+    console.log("[Camera] getUserMedia called — direct user gesture...");
+
+    // ← First operation, no state updates before this line.
+    const promise = navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false,
+    });
+
+    // State updates happen AFTER getUserMedia is already in flight.
+    setIsOpen(true);
+    setStreamReady(false);
+    setReady(false);
+    setError(null);
+
+    promise
+      .then((stream) => {
+        console.log("[Camera] getUserMedia succeeded:", stream);
+        streamRef.current = stream;
+        setStreamReady(true); // triggers the useEffect above
+      })
+      .catch((err) => {
+        console.error("[Camera] getUserMedia failed:", err);
+        setError(
+          "Camera access denied or unavailable. Please allow camera permissions and try again.",
+        );
+      });
+  };
+
+  const closeCamera = () => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setIsOpen(false);
+    setStreamReady(false);
+    setReady(false);
+    setError(null);
+  };
 
   const capture = () => {
     const video = videoRef.current;
@@ -72,11 +96,7 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
     canvas.toBlob(
       (blob) => {
         if (blob) {
-          // Stop stream before handing off
-          if (streamRef.current) {
-            streamRef.current.getTracks().forEach((t) => t.stop());
-            streamRef.current = null;
-          }
+          closeCamera();
           onCapture(blob);
         }
       },
@@ -86,47 +106,74 @@ export function CameraCapture({ onCapture, onClose }: CameraCaptureProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      <div className="flex justify-end p-3">
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-white bg-black/40 rounded-full p-1"
-          aria-label="Close camera"
-        >
-          <X className="h-6 w-6" />
-        </button>
-      </div>
+    <>
+      {/* Trigger button — this is where the user gesture originates */}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className={triggerClassName}
+        onClick={openCamera}
+      >
+        <Camera className="h-4 w-4 mr-1" /> Take Photo
+      </Button>
 
-      {error ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-white text-center px-6 gap-4">
-          <p>{error}</p>
-          <Button variant="secondary" onClick={onClose}>Close</Button>
+      {/*
+       * The overlay div (and the <video> inside it) is ALWAYS in the DOM.
+       * When the camera is not active it sits off-screen so the videoRef is
+       * never null when we need to assign srcObject.
+       * iOS Safari requires playsinline on any video that plays inline.
+       */}
+      <div
+        className={
+          isOpen
+            ? "fixed inset-0 z-50 bg-black flex flex-col"
+            : "fixed -left-[200vw] -top-[200vh] w-px h-px overflow-hidden"
+        }
+      >
+        <div className="flex justify-end p-3">
+          <button
+            type="button"
+            onClick={closeCamera}
+            className="text-white bg-black/40 rounded-full p-1"
+            aria-label="Close camera"
+          >
+            <X className="h-6 w-6" />
+          </button>
         </div>
-      ) : (
-        <>
-          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-          <video
-            ref={videoRef}
-            className="flex-1 w-full object-cover"
-            playsInline
-            muted
-            autoPlay
-          />
-          <div className="p-4 flex justify-center bg-black">
-            <Button
-              type="button"
-              size="lg"
-              disabled={!ready}
-              onClick={capture}
-              className="px-8"
-            >
-              <Camera className="h-5 w-5 mr-2" />
-              {ready ? "Capture Photo" : "Starting camera…"}
+
+        {error ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-white text-center px-6 gap-4">
+            <p>{error}</p>
+            <Button variant="secondary" onClick={closeCamera}>
+              Close
             </Button>
           </div>
-        </>
-      )}
-    </div>
+        ) : (
+          <>
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video
+              ref={videoRef}
+              className="flex-1 w-full object-cover"
+              playsInline
+              muted
+              autoPlay
+            />
+            <div className="p-4 flex justify-center bg-black">
+              <Button
+                type="button"
+                size="lg"
+                disabled={!ready}
+                onClick={capture}
+                className="px-8"
+              >
+                <Camera className="h-5 w-5 mr-2" />
+                {ready ? "Capture Photo" : "Starting camera…"}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </>
   );
 }
