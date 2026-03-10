@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { v4 as uuidv4 } from "uuid";
 import { compressImage, blobToBase64 } from "@/lib/imageCompressor";
+import { CameraCapture } from "@/components/CameraCapture";
 import {
   addOfflineVisit,
   getCachedCustomers,
@@ -81,10 +82,10 @@ function ScheduleItemRow({
   const [localLeaving, setLocalLeaving] = useState(item.leaving_time || "");
   const [actionInProgress, setActionInProgress] = useState(false);
 
-  // GPS + Photo state
+  // Photo state
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBlob, setPhotoBlob] = useState<Blob | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showCamera, setShowCamera] = useState(false);
 
   useEffect(() => { setLocalNotes(item.notes || ""); }, [item.notes]);
   useEffect(() => { setLocalArrival(item.arrival_time || ""); }, [item.arrival_time]);
@@ -123,19 +124,15 @@ function ScheduleItemRow({
   };
 
   // Photo handling
-  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleCameraCapture = async (blob: Blob) => {
+    setShowCamera(false);
     try {
-      const compressed = await compressImage(file);
+      const compressed = await compressImage(blob);
       setPhotoBlob(compressed);
-      const preview = URL.createObjectURL(compressed);
-      setPhotoPreview(preview);
+      setPhotoPreview(URL.createObjectURL(compressed));
     } catch {
       toast.error("Failed to process photo");
     }
-    // Reset input so same file can be re-selected
-    e.target.value = "";
   };
 
   const clearPhoto = () => {
@@ -454,14 +451,6 @@ function ScheduleItemRow({
       {/* Photo capture — only shown when in progress (arrived but not left) */}
       {item.status !== "skipped" && item.status !== "visited" && localArrival && (
         <div className="space-y-1">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={handlePhotoSelect}
-          />
           {photoPreview ? (
             <div className="relative inline-block">
               <img src={photoPreview} alt="Store photo" className="h-20 w-20 object-cover rounded border border-border" />
@@ -479,10 +468,16 @@ function ScheduleItemRow({
               size="sm"
               variant="outline"
               className="h-7 text-xs"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => setShowCamera(true)}
             >
               <Camera className="h-3 w-3 mr-1" /> Take Photo
             </Button>
+          )}
+          {showCamera && (
+            <CameraCapture
+              onCapture={handleCameraCapture}
+              onClose={() => setShowCamera(false)}
+            />
           )}
         </div>
       )}

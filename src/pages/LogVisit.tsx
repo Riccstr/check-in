@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from "uuid";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { addOfflineVisit, setCachedCustomers, getCachedCustomers } from "@/lib/offlineDb";
 import { compressImage, stampImage, blobToBase64 } from "@/lib/imageCompressor";
+import { CameraCapture } from "@/components/CameraCapture";
 
 export default function LogVisit() {
   const { repId } = useAuth();
@@ -28,13 +29,12 @@ export default function LogVisit() {
   // Photo state
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBlob, setPhotoBlob] = useState<Blob | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showCamera, setShowCamera] = useState(false);
 
-  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleCameraCapture = async (blob: Blob) => {
+    setShowCamera(false);
     try {
-      const compressed = await compressImage(file);
+      const compressed = await compressImage(blob);
       const now = new Date();
       const label = now.toLocaleString("en-US", {
         year: "numeric", month: "2-digit", day: "2-digit",
@@ -43,8 +43,9 @@ export default function LogVisit() {
       const stamped = await stampImage(compressed, label);
       setPhotoBlob(stamped);
       setPhotoPreview(URL.createObjectURL(stamped));
-    } catch { toast.error("Failed to process photo"); }
-    e.target.value = "";
+    } catch {
+      toast.error("Failed to process photo");
+    }
   };
 
   const clearPhoto = () => {
@@ -252,14 +253,6 @@ export default function LogVisit() {
             {/* Photo capture */}
             <div className="space-y-2">
               <Label>Store Photo (optional)</Label>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={handlePhotoSelect}
-              />
               {photoPreview ? (
                 <div className="relative inline-block">
                   <img src={photoPreview} alt="Store photo" className="h-24 w-24 object-cover rounded border border-border" />
@@ -272,11 +265,17 @@ export default function LogVisit() {
                   </button>
                 </div>
               ) : (
-                <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowCamera(true)}>
                   <Camera className="h-4 w-4 mr-1" /> Take Photo
                 </Button>
               )}
             </div>
+            {showCamera && (
+              <CameraCapture
+                onCapture={handleCameraCapture}
+                onClose={() => setShowCamera(false)}
+              />
+            )}
 
             <div className="space-y-2">
               <Label>Notes (optional)</Label>
