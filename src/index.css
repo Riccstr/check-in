@@ -102,3 +102,26 @@
     @apply text-muted-foreground hover:text-foreground hover:bg-secondary;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Schedule screen — font utilities & component helpers
+   ───────────────────────────────────────────────────────────── */
+
+/* Default body font for everything inside the schedule screen */
+.schedule-screen {
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+/* Syne opt-in: rep name, customer names, large numbers, time values */
+.schedule-screen .font-syne {
+  font-family: 'Syne', system-ui, sans-serif;
+}
+
+/* Hide the native clock/calendar picker icon on <input type="time"> */
+.time-input-clean::-webkit-calendar-picker-indicator { display: none; }
+.time-input-clean::-webkit-inner-spin-button         { display: none; }
+.time-input-clean::-webkit-clear-button              { display: none; }
+.time-input-clean { -webkit-appearance: none; appearance: none; }
+
+/* Hide scrollbar while keeping scroll functional */
+.scrollbar-hidden                    { scrollbar-width: none; -ms-overflow-style: none; }
+.scrollbar-hidden::-webkit-scrollbar { display: none; }
