@@ -851,9 +851,13 @@ export default function DailySchedule() {
   // ─── date navigation ────────────────────────────────────────────────────────
 
   const changeDay = (delta: number) => {
-    const d = new Date(scheduleDate + "T00:00:00");
+    const [year, month, day] = scheduleDate.split("-").map(Number);
+    const d = new Date(year, month - 1, day);
     d.setDate(d.getDate() + delta);
-    setScheduleDate(d.toISOString().split("T")[0]);
+    const yy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    setScheduleDate(`${yy}-${mm}-${dd}`);
     setExpandedActiveId(null);
     setOpenCompletedId(null);
   };
