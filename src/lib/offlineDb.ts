@@ -15,6 +15,9 @@ export interface OfflineVisit {
     notes: string | null;
     client_generated_id: string;
     status?: string;
+    order_number?: string | null;
+    order_quantity?: number | null;
+    order_amount?: number | null;
   };
   created_at_local: string;
   sync_status: "pending" | "synced" | "error";

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,25 @@ export default function AdminVisits() {
   }, []);
 
   useEffect(() => { fetchVisits(); }, [repFilter, custFilter, dateFrom, dateTo]);
+
+  // Keep a ref to the latest fetchVisits so the realtime callback always uses
+  // the current filter state without needing to recreate the channel.
+  const fetchVisitsRef = useRef(fetchVisits);
+  fetchVisitsRef.current = fetchVisits;
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("admin-visits-realtime")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "visits" }, () => {
+        fetchVisitsRef.current();
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "visits" }, () => {
+        fetchVisitsRef.current();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   const del = async (id: string) => {
     if (!confirm("Delete this visit?")) return;

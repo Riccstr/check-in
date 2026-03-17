@@ -307,17 +307,20 @@ function ScheduleCard({
 
         if (item.visit_id) {
           const { error: updateErr } = await supabase.from("visits").update(visitData).eq("id", item.visit_id);
-          if (updateErr) console.error("[Schedule] visit update error:", updateErr.message, updateErr);
+          if (updateErr) console.error("[Schedule] visit update error:", updateErr.code, updateErr.message, updateErr.details, updateErr.hint);
           const photoUrl = await uploadPhotoOnline(item.visit_id);
           if (photoUrl)
             await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", item.visit_id);
         } else {
+          const insertPayload = { rep_id: repId, customer_id: item.customer_id, visit_date: scheduleDate, ...visitData };
+          console.log("[Schedule] inserting visit payload:", JSON.stringify(insertPayload));
           const { data: visit, error: insertErr } = await supabase
             .from("visits")
-            .insert({ rep_id: repId, customer_id: item.customer_id, visit_date: scheduleDate, ...visitData } as any)
+            .insert(insertPayload as any)
             .select("id")
             .single();
-          if (insertErr) console.error("[Schedule] visit insert error:", insertErr.message, insertErr);
+          console.log("[Schedule] visit insert response:", { data: visit, error: insertErr ? { code: insertErr.code, message: insertErr.message, details: insertErr.details, hint: insertErr.hint } : null });
+          if (insertErr) console.error("[Schedule] visit insert FAILED:", insertErr.code, insertErr.message, insertErr.details, insertErr.hint);
           if (visit) {
             await supabase.from("schedule_items").update({ visit_id: visit.id }).eq("id", item.id);
             const photoUrl = await uploadPhotoOnline(visit.id);

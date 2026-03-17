@@ -110,14 +110,18 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
 
     for (const visit of pending) {
       try {
-        // Check if already exists (idempotency)
-        const { data: existing } = await supabase
+        const payload = visit.payload as any;
+
+        // Check if already exists by client_generated_id (idempotency).
+        // Guard against the column not existing in the DB — if the query errors
+        // we skip this check and fall through to the duplicate check instead.
+        const { data: existing, error: existingErr } = await supabase
           .from("visits")
           .select("id")
           .eq("client_generated_id", visit.client_generated_id)
           .maybeSingle();
 
-        if (existing) {
+        if (!existingErr && existing) {
           await updateVisitSyncStatus(visit.client_generated_id, "synced");
           synced++;
           syncedVisitsCount++;
@@ -125,7 +129,6 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
         }
 
         // Duplicate check: same rep + customer + date + times
-        const payload = visit.payload as any;
         const { data: recentDupe } = await supabase
           .from("visits")
           .select("id")
@@ -143,13 +146,19 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
           continue;
         }
 
+        // Strip client_generated_id from the insert payload — the visits table
+        // may not have this column. Idempotency is handled by the checks above.
+        const { client_generated_id: _cgid, ...insertPayload } = payload;
+        console.log("[Sync] inserting offline visit:", JSON.stringify(insertPayload));
+
         const { data: insertedVisit, error } = await supabase
           .from("visits")
-          .insert(payload)
+          .insert(insertPayload)
           .select("id")
           .maybeSingle();
 
         if (error) {
+          console.error("[Sync] visit insert error:", error.code, error.message, error.details, error.hint);
           await updateVisitSyncStatus(visit.client_generated_id, "error", error.message);
           errors++;
         } else {
