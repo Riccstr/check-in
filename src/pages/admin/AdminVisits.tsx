@@ -27,6 +27,9 @@ export default function AdminVisits() {
   const [editLeaving, setEditLeaving] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [editDate, setEditDate] = useState("");
+  const [editOrderNumber, setEditOrderNumber] = useState("");
+  const [editOrderQty, setEditOrderQty] = useState("");
+  const [editOrderAmount, setEditOrderAmount] = useState("");
   const [photoModal, setPhotoModal] = useState<any>(null);
 
   const fetchVisits = async () => {
@@ -57,14 +60,14 @@ export default function AdminVisits() {
     toast.success("Deleted"); fetchVisits();
   };
 
-  const openEdit = (v: any) => { setEditVisit(v); setEditArrival(v.arrival_time); setEditLeaving(v.leaving_time); setEditNotes(v.notes || ""); setEditDate(v.visit_date); };
+  const openEdit = (v: any) => { setEditVisit(v); setEditArrival(v.arrival_time); setEditLeaving(v.leaving_time); setEditNotes(v.notes || ""); setEditDate(v.visit_date); setEditOrderNumber(v.order_number || ""); setEditOrderQty(v.order_quantity != null ? String(v.order_quantity) : ""); setEditOrderAmount(v.order_amount != null ? String(v.order_amount) : ""); };
 
   const saveEdit = async () => {
     const [ah, am] = editArrival.split(":").map(Number);
     const [lh, lm] = editLeaving.split(":").map(Number);
     const dur = (lh * 60 + lm) - (ah * 60 + am);
     if (dur <= 0) { toast.error("Invalid times"); return; }
-    await supabase.from("visits").update({ arrival_time: editArrival, leaving_time: editLeaving, duration_minutes: dur, notes: editNotes || null, visit_date: editDate }).eq("id", editVisit.id);
+    await supabase.from("visits").update({ arrival_time: editArrival, leaving_time: editLeaving, duration_minutes: dur, notes: editNotes || null, visit_date: editDate, order_number: editOrderNumber || null, order_quantity: editOrderQty !== "" ? Number(editOrderQty) : null, order_amount: editOrderAmount !== "" ? Number(editOrderAmount) : null }).eq("id", editVisit.id);
     toast.success("Updated"); setEditVisit(null); fetchVisits();
   };
 
@@ -114,6 +117,9 @@ export default function AdminVisits() {
                   <TableHead>Duration</TableHead>
                   <TableHead><Camera className="h-3.5 w-3.5 inline mr-1" />Photo</TableHead>
                   <TableHead>Notes</TableHead>
+                  <TableHead>Order No.</TableHead>
+                  <TableHead>Qty</TableHead>
+                  <TableHead>Amount</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -143,6 +149,9 @@ export default function AdminVisits() {
                         </Tooltip>
                       ) : "—"}
                     </TableCell>
+                    <TableCell>{v.order_number || "—"}</TableCell>
+                    <TableCell>{v.order_quantity != null ? v.order_quantity : "—"}</TableCell>
+                    <TableCell>{v.order_amount != null ? v.order_amount : "—"}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openEdit(v)}><Pencil className="h-4 w-4" /></Button>
@@ -166,6 +175,9 @@ export default function AdminVisits() {
             <div><Label>Arrival</Label><Input type="time" value={editArrival} onChange={(e) => setEditArrival(e.target.value)} /></div>
             <div><Label>Leaving</Label><Input type="time" value={editLeaving} onChange={(e) => setEditLeaving(e.target.value)} /></div>
             <div><Label>Notes</Label><Textarea value={editNotes} onChange={(e) => setEditNotes(e.target.value)} /></div>
+            <div><Label>Order No.</Label><Input value={editOrderNumber} onChange={(e) => setEditOrderNumber(e.target.value)} /></div>
+            <div><Label>Qty</Label><Input type="number" min="0" step="1" value={editOrderQty} onChange={(e) => setEditOrderQty(e.target.value)} /></div>
+            <div><Label>Amount</Label><Input type="number" min="0" step="0.01" value={editOrderAmount} onChange={(e) => setEditOrderAmount(e.target.value)} /></div>
           </div>
           <DialogFooter><Button onClick={saveEdit}>Save</Button></DialogFooter>
         </DialogContent>

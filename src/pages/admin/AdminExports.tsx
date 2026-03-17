@@ -41,29 +41,31 @@ export default function AdminExports() {
     if (dateTo) q = q.lte("visit_date", dateTo);
     const { data } = await q;
     if (!data || data.length === 0) { toast.error("No data to export"); return; }
-    const headers = ["visit_date", "rep_name", "customer_name", "account_number", "arrival_time", "leaving_time", "duration_minutes", "notes", "created_at"];
-    const rows = data.map((v: any) => [v.visit_date, v.reps?.rep_name, v.customers?.customer_name, v.customers?.account_number || "", v.arrival_time, v.leaving_time, String(v.duration_minutes), v.notes || "", v.created_at]);
+    const headers = ["visit_date", "rep_name", "customer_name", "account_number", "arrival_time", "leaving_time", "duration_minutes", "notes", "order_number", "order_quantity", "order_amount", "created_at"];
+    const rows = data.map((v: any) => [v.visit_date, v.reps?.rep_name, v.customers?.customer_name, v.customers?.account_number || "", v.arrival_time, v.leaving_time, String(v.duration_minutes), v.notes || "", v.order_number || "", v.order_quantity != null ? String(v.order_quantity) : "", v.order_amount != null ? String(v.order_amount) : "", v.created_at]);
     downloadCSV("visits_export.csv", headers, rows);
     toast.success("Visits exported");
   };
 
   const exportAverages = async () => {
-    let q = supabase.from("visits").select("rep_id, customer_id, duration_minutes, visit_date, reps(rep_name), customers(customer_name)");
+    let q = supabase.from("visits").select("rep_id, customer_id, duration_minutes, visit_date, order_quantity, order_amount, reps(rep_name), customers(customer_name)");
     if (repFilter !== "all") q = q.eq("rep_id", repFilter);
     if (custFilter !== "all") q = q.eq("customer_id", custFilter);
     if (dateFrom) q = q.gte("visit_date", dateFrom);
     if (dateTo) q = q.lte("visit_date", dateTo);
     const { data } = await q;
     if (!data || data.length === 0) { toast.error("No data to export"); return; }
-    const map: Record<string, { rep: string; cust: string; total: number; count: number }> = {};
+    const map: Record<string, { rep: string; cust: string; total: number; count: number; totalQty: number; totalAmount: number }> = {};
     for (const v of data as any[]) {
       const key = `${v.rep_id}_${v.customer_id}`;
-      if (!map[key]) map[key] = { rep: v.reps?.rep_name, cust: v.customers?.customer_name, total: 0, count: 0 };
+      if (!map[key]) map[key] = { rep: v.reps?.rep_name, cust: v.customers?.customer_name, total: 0, count: 0, totalQty: 0, totalAmount: 0 };
       map[key].total += v.duration_minutes;
       map[key].count += 1;
+      map[key].totalQty += v.order_quantity || 0;
+      map[key].totalAmount += v.order_amount || 0;
     }
-    const headers = ["rep_name", "customer_name", "average_duration_minutes", "total_visits", "total_minutes", "date_range_start", "date_range_end"];
-    const rows = Object.values(map).map((m) => [m.rep, m.cust, String(Math.round(m.total / m.count)), String(m.count), String(m.total), dateFrom || "all", dateTo || "all"]);
+    const headers = ["rep_name", "customer_name", "average_duration_minutes", "total_visits", "total_minutes", "total_order_quantity", "total_order_amount", "date_range_start", "date_range_end"];
+    const rows = Object.values(map).map((m) => [m.rep, m.cust, String(Math.round(m.total / m.count)), String(m.count), String(m.total), String(m.totalQty), m.totalAmount.toFixed(2), dateFrom || "all", dateTo || "all"]);
     downloadCSV("averages_export.csv", headers, rows);
     toast.success("Averages exported");
   };
@@ -103,24 +105,30 @@ export default function AdminExports() {
     if (!data || data.length === 0) { toast.error("No data to export"); return; }
 
     const wb = XLSX.utils.book_new();
-    const colCount = 7; // Account #, Customer Name, Area, Time In, Time Out, Duration, Notes
+    const colCount = 10; // Account #, Customer Name, Area, Time In, Time Out, Duration, Notes, Order No., Qty, Amount
 
     // Build rows array
     const wsData: any[][] = [];
 
     // Row 1: Title
-    wsData.push(["Daily Visit Report", "", "", "", "", "", ""]);
+    wsData.push(["Daily Visit Report", "", "", "", "", "", "", "", "", ""]);
     const formattedDate = new Date(reportDate + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-    wsData.push([`Rep: ${repName} | Date: ${formattedDate}`, "", "", "", "", "", ""]);
-    wsData.push(["", "", "", "", "", "", ""]);
-    wsData.push(["Account #", "Customer Name", "Area", "Time In", "Time Out", "Duration", "Notes"]);
+    wsData.push([`Rep: ${repName} | Date: ${formattedDate}`, "", "", "", "", "", "", "", "", ""]);
+    wsData.push(["", "", "", "", "", "", "", "", "", ""]);
+    wsData.push(["Account #", "Customer Name", "Area", "Time In", "Time Out", "Duration", "Notes", "Order No.", "Qty", "Amount"]);
 
     // Data rows
     let totalProductiveMins = 0;
+    let totalOrderQty = 0;
+    let totalOrderAmount = 0;
     for (const v of data as any[]) {
       const isSkipped = v.status === "skipped";
       const dur = v.duration_minutes || 0;
-      if (!isSkipped) totalProductiveMins += dur;
+      if (!isSkipped) {
+        totalProductiveMins += dur;
+        totalOrderQty += v.order_quantity || 0;
+        totalOrderAmount += v.order_amount || 0;
+      }
       wsData.push([
         v.customers?.account_number || "",
         v.customers?.customer_name || "",
@@ -129,12 +137,15 @@ export default function AdminExports() {
         formatTime12h(v.leaving_time),
         dur > 0 ? formatDuration(dur) : "",
         v.notes || "",
+        v.order_number || "",
+        v.order_quantity != null ? v.order_quantity : "",
+        v.order_amount != null ? v.order_amount : "",
       ]);
     }
 
     // Totals row
     const totalsRowIdx = wsData.length;
-    wsData.push(["Total Productive Time", "", "", "", "", formatDuration(totalProductiveMins), ""]);
+    wsData.push(["Total Productive Time", "", "", "", "", formatDuration(totalProductiveMins), "", "", totalOrderQty, totalOrderAmount]);
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
@@ -154,6 +165,9 @@ export default function AdminExports() {
       { wch: 14 }, // Time Out
       { wch: 12 }, // Duration
       { wch: 35 }, // Notes
+      { wch: 14 }, // Order No.
+      { wch: 10 }, // Qty
+      { wch: 14 }, // Amount
     ];
 
     // Apply styles (SheetJS community edition has limited style support, using cell properties)
@@ -191,7 +205,7 @@ export default function AdminExports() {
         if (ws[ref]) {
           ws[ref].s = {
             fill: isSkipped ? { fgColor: redBg } : isOddRow ? { fgColor: lightGrey } : undefined,
-            alignment: { horizontal: c === 6 ? "left" : "center" },
+            alignment: { horizontal: c === 6 || c === 7 ? "left" : "center" },
           };
         }
       }

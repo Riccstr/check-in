@@ -14,6 +14,8 @@ interface AvgRow {
   avg_duration: number;
   total_visits: number;
   total_minutes: number;
+  total_order_qty: number;
+  total_order_amount: number;
 }
 
 export default function Averages() {
@@ -42,26 +44,30 @@ export default function Averages() {
     const fetch = async () => {
       if (!repId && role !== "admin") return;
       setLoading(true);
-      let q = supabase.from("visits").select("customer_id, duration_minutes, visit_date, customers(customer_name)");
+      let q = supabase.from("visits").select("customer_id, duration_minutes, visit_date, order_quantity, order_amount, customers(customer_name)");
       if (role !== "admin") q = q.eq("rep_id", repId!);
       if (dateFrom) q = q.gte("visit_date", dateFrom);
       if (dateTo) q = q.lte("visit_date", dateTo);
       const { data: visits } = await q;
       if (!visits) { setLoading(false); return; }
 
-      const map: Record<string, { name: string; total: number; count: number }> = {};
+      const map: Record<string, { name: string; total: number; count: number; totalQty: number; totalAmount: number }> = {};
       for (const v of visits as any[]) {
         const cid = v.customer_id;
         const name = v.customers?.customer_name || "Unknown";
-        if (!map[cid]) map[cid] = { name, total: 0, count: 0 };
+        if (!map[cid]) map[cid] = { name, total: 0, count: 0, totalQty: 0, totalAmount: 0 };
         map[cid].total += v.duration_minutes;
         map[cid].count += 1;
+        map[cid].totalQty += v.order_quantity || 0;
+        map[cid].totalAmount += v.order_amount || 0;
       }
       const rows: AvgRow[] = Object.values(map).map((m) => ({
         customer_name: m.name,
         avg_duration: Math.round(m.total / m.count),
         total_visits: m.count,
         total_minutes: m.total,
+        total_order_qty: m.totalQty,
+        total_order_amount: m.totalAmount,
       }));
       rows.sort((a, b) => sortBy === "customer_name" ? a.customer_name.localeCompare(b.customer_name) : b.avg_duration - a.avg_duration);
       setData(rows);
@@ -127,6 +133,8 @@ export default function Averages() {
                   <TableHead>Avg Duration (min)</TableHead>
                   <TableHead>Total Visits</TableHead>
                   <TableHead>Total Time (min)</TableHead>
+                  <TableHead>Total Qty</TableHead>
+                  <TableHead>Total Order Amount</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -136,6 +144,8 @@ export default function Averages() {
                     <TableCell>{r.avg_duration}</TableCell>
                     <TableCell>{r.total_visits}</TableCell>
                     <TableCell>{r.total_minutes}</TableCell>
+                    <TableCell>{r.total_order_qty}</TableCell>
+                    <TableCell>{r.total_order_amount > 0 ? r.total_order_amount.toFixed(2) : "—"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

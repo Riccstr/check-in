@@ -67,6 +67,9 @@ async function saveVisitOffline(
   customerName?: string,
   status?: string,
   photoBase64?: string | null,
+  orderNumber?: string | null,
+  orderQuantity?: number | null,
+  orderAmount?: number | null,
 ) {
   const clientId = uuidv4();
   await addOfflineVisit({
@@ -81,6 +84,9 @@ async function saveVisitOffline(
       notes,
       client_generated_id: clientId,
       ...(status ? { status } : {}),
+      ...(orderNumber !== undefined ? { order_number: orderNumber } : {}),
+      ...(orderQuantity !== undefined ? { order_quantity: orderQuantity } : {}),
+      ...(orderAmount !== undefined ? { order_amount: orderAmount } : {}),
     } as any,
     created_at_local: new Date().toISOString(),
     sync_status: "pending",
@@ -149,9 +155,12 @@ function ScheduleCard({
   onToggle: () => void;
   index: number;
 }) {
-  const [localNotes, setLocalNotes]     = useState(item.notes || "");
-  const [localArrival, setLocalArrival] = useState(item.arrival_time || "");
-  const [localLeaving, setLocalLeaving] = useState(item.leaving_time || "");
+  const [localNotes, setLocalNotes]           = useState(item.notes || "");
+  const [localArrival, setLocalArrival]       = useState(item.arrival_time || "");
+  const [localLeaving, setLocalLeaving]       = useState(item.leaving_time || "");
+  const [localOrderNumber, setLocalOrderNumber] = useState("");
+  const [localOrderQty, setLocalOrderQty]       = useState("");
+  const [localOrderAmount, setLocalOrderAmount] = useState("");
   const [actionInProgress, setActionInProgress] = useState(false);
 
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -234,7 +243,7 @@ function ScheduleCard({
   };
 
   const updateItem = async (
-    updates: Partial<{ arrival_time: string; leaving_time: string; notes: string; status: string; duration_minutes: number }>
+    updates: Partial<{ arrival_time: string; leaving_time: string; notes: string; status: string; duration_minutes: number; order_number: string | null; order_quantity: number | null; order_amount: number | null }>
   ) => {
     if (actionInProgress) return;
     setActionInProgress(true);
@@ -291,6 +300,9 @@ function ScheduleCard({
           leaving_time: newItem.leaving_time,
           duration_minutes: newItem.duration_minutes,
           notes: newItem.notes || null,
+          order_number: newItem.order_number ?? null,
+          order_quantity: newItem.order_quantity ?? null,
+          order_amount: newItem.order_amount ?? null,
         };
 
         if (item.visit_id) {
@@ -332,6 +344,7 @@ function ScheduleCard({
           newItem.arrival_time, newItem.leaving_time,
           newItem.duration_minutes, newItem.notes || null,
           item.customers?.customer_name, undefined, photoB64,
+          newItem.order_number ?? null, newItem.order_quantity ?? null, newItem.order_amount ?? null,
         );
         toast.success("Saved offline. Will sync when online.");
       } catch (idbErr) {
@@ -346,7 +359,7 @@ function ScheduleCard({
   const commitLeaving = () => { if (localLeaving !== (item.leaving_time || "")) updateItem({ leaving_time: localLeaving }); };
 
   const markArrived = () => { const t = nowTime(); setLocalArrival(t); updateItem({ arrival_time: t }); };
-  const markLeft    = () => { const t = nowTime(); setLocalLeaving(t); updateItem({ leaving_time: t, status: "visited" }); };
+  const markLeft    = () => { const t = nowTime(); setLocalLeaving(t); updateItem({ leaving_time: t, status: "visited", order_number: localOrderNumber || null, order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null, order_amount: localOrderAmount !== "" ? Number(localOrderAmount) : null }); };
 
   const skipItem = async () => {
     if (actionInProgress) return;
@@ -388,7 +401,7 @@ function ScheduleCard({
     }
   };
 
-  const markVisited = () => updateItem({ status: "visited", arrival_time: localArrival, leaving_time: localLeaving, notes: localNotes });
+  const markVisited = () => updateItem({ status: "visited", arrival_time: localArrival, leaving_time: localLeaving, notes: localNotes, order_number: localOrderNumber || null, order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null, order_amount: localOrderAmount !== "" ? Number(localOrderAmount) : null });
 
   const isInProgress = item.status === "pending" && item.arrival_time && !item.leaving_time;
   const customerName = item.customers?.customer_name ?? "Unknown";
@@ -543,17 +556,49 @@ function ScheduleCard({
               </div>
             )}
 
-            {/* notes */}
-            <Textarea
-              ref={notesRef}
-              placeholder="Notes (required to skip)..."
-              value={localNotes}
-              onChange={(e) => setLocalNotes(e.target.value)}
-              onBlur={commitNotes}
-              rows={2}
-              className="text-sm resize-none"
-              style={{ borderColor: C.border, background: C.bg }}
-            />
+            {/* notes + order fields */}
+            <div className="flex gap-2 items-stretch">
+              <Textarea
+                ref={notesRef}
+                placeholder="Notes (required to skip)..."
+                value={localNotes}
+                onChange={(e) => setLocalNotes(e.target.value)}
+                onBlur={commitNotes}
+                rows={2}
+                className="text-sm resize-none"
+                style={{ borderColor: C.border, background: C.bg, flex: "0 0 58%" }}
+              />
+              <div className="flex flex-col justify-between flex-1">
+                <Input
+                  type="text"
+                  placeholder="Order No."
+                  value={localOrderNumber}
+                  onChange={(e) => setLocalOrderNumber(e.target.value)}
+                  className="h-8 text-sm"
+                  style={{ borderColor: C.border, background: C.bg }}
+                />
+                <Input
+                  type="number"
+                  placeholder="Qty"
+                  value={localOrderQty}
+                  onChange={(e) => setLocalOrderQty(e.target.value)}
+                  min="0"
+                  step="1"
+                  className="h-8 text-sm"
+                  style={{ borderColor: C.border, background: C.bg }}
+                />
+                <Input
+                  type="number"
+                  placeholder="Amount"
+                  value={localOrderAmount}
+                  onChange={(e) => setLocalOrderAmount(e.target.value)}
+                  min="0"
+                  step="0.01"
+                  className="h-8 text-sm"
+                  style={{ borderColor: C.border, background: C.bg }}
+                />
+              </div>
+            </div>
 
             {/* actions */}
             <div className="flex gap-2">
