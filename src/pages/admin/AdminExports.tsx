@@ -115,7 +115,7 @@ export default function AdminExports() {
     const formattedDate = new Date(reportDate + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
     wsData.push([`Rep: ${repName} | Date: ${formattedDate}`, "", "", "", "", "", "", "", "", ""]);
     wsData.push(["", "", "", "", "", "", "", "", "", ""]);
-    wsData.push(["Account #", "Customer Name", "Area", "Time In", "Time Out", "Duration", "Notes", "Order No.", "Qty", "Amount"]);
+    wsData.push(["Account #", "Customer Name", "Area", "Time In", "Time Out", "Duration", "Order No.", "Qty", "Amount", "Notes"]);
 
     // Data rows
     let totalProductiveMins = 0;
@@ -136,10 +136,10 @@ export default function AdminExports() {
         formatTime12h(v.arrival_time),
         formatTime12h(v.leaving_time),
         dur > 0 ? formatDuration(dur) : "",
-        v.notes || "",
         v.order_number || "",
         v.order_quantity != null ? v.order_quantity : "",
         v.order_amount != null ? v.order_amount : "",
+        v.notes || "",
       ]);
     }
 
@@ -164,10 +164,10 @@ export default function AdminExports() {
       { wch: 14 }, // Time In
       { wch: 14 }, // Time Out
       { wch: 12 }, // Duration
-      { wch: 35 }, // Notes
       { wch: 14 }, // Order No.
       { wch: 10 }, // Qty
       { wch: 14 }, // Amount
+      { wch: 35 }, // Notes
     ];
 
     // Apply styles (SheetJS community edition has limited style support, using cell properties)
@@ -205,7 +205,7 @@ export default function AdminExports() {
         if (ws[ref]) {
           ws[ref].s = {
             fill: isSkipped ? { fgColor: redBg } : isOddRow ? { fgColor: lightGrey } : undefined,
-            alignment: { horizontal: c === 6 || c === 7 ? "left" : "center" },
+            alignment: { horizontal: c === 6 || c === 9 ? "left" : "center" },
           };
         }
       }

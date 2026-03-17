@@ -116,10 +116,10 @@ export default function AdminVisits() {
                   <TableHead>Leaving</TableHead>
                   <TableHead>Duration</TableHead>
                   <TableHead><Camera className="h-3.5 w-3.5 inline mr-1" />Photo</TableHead>
-                  <TableHead>Notes</TableHead>
                   <TableHead>Order No.</TableHead>
                   <TableHead>Qty</TableHead>
                   <TableHead>Amount</TableHead>
+                  <TableHead>Notes</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -139,6 +139,9 @@ export default function AdminVisits() {
                     <TableCell>{v.status === "skipped" ? "—" : v.leaving_time?.slice(0,5)}</TableCell>
                     <TableCell>{v.status === "skipped" ? "—" : `${v.duration_minutes} min`}</TableCell>
                     <TableCell>{renderPhoto(v)}</TableCell>
+                    <TableCell>{v.order_number || "—"}</TableCell>
+                    <TableCell>{v.order_quantity != null ? v.order_quantity : "—"}</TableCell>
+                    <TableCell>{v.order_amount != null ? v.order_amount : "—"}</TableCell>
                     <TableCell className="max-w-[150px]">
                       {v.notes ? (
                         <Tooltip>
@@ -149,9 +152,6 @@ export default function AdminVisits() {
                         </Tooltip>
                       ) : "—"}
                     </TableCell>
-                    <TableCell>{v.order_number || "—"}</TableCell>
-                    <TableCell>{v.order_quantity != null ? v.order_quantity : "—"}</TableCell>
-                    <TableCell>{v.order_amount != null ? v.order_amount : "—"}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openEdit(v)}><Pencil className="h-4 w-4" /></Button>

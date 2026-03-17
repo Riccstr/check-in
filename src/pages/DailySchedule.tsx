@@ -306,16 +306,18 @@ function ScheduleCard({
         };
 
         if (item.visit_id) {
-          await supabase.from("visits").update(visitData).eq("id", item.visit_id);
+          const { error: updateErr } = await supabase.from("visits").update(visitData).eq("id", item.visit_id);
+          if (updateErr) console.error("[Schedule] visit update error:", updateErr.message, updateErr);
           const photoUrl = await uploadPhotoOnline(item.visit_id);
           if (photoUrl)
             await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", item.visit_id);
         } else {
-          const { data: visit } = await supabase
+          const { data: visit, error: insertErr } = await supabase
             .from("visits")
             .insert({ rep_id: repId, customer_id: item.customer_id, visit_date: scheduleDate, ...visitData } as any)
             .select("id")
             .single();
+          if (insertErr) console.error("[Schedule] visit insert error:", insertErr.message, insertErr);
           if (visit) {
             await supabase.from("schedule_items").update({ visit_id: visit.id }).eq("id", item.id);
             const photoUrl = await uploadPhotoOnline(visit.id);
