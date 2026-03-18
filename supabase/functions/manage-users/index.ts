@@ -38,6 +38,10 @@ function validateString(value: unknown, name: string, maxLen = 255): string | nu
   return null;
 }
 
+function buildFullName(firstName: string | undefined, surname: string | undefined, fallback: string): string {
+  return [firstName?.trim(), surname?.trim()].filter(Boolean).join(" ") || fallback;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -89,62 +93,7 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const action = body.action || url.searchParams.get("action") || "list";
 
-    if (action === "create_user") {
-      const { email, password, role, full_name } = body;
-      
-      const emailErr = validateEmail(email);
-      if (emailErr) {
-        return new Response(JSON.stringify({ error: emailErr }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const passErr = validatePassword(password);
-      if (passErr) {
-        return new Response(JSON.stringify({ error: passErr }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (role && !VALID_ROLES.includes(role)) {
-        return new Response(JSON.stringify({ error: "Invalid role. Must be 'admin' or 'rep'" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const nameErr = validateString(full_name, "Full name");
-      if (nameErr) {
-        return new Response(JSON.stringify({ error: nameErr }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-        email: email.trim(),
-        password,
-        email_confirm: true,
-        user_metadata: { full_name: (full_name || email).trim() },
-      });
-
-      if (createErr) {
-        console.error("Create user error:", createErr.message);
-        return new Response(JSON.stringify({ error: sanitizeError(createErr) }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      if (role && newUser.user) {
-        await supabaseAdmin.from("user_roles").delete().eq("user_id", newUser.user.id);
-        await supabaseAdmin.from("user_roles").insert({ user_id: newUser.user.id, role });
-        
-        if (role === "admin") {
-          await supabaseAdmin.from("reps").update({ user_id: null, email: null }).eq("user_id", newUser.user.id);
-        }
-      }
-
-      return new Response(JSON.stringify({ success: true, user_id: newUser.user?.id }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
+    // ─── list ────────────────────────────────────────────────────────────────
     if (action === "list") {
       const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers({
         perPage: 1000,
@@ -175,6 +124,8 @@ Deno.serve(async (req) => {
           role_id: userRole?.id || null,
           linked_rep_id: linkedRep?.id || null,
           linked_rep_name: linkedRep ? `${linkedRep.rep_name} ${linkedRep.surname || ""}`.trim() : null,
+          linked_rep_first_name: linkedRep?.rep_name || null,
+          linked_rep_surname: linkedRep?.surname || null,
           created_at: u.created_at,
           last_sign_in_at: u.last_sign_in_at,
           email_confirmed_at: u.email_confirmed_at,
@@ -188,6 +139,230 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ─── create_user ─────────────────────────────────────────────────────────
+    if (action === "create_user") {
+      const { email, password, role, first_name, surname, full_name } = body;
+
+      // Resolve first/last name — accept separate fields, fall back to splitting full_name
+      const resolvedFirst: string = first_name?.trim() || (full_name ? full_name.split(" ")[0] : "") || "";
+      const resolvedSurname: string = surname?.trim() || (full_name ? full_name.split(" ").slice(1).join(" ") : "") || "";
+
+      const emailErr = validateEmail(email);
+      if (emailErr) {
+        return new Response(JSON.stringify({ error: emailErr }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const passErr = validatePassword(password);
+      if (passErr) {
+        return new Response(JSON.stringify({ error: passErr }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (role && !VALID_ROLES.includes(role)) {
+        return new Response(JSON.stringify({ error: "Invalid role. Must be 'admin' or 'rep'" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const firstNameErr = validateString(resolvedFirst, "First name");
+      if (firstNameErr) {
+        return new Response(JSON.stringify({ error: firstNameErr }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const surnameErr = validateString(resolvedSurname, "Surname");
+      if (surnameErr) {
+        return new Response(JSON.stringify({ error: surnameErr }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const computedFullName = buildFullName(resolvedFirst, resolvedSurname, email);
+
+      const { data: newUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+        email: email.trim(),
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: computedFullName },
+      });
+
+      if (createErr) {
+        console.error("Create user error:", createErr.message);
+        return new Response(JSON.stringify({ error: sanitizeError(createErr) }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (role && newUser.user) {
+        await supabaseAdmin.from("user_roles").delete().eq("user_id", newUser.user.id);
+        await supabaseAdmin.from("user_roles").insert({ user_id: newUser.user.id, role });
+
+        if (role === "rep") {
+          // Auto-create a rep record linked to this new user
+          const { error: repErr } = await supabaseAdmin.from("reps").insert({
+            rep_name: resolvedFirst || computedFullName,
+            surname: resolvedSurname || null,
+            email: email.trim(),
+            user_id: newUser.user.id,
+            is_active: true,
+          });
+          if (repErr) {
+            console.error("Create rep record error:", repErr.message);
+            // Non-fatal — user and role were created successfully
+          }
+        } else if (role === "admin") {
+          // Safety: unlink any rep record that somehow has this user_id
+          await supabaseAdmin.from("reps").update({ user_id: null, email: null }).eq("user_id", newUser.user.id);
+        }
+      }
+
+      return new Response(JSON.stringify({ success: true, user_id: newUser.user?.id }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ─── update_user ─────────────────────────────────────────────────────────
+    if (action === "update_user") {
+      const { user_id, first_name, surname, email, password, role } = body;
+
+      if (!user_id || typeof user_id !== "string") {
+        return new Response(JSON.stringify({ error: "Valid user_id required" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const emailErr = validateEmail(email);
+      if (emailErr) {
+        return new Response(JSON.stringify({ error: emailErr }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (password && password !== "") {
+        const passErr = validatePassword(password);
+        if (passErr) {
+          return new Response(JSON.stringify({ error: passErr }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+      if (!role || !VALID_ROLES.includes(role)) {
+        return new Response(JSON.stringify({ error: "Invalid role. Must be 'admin' or 'rep'" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const firstNameErr = validateString(first_name, "First name");
+      if (firstNameErr) {
+        return new Response(JSON.stringify({ error: firstNameErr }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const surnameErr = validateString(surname, "Surname");
+      if (surnameErr) {
+        return new Response(JSON.stringify({ error: surnameErr }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      let credentialsChanged = false;
+
+      // 1. Fetch current user to detect email change
+      const { data: { user: currentUser } } = await supabaseAdmin.auth.admin.getUserById(user_id);
+      const emailChanged = currentUser && currentUser.email !== email.trim();
+
+      // 2. Update email if changed
+      if (emailChanged) {
+        const { error: emailErr2 } = await supabaseAdmin.auth.admin.updateUserById(user_id, {
+          email: email.trim(),
+          email_confirm: true,
+        });
+        if (emailErr2) {
+          console.error("Update email error:", emailErr2.message);
+          return new Response(JSON.stringify({ error: sanitizeError(emailErr2) }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        credentialsChanged = true;
+      }
+
+      // 3. Update password if provided
+      if (password && password.trim() !== "") {
+        const { error: passErr2 } = await supabaseAdmin.auth.admin.updateUserById(user_id, { password });
+        if (passErr2) {
+          console.error("Update password error:", passErr2.message);
+          return new Response(JSON.stringify({ error: "Failed to update password" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        credentialsChanged = true;
+      }
+
+      // 4. Update full_name in user_metadata
+      const computedFullName = buildFullName(first_name, surname, email.trim());
+      await supabaseAdmin.auth.admin.updateUserById(user_id, {
+        user_metadata: { full_name: computedFullName },
+      });
+
+      // 5. Update role in user_roles (upsert)
+      const { data: existingRole } = await supabaseAdmin
+        .from("user_roles")
+        .select("id")
+        .eq("user_id", user_id)
+        .maybeSingle();
+
+      if (existingRole) {
+        await supabaseAdmin.from("user_roles").update({ role }).eq("user_id", user_id);
+      } else {
+        await supabaseAdmin.from("user_roles").insert({ user_id, role });
+      }
+
+      // 6. Sync rep record — must run AFTER role is committed
+      const { data: existingRep } = await supabaseAdmin
+        .from("reps")
+        .select("id")
+        .eq("user_id", user_id)
+        .maybeSingle();
+
+      if (existingRep) {
+        if (role === "admin") {
+          // Unlink the rep — admins are not reps
+          await supabaseAdmin.from("reps").update({ user_id: null, email: null }).eq("user_id", user_id);
+        } else {
+          // Keep rep record in sync
+          await supabaseAdmin.from("reps").update({
+            rep_name: first_name?.trim() || computedFullName,
+            surname: surname?.trim() || null,
+            email: email.trim(),
+          }).eq("user_id", user_id);
+        }
+      } else if (role === "rep") {
+        // No linked rep exists but role is rep — create one
+        const { error: repErr } = await supabaseAdmin.from("reps").insert({
+          rep_name: first_name?.trim() || computedFullName,
+          surname: surname?.trim() || null,
+          email: email.trim(),
+          user_id,
+          is_active: true,
+        });
+        if (repErr) {
+          console.error("Create rep record error:", repErr.message);
+          // Non-fatal — the auth/role updates succeeded
+        }
+      }
+
+      // 7. Record login audit if credentials changed
+      if (credentialsChanged) {
+        await supabaseAdmin.from("profiles").update({
+          login_updated_at: new Date().toISOString(),
+          login_updated_by: callerId,
+        }).eq("id", user_id);
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ─── update_role (kept for backwards compatibility) ───────────────────────
     if (action === "update_role") {
       const { user_id, role } = body;
       if (!user_id || typeof user_id !== "string") {
@@ -218,6 +393,7 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ─── update_email (kept for backwards compatibility) ──────────────────────
     if (action === "update_email") {
       const { user_id, email } = body;
       if (!user_id || typeof user_id !== "string") {
@@ -253,6 +429,7 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ─── reset_password (kept for backwards compatibility) ────────────────────
     if (action === "reset_password") {
       const { user_id, password } = body;
       if (!user_id || typeof user_id !== "string") {
@@ -285,6 +462,7 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ─── delete_user ─────────────────────────────────────────────────────────
     if (action === "delete_user") {
       const { user_id } = body;
       if (!user_id || typeof user_id !== "string") {

@@ -9,9 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Users, Shield, KeyRound, Trash2, UserPlus, Mail, Info } from "lucide-react";
+import { Users, Trash2, UserPlus, Pencil, Info } from "lucide-react";
 import { format } from "date-fns";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface UserAccount {
   id: string;
@@ -21,6 +20,8 @@ interface UserAccount {
   role_id: string | null;
   linked_rep_id: string | null;
   linked_rep_name: string | null;
+  linked_rep_first_name: string | null;
+  linked_rep_surname: string | null;
   created_at: string;
   last_sign_in_at: string | null;
   email_confirmed_at: string | null;
@@ -33,23 +34,25 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(true);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
-  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
   const [selectedUser, setSelectedUser] = useState<UserAccount | null>(null);
-  const [selectedRole, setSelectedRole] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [newEmail, setNewEmail] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Create user form state
   const [createEmail, setCreateEmail] = useState("");
   const [createPassword, setCreatePassword] = useState("");
-  const [createFullName, setCreateFullName] = useState("");
+  const [createFirstName, setCreateFirstName] = useState("");
   const [createSurname, setCreateSurname] = useState("");
   const [createRole, setCreateRole] = useState("rep");
+
+  // Edit user form state
+  const [editFirstName, setEditFirstName] = useState("");
+  const [editSurname, setEditSurname] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [editRole, setEditRole] = useState("rep");
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -69,7 +72,7 @@ export default function AdminUsers() {
   const openCreateDialog = () => {
     setCreateEmail("");
     setCreatePassword("");
-    setCreateFullName("");
+    setCreateFirstName("");
     setCreateSurname("");
     setCreateRole("rep");
     setCreateDialogOpen(true);
@@ -85,14 +88,14 @@ export default function AdminUsers() {
       return;
     }
     setSaving(true);
-    const fullName = [createFullName.trim(), createSurname.trim()].filter(Boolean).join(" ") || createEmail;
     const res = await supabase.functions.invoke("manage-users", {
       body: {
         action: "create_user",
         email: createEmail.trim(),
         password: createPassword,
         role: createRole,
-        full_name: fullName,
+        first_name: createFirstName.trim(),
+        surname: createSurname.trim(),
       },
     });
     if (res.error || res.data?.error) {
@@ -105,89 +108,57 @@ export default function AdminUsers() {
     setSaving(false);
   };
 
-  const openRoleDialog = (u: UserAccount) => {
+  const openEditDialog = (u: UserAccount) => {
     setSelectedUser(u);
-    setSelectedRole(u.role || "rep");
-    setRoleDialogOpen(true);
+    // Prefer linked rep's individual fields; fall back to parsing full_name
+    if (u.linked_rep_first_name !== null || u.linked_rep_surname !== null) {
+      setEditFirstName(u.linked_rep_first_name || "");
+      setEditSurname(u.linked_rep_surname || "");
+    } else {
+      const parts = (u.full_name || "").split(" ");
+      setEditFirstName(parts[0] || "");
+      setEditSurname(parts.slice(1).join(" ") || "");
+    }
+    setEditEmail(u.email);
+    setEditPassword("");
+    setEditRole(u.role || "rep");
+    setEditDialogOpen(true);
   };
 
-  const openPasswordDialog = (u: UserAccount) => {
-    setSelectedUser(u);
-    setNewPassword("");
-    setPasswordDialogOpen(true);
-  };
-
-  const openEmailDialog = (u: UserAccount) => {
-    setSelectedUser(u);
-    setNewEmail(u.email);
-    setEmailDialogOpen(true);
+  const saveEdit = async () => {
+    if (!selectedUser) return;
+    if (!editEmail.trim()) {
+      toast.error("Email is required");
+      return;
+    }
+    if (editPassword && editPassword.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    setSaving(true);
+    const body: Record<string, string> = {
+      action: "update_user",
+      user_id: selectedUser.id,
+      first_name: editFirstName.trim(),
+      surname: editSurname.trim(),
+      email: editEmail.trim(),
+      role: editRole,
+    };
+    if (editPassword) body.password = editPassword;
+    const res = await supabase.functions.invoke("manage-users", { body });
+    if (res.error || res.data?.error) {
+      toast.error(res.data?.error || res.error?.message || "Failed to save changes");
+    } else {
+      toast.success("User updated");
+      setEditDialogOpen(false);
+      fetchUsers();
+    }
+    setSaving(false);
   };
 
   const openDeleteDialog = (u: UserAccount) => {
     setSelectedUser(u);
     setDeleteDialogOpen(true);
-  };
-
-  const saveRole = async () => {
-    if (!selectedUser) return;
-    setSaving(true);
-    const res = await supabase.functions.invoke("manage-users", {
-      body: { action: "update_role", user_id: selectedUser.id, role: selectedRole },
-    });
-    if (res.error || res.data?.error) {
-      toast.error(res.data?.error || res.error?.message || "Failed");
-    } else {
-      toast.success("Role updated");
-    }
-    setSaving(false);
-    setRoleDialogOpen(false);
-    fetchUsers();
-  };
-
-  const resetPassword = async () => {
-    if (!selectedUser || !newPassword.trim()) {
-      toast.error("Password required");
-      return;
-    }
-    if (newPassword.length < 6) {
-      toast.error("Password must be at least 6 characters");
-      return;
-    }
-    setSaving(true);
-    const res = await supabase.functions.invoke("manage-users", {
-      body: { action: "reset_password", user_id: selectedUser.id, password: newPassword },
-    });
-    if (res.error || res.data?.error) {
-      toast.error(res.data?.error || res.error?.message || "Failed");
-    } else {
-      toast.success("Password reset");
-    }
-    setSaving(false);
-    setPasswordDialogOpen(false);
-    fetchUsers();
-  };
-
-  const updateEmail = async () => {
-    if (!selectedUser || !newEmail.trim()) {
-      toast.error("Email required");
-      return;
-    }
-    if (newEmail.trim() === selectedUser.email) {
-      setEmailDialogOpen(false);
-      return;
-    }
-    setSaving(true);
-    const res = await supabase.functions.invoke("manage-users", {
-      body: { action: "update_email", user_id: selectedUser.id, email: newEmail.trim() },
-    });
-    if (res.error || res.data?.error) {
-      toast.error(res.data?.error || res.error?.message || "Failed");
-    } else {
-      toast.success("Email updated");
-    }
-    setSaving(false);
-    setEmailDialogOpen(false);
-    fetchUsers();
   };
 
   const deleteUser = async () => {
@@ -271,38 +242,12 @@ export default function AdminUsers() {
                       : "Never"}
                   </TableCell>
                   <TableCell className="text-right space-x-1">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={() => openEmailDialog(u)}>
-                          <Mail className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Change email</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={() => openRoleDialog(u)}>
-                          <Shield className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Change role</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={() => openPasswordDialog(u)}>
-                          <KeyRound className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Reset password</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(u)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Delete user</TooltipContent>
-                    </Tooltip>
+                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(u)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(u)}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -322,7 +267,7 @@ export default function AdminUsers() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>First Name</Label>
-                <Input value={createFullName} onChange={(e) => setCreateFullName(e.target.value)} placeholder="First name" />
+                <Input value={createFirstName} onChange={(e) => setCreateFirstName(e.target.value)} placeholder="First name" />
               </div>
               <div>
                 <Label>Surname</Label>
@@ -340,9 +285,7 @@ export default function AdminUsers() {
             <div>
               <Label>Role</Label>
               <Select value={createRole} onValueChange={setCreateRole}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="rep">Rep</SelectItem>
@@ -357,37 +300,35 @@ export default function AdminUsers() {
         </DialogContent>
       </Dialog>
 
-      {/* Email Dialog */}
-      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+      {/* Edit User Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Change Email</DialogTitle>
-            <DialogDescription>Update the login email for {selectedUser?.full_name || selectedUser?.email}. No confirmation email will be sent.</DialogDescription>
+            <DialogTitle>Edit User</DialogTitle>
+            <DialogDescription>Update details for {selectedUser?.email}.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div>
-              <Label>New Email</Label>
-              <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="new@example.com" />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>First Name</Label>
+                <Input value={editFirstName} onChange={(e) => setEditFirstName(e.target.value)} placeholder="First name" />
+              </div>
+              <div>
+                <Label>Surname</Label>
+                <Input value={editSurname} onChange={(e) => setEditSurname(e.target.value)} placeholder="Surname" />
+              </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEmailDialogOpen(false)}>Cancel</Button>
-            <Button onClick={updateEmail} disabled={saving}>{saving ? "Saving..." : "Update Email"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Role Dialog */}
-      <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Change Role</DialogTitle>
-            <DialogDescription>Update the role for {selectedUser?.email}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
+            <div>
+              <Label>Email *</Label>
+              <Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="user@example.com" />
+            </div>
+            <div>
+              <Label>New Password</Label>
+              <Input type="password" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} placeholder="Leave blank to keep current" />
+            </div>
             <div>
               <Label>Role</Label>
-              <Select value={selectedRole} onValueChange={setSelectedRole}>
+              <Select value={editRole} onValueChange={setEditRole}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
@@ -397,26 +338,8 @@ export default function AdminUsers() {
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={saveRole} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Password Dialog */}
-      <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reset Password</DialogTitle>
-            <DialogDescription>Set a new password for {selectedUser?.email}. No confirmation email will be sent.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>New Password</Label>
-              <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min 6 characters" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={resetPassword} disabled={saving}>{saving ? "Resetting..." : "Reset Password"}</Button>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+            <Button onClick={saveEdit} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

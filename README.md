@@ -1,48 +1,40 @@
-# Check-In Tracker
+# Check-In Tracker — Architecture Reference
 
-A **field sales representative check-in tracking application** built for companies that manage sales reps visiting customer stores on scheduled routes. The app follows an **offline-first architecture** — reps can check in, take photos, add notes, and skip visits even without internet, and everything syncs automatically when connectivity is restored.
-
-**Live URL:** https://check-in-tracker.lovable.app
+A **field sales representative check-in tracking application** built for companies that manage sales reps visiting customer stores on scheduled routes. Admins define weekly rotation schedules, manage customers/reps/users, and export visit reports; reps use a mobile-first PWA to log check-ins, capture timestamped photos, add notes and sales order details, and operate fully offline with automatic background sync. The stack is **React 18 / TypeScript / Vite** on the frontend, **Tailwind CSS + shadcn/ui** for styling, **Supabase** (PostgreSQL + Auth + Storage + Edge Functions) as the backend, and **Vercel** for hosting with SPA rewrite rules.
 
 ---
 
 ## Table of Contents
 
-1. [Overview](#overview)
+1. [Project Overview](#project-overview)
 2. [Technology Stack](#technology-stack)
-3. [User Roles & Access Control](#user-roles--access-control)
-4. [Authentication System](#authentication-system)
-5. [Database Schema](#database-schema)
-6. [Application Features](#application-features)
-   - [Representative Features](#representative-features)
-   - [Administrator Features](#administrator-features)
-7. [Offline-First Architecture](#offline-first-architecture)
-8. [Scheduling System & Week Rotation](#scheduling-system--week-rotation)
-9. [Visit Logging Workflow](#visit-logging-workflow)
-10. [Photo Capture & Storage](#photo-capture--storage)
-11. [Edge Functions (Backend Logic)](#edge-functions-backend-logic)
-12. [File Storage](#file-storage)
-13. [Realtime Subscriptions](#realtime-subscriptions)
-14. [UI & Navigation Structure](#ui--navigation-structure)
-15. [Design System & Theming](#design-system--theming)
-16. [PWA Support](#pwa-support)
-17. [Project Structure](#project-structure)
-18. [Key Libraries & Dependencies](#key-libraries--dependencies)
-19. [Development Setup](#development-setup)
+3. [Authentication & Auth Chain](#authentication--auth-chain)
+4. [Database Schema & Relationships](#database-schema--relationships)
+5. [Row-Level Security Summary](#row-level-security-summary)
+6. [Page Inventory](#page-inventory)
+7. [Key Components](#key-components)
+8. [Supabase Edge Functions](#supabase-edge-functions)
+9. [Active Constraints & Design Decisions](#active-constraints--design-decisions)
+10. [Offline-First Architecture](#offline-first-architecture)
+11. [Scheduling System & Week Rotation](#scheduling-system--week-rotation)
+12. [Environment Variables](#environment-variables)
+13. [Project Structure](#project-structure)
+14. [Key Libraries & Dependencies](#key-libraries--dependencies)
+15. [Development Setup](#development-setup)
 
 ---
 
-## Overview
+## Project Overview
 
-Check-In Tracker enables companies to:
-- Define **weekly visit schedules** for sales reps using a rotating template system
-- Track **real-time check-ins and check-outs** at customer locations
-- Capture **store photos** during visits
-- View **visit history, duration averages, and reports**
+Check-In Tracker enables field sales operations to:
+
+- Define **4-week rotating visit schedules** per sales rep using configurable weekly templates
+- Track **arrival/departure times** at customer locations with automatic duration calculation
+- Capture **timestamped store photos** with date/time burned into the image canvas (permanent, non-metadata)
+- Record **sales order details** (order number, quantity, amount) per visit
+- Operate **fully offline** — visits queue to IndexedDB and sync automatically on reconnection
 - Export visit data as **CSV or formatted Excel reports**
-- Operate **fully offline** with automatic background sync
-
-The system has two user roles: **Admin** (full management) and **Rep** (field operations).
+- Manage **users, roles, assignments, and schedules** from an admin-only interface
 
 ---
 
@@ -50,641 +42,688 @@ The system has two user roles: **Admin** (full management) and **Rep** (field op
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 18, TypeScript, Vite |
+| Frontend | React 18.3.1, TypeScript, Vite 5 |
 | UI Components | shadcn/ui (Radix primitives) |
-| Styling | Tailwind CSS with HSL design tokens |
-| State Management | React Context (Auth), TanStack React Query |
+| Styling | Tailwind CSS 3.4 with HSL design tokens |
+| State Management | React Context (Auth), TanStack React Query 5 |
 | Routing | React Router v6 |
-| Backend | Lovable Cloud (Supabase) |
-| Database | PostgreSQL (via Supabase) |
-| Auth | Supabase Auth (email/password) |
-| File Storage | Supabase Storage (`visit-photos` bucket) |
+| Backend / Database | Supabase (PostgreSQL 15) |
+| Auth | Supabase Auth — email/password |
+| File Storage | Supabase Storage (`visit-photos` bucket, public) |
 | Backend Functions | Supabase Edge Functions (Deno) |
-| Offline Storage | IndexedDB (via `idb` library) |
-| PWA | vite-plugin-pwa |
+| Offline Storage | IndexedDB via `idb` library |
+| PWA | vite-plugin-pwa (injectManifest strategy) |
+| Service Worker | Custom SW: `src/sw-custom.ts` |
 | Excel Export | SheetJS (`xlsx`) |
+| Hosting | Vercel (SPA rewrites via `vercel.json`) |
 
 ---
 
-## User Roles & Access Control
+## Authentication & Auth Chain
 
-Roles are stored in a dedicated `user_roles` table (never on the `profiles` or `auth.users` table) to prevent privilege escalation.
+### Login Flow
 
-### Role: Admin
-- Full CRUD on all tables (customers, reps, assignments, schedules, visits, users)
-- Can create/delete user accounts, change roles, reset passwords, update emails
-- Can export data (CSV, Excel)
-- Can permanently delete customers (with manual cascade)
-- **Cannot** log visits — admins are management-only
-- Navigation: Customers, Reps, Assignments, Schedules, Visits, Reports, Users, Account
+- **No public self-registration** — accounts are admin-created only
+- Sign-in at `/auth` via email + password (`supabase.auth.signIn()`)
+- First user auto-assigned `admin`; subsequent users auto-assigned `rep` via `auto_assign_role` trigger
 
-### Role: Rep
-- View their assigned daily schedule
-- Log check-ins/check-outs with arrival/departure times
-- Take optional store photos during check-in
-- Add notes to visits
-- Skip visits with mandatory reason
-- Log unscheduled (ad-hoc) visits
-- View their own visit history
-- Navigation: Schedule, My Visits
+### Auth Chain (Critical — Understand Before Writing RLS)
 
-### Role Checking
-A `has_role()` PostgreSQL function (SECURITY DEFINER) is used in all RLS policies to prevent recursive checks:
+```
+auth.users (Supabase managed)
+    │
+    ├── profiles          (id = auth.users.id)  ← full_name, login audit fields
+    │
+    ├── user_roles        (user_id FK → auth.users)  ← role: 'admin' | 'rep'
+    │
+    └── reps              (user_id FK → auth.users)  ← rep record with name/contact info
+```
+
+**Roles are never stored on `profiles` or `auth.users` metadata** — always in the `user_roles` table to prevent privilege escalation.
+
+The `has_role(_user_id uuid, _role app_role)` function (SECURITY DEFINER) is used in all RLS policies:
+
 ```sql
 CREATE FUNCTION public.has_role(_user_id uuid, _role app_role)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
-AS $$ SELECT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role = _role) $$;
+AS $$ SELECT EXISTS (
+  SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role = _role
+) $$;
 ```
 
-### RLS Policy Pattern
-Every table has Row-Level Security enabled. The general pattern is:
-- **Admins:** Full access via `has_role(auth.uid(), 'admin')`
-- **Reps:** Read/write only their own data, verified through joins to the `reps` table where `reps.user_id = auth.uid()`
+The `get_my_rep_id()` function (SECURITY DEFINER) returns the calling user's rep ID:
 
----
-
-## Authentication System
-
-### Login Flow
-- **Admin-managed accounts only** — there is no public self-registration
-- Auth page (`/auth`) is a simple email + password sign-in form
-- The first user created automatically becomes an admin (via `auto_assign_role` trigger)
-- Subsequent users created through the admin UI or the auto-assign trigger get the `rep` role
+```sql
+CREATE FUNCTION public.get_my_rep_id()
+RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER
+AS $$ SELECT id FROM public.reps WHERE user_id = auth.uid() LIMIT 1 $$;
+```
 
 ### Auth Context (`src/hooks/useAuth.tsx`)
-The `AuthProvider` wraps the entire app and provides:
-- `user`, `session` — Supabase auth state
-- `role` — `"admin"` | `"rep"` | `null`
-- `repId`, `repName` — The rep's record ID and display name (for reps)
-- `profile` — User profile data (full_name, login audit fields)
-- `permissions` — Simple permission array (`["admin:all"]` or `["rep:schedule", "rep:visits"]`)
-- `roleState` — State machine: `"loading"` → `"ready"` | `"unassigned"` | `"offline_bootstrap_required"` | `"resolving"`
-- `loading` — Boolean for initial auth resolution
 
-### Auth Resolution Strategy
-1. Listen to `onAuthStateChange` for session events
-2. Immediately try to load cached auth context from IndexedDB
-3. If cached role exists, apply it immediately (instant UI)
-4. In parallel, fetch fresh role/profile from server
-5. If server succeeds, update state and re-cache
-6. If offline with no cache, show "offline bootstrap required" screen
-7. Safety timeout of 8 seconds prevents infinite loading states
+The `AuthProvider` wraps the entire app and exposes:
 
-### Credential Management
-Admin-initiated email/password changes bypass email confirmation flows (using `email_confirm: true` in the admin API). The `profiles` table tracks `login_updated_at` and `login_updated_by` for audit purposes.
+| Field | Type | Notes |
+|-------|------|-------|
+| `user` | Supabase User | Raw auth user |
+| `session` | Supabase Session | JWT session |
+| `role` | `'admin' \| 'rep' \| null` | From `user_roles` |
+| `repId` | `uuid \| null` | Rep record PK |
+| `repName` | `string \| null` | Rep's display name |
+| `profile` | object | `full_name`, `created_at`, `login_updated_at`, `login_updated_by` |
+| `permissions` | `string[]` | `['admin:all']` or `['rep:schedule', 'rep:visits']` |
+| `roleState` | string | `'loading' \| 'ready' \| 'unassigned' \| 'offline_bootstrap_required' \| 'resolving'` |
+
+**Offline Auth Strategy:** On load, immediately reads `cached_user_auth` from IndexedDB (instant UI), then refreshes from server in parallel. If offline with no cache → `roleState = 'offline_bootstrap_required'` (must sign in online once first).
+
+### Customer → Rep Chain
+
+```
+customers
+    └── customer_assignments  (customer_id FK → customers, rep_id FK → reps)
+            └── reps           (user_id FK → auth.users)
+```
+
+A customer can be assigned to one rep. RLS on `customers` for reps uses this chain: rep can only see customers that have an assignment row pointing to their rep record.
 
 ---
 
-## Database Schema
+## Database Schema & Relationships
 
-### Tables
+### Enum
 
-#### `customers`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid (PK) | |
-| customer_name | text | Required |
-| account_number | text | Unique, optional |
-| area | text | Geographic grouping |
-| is_active | boolean | Soft delete |
-| created_at | timestamptz | |
-
-#### `reps`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid (PK) | |
-| rep_name | text | Required |
-| surname | text | |
-| email | text | |
-| cell_no | text | |
-| user_id | uuid | Links to auth.users |
-| is_active | boolean | Soft delete |
-| created_at | timestamptz | |
-
-#### `customer_assignments`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid (PK) | |
-| rep_id | uuid (FK → reps) | |
-| customer_id | uuid (FK → customers) | |
-| assigned_at | timestamptz | |
-
-Links customers to reps. A customer can be assigned to one rep.
-
-#### `weekly_templates`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid (PK) | |
-| name | text | e.g., "Week 1a", "Week 2b" |
-| sort_order | integer | Determines rotation position |
-| is_active | boolean | |
-| created_at | timestamptz | |
-
-Defines the rotation weeks (e.g., 4-week cycle: Week 1a → Week 2a → Week 1b → Week 2b).
-
-#### `schedule_templates`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid (PK) | |
-| rep_id | uuid (FK → reps) | |
-| day_of_week | integer | 1=Monday ... 5=Friday |
-| weekly_template_id | uuid (FK → weekly_templates) | |
-| is_active | boolean | |
-| created_at | timestamptz | |
-
-Per-rep, per-day, per-week template defining which customers to visit.
-
-#### `schedule_template_items`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid (PK) | |
-| template_id | uuid (FK → schedule_templates) | |
-| customer_id | uuid (FK → customers) | |
-| sort_order | integer | Visit sequence |
-
-Ordered list of customers within a template.
-
-#### `daily_schedules`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid (PK) | |
-| rep_id | uuid (FK → reps) | |
-| schedule_date | date | |
-| created_at | timestamptz | |
-
-Auto-generated from templates when a rep views a date.
-
-#### `schedule_items`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid (PK) | |
-| schedule_id | uuid (FK → daily_schedules) | |
-| customer_id | uuid (FK → customers) | |
-| sort_order | integer | |
-| status | text | `"pending"`, `"visited"`, `"skipped"` |
-| arrival_time | time | |
-| leaving_time | time | |
-| duration_minutes | integer | Calculated |
-| notes | text | |
-| visit_id | uuid (FK → visits) | Links to the visit record |
-
-#### `visits`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid (PK) | |
-| rep_id | uuid (FK → reps) | |
-| customer_id | uuid (FK → customers) | |
-| visit_date | date | Defaults to current date |
-| arrival_time | time | |
-| leaving_time | time | |
-| duration_minutes | integer | |
-| notes | text | |
-| status | text | `"visited"` or `"skipped"` |
-| photo_url | text | Public URL from storage |
-| latitude | double precision | Reserved (GPS, currently unused) |
-| longitude | double precision | Reserved (GPS, currently unused) |
-| location_address | text | Reserved (reverse geocode, currently unused) |
-| client_generated_id | uuid | For offline deduplication |
-| created_at | timestamptz | |
-
-#### `user_roles`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid (PK) | |
-| user_id | uuid (FK → auth.users) | |
-| role | app_role enum | `"admin"` or `"rep"` |
-
-Unique constraint on (user_id, role).
-
-#### `profiles`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid (PK) | Same as auth.users.id |
-| full_name | text | |
-| login_updated_at | timestamptz | Audit: when admin changed credentials |
-| login_updated_by | uuid | Audit: which admin changed credentials |
-| created_at | timestamptz | |
-
-#### `app_settings`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid (PK) | |
-| setting_key | text | e.g., `"current_week_order"`, `"week_cycle_start_date"` |
-| setting_value | text | |
-| updated_at | timestamptz | |
-| updated_by | uuid | |
-
-### Database Functions
-
-| Function | Purpose |
-|----------|---------|
-| `has_role(_user_id, _role)` | SECURITY DEFINER check for RLS policies |
-| `auto_generate_daily_schedule(p_rep_id, p_schedule_date)` | Creates a daily schedule from the matching template |
-| `get_week_order_for_date(p_date)` | Computes which rotation week a date falls in |
-| `get_my_rep_id()` | Returns the calling user's rep ID |
-| `handle_new_user()` | Trigger: creates a profile row on auth.users insert |
-| `auto_assign_role()` | Trigger: assigns admin to first user, rep to subsequent |
-
-### Enum Types
 ```sql
 CREATE TYPE public.app_role AS ENUM ('admin', 'rep');
 ```
 
+### `profiles`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid PK | Same as `auth.users.id` — FK to `auth.users` |
+| `full_name` | text | Display name |
+| `login_updated_at` | timestamptz | Audit: when admin last changed credentials |
+| `login_updated_by` | uuid | Audit: which admin changed credentials |
+| `created_at` | timestamptz | |
+
+RLS: Users view/update own row; admins view all.
+
 ---
 
-## Application Features
+### `user_roles`
 
-### Representative Features
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid PK | |
+| `user_id` | uuid FK → `auth.users` | |
+| `role` | `app_role` | `'admin'` or `'rep'` |
 
-#### Daily Schedule Page (`/schedule`)
-- **Default landing page** for reps
-- Date picker to navigate between days
-- Shows current rotation week name (e.g., "Week 1a")
-- **Two tabs:** "Schedule" (pending items) and "Completed" (visited/skipped) with count badges
-- Auto-generates daily schedule from templates via `auto_generate_daily_schedule()` RPC
-- Each schedule item shows:
-  - Customer name with account number
-  - Status badge (Pending / In Progress / Visited / Skipped)
-  - Arrival and leaving time inputs with "Now" quick-fill buttons
-  - Optional store photo capture (appears after arrival is recorded)
-  - Notes textarea
-  - "Skip" button (requires notes) and "Mark Visited" button
-- **Realtime:** Listens for `schedule_items` and `daily_schedules` changes via Supabase Realtime channels
-- **Ad-hoc visits:** "Log Unscheduled Visit" section at bottom for visits to customers not on the day's schedule
+Unique: `(user_id, role)`. RLS: Users view own; admins manage all.
 
-#### Log a Visit Page (`/log-visit`)
-- Manual visit logging form for ad-hoc visits
-- Customer dropdown (from assigned customers)
-- Date, arrival time, leaving time inputs with "Arrived Now" / "Left Now" buttons
-- Duration auto-calculated and displayed
-- Optional store photo capture
-- Notes textarea
-- Submit button shows "Save Offline" when offline
+**Trigger `auto_assign_role()`** fires on INSERT to `auth.users`:
+- If this is the first user → assigns `'admin'`
+- Otherwise → assigns `'rep'` and links to the first available `reps` row with `user_id IS NULL`
 
-#### My Visits Page (`/my-visits`)
-- Filterable visit history table
-- Filters: date range, customer
-- Columns: Date, Customer, Account #, Arrival, Leaving, Duration, Photo (thumbnail), Notes, Status (sync status)
-- Offline visits shown with "Pending" / "Error" badges
-- "Sync Now" button appears when there are pending offline visits and the device is online
-- Edit dialog for synced visits (date, arrival, leaving, notes)
-- Delete functionality for synced visits
-- Photo lightbox: click thumbnail to see full-size image with customer name and date
+---
 
-### Administrator Features
+### `reps`
 
-#### Customers Page (`/admin/customers`)
-- Full CRUD for customer records
-- Fields: Name (required), Account Number (unique, real-time validation), Area, Assigned Rep
-- Sortable columns: Name, Area, Rep
-- Filter popover: by Rep, Area, Active/Inactive status
-- Search bar across name, area, and rep
-- Active/Inactive toggle (soft delete)
-- **Permanent delete** with cascade: removes schedule_template_items, schedule_items, visits, customer_assignments, then the customer
-- Account number uniqueness checked in real-time with 300ms debounce
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid PK | |
+| `user_id` | uuid FK → `auth.users` | Nullable until "Set Login" is called |
+| `rep_name` | text UNIQUE | First name |
+| `surname` | text | |
+| `email` | text | |
+| `cell_no` | text | |
+| `is_active` | boolean | Soft delete |
+| `created_at` | timestamptz | |
 
-#### Reps Page (`/admin/reps`)
-- List of all reps with Name, Surname, Status
-- Add new rep (name + surname only)
-- Edit rep details (name, surname, email, password)
-- **Set Login** button (KeyRound icon): creates an auth user and links to the rep record, only shown for reps without a `user_id`
-- Active/Inactive toggle
-- Updates use the `manage-rep-user` edge function
+RLS: Admins manage all; reps view own row only.
 
-#### Assignments Page (`/admin/assignments`)
-- Assign customers to reps via dual dropdown
-- View all current assignments in a table
-- Filter by rep and area
-- Remove individual assignments
+---
 
-#### Schedules Page (`/admin/schedules`)
-- **Three sections:**
-  1. **Week Rotation Settings:** View/reorder/rename weekly templates, set current active week
-  2. **Weekly Templates (per rep):** Define which customers a rep visits on each weekday for each rotation week
-     - Searchable/filterable customer selector with checkboxes
-     - Drag-to-reorder visit sequence (sort order)
-     - Saving a template auto-deletes future unstarted daily schedules to trigger regeneration
-  3. **Daily Schedules:** View generated daily schedules with status indicators
+### `customers`
 
-#### Visits Page (`/admin/visits`)
-- All visits across all reps
-- Filters: Rep, Customer, Date From, Date To
-- Columns: Date, Rep, Customer, Account #, Arrival, Leaving, Duration, Photo (40x40 thumbnail), Notes
-- Skipped visits highlighted with red background and badge
-- Photo lightbox: shows full image with Rep name, Customer name, Date
-- Edit dialog (date, arrival, leaving, notes)
-- Delete with visit_id cleanup in schedule_items
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid PK | |
+| `customer_name` | text UNIQUE | Required |
+| `account_number` | text UNIQUE | Optional — uniqueness enforced with 300ms debounce validation in UI |
+| `area` | text | Geographic grouping |
+| `is_active` | boolean | Soft delete |
+| `created_at` | timestamptz | |
 
-#### Reports/Exports Page (`/admin/reports`)
-- Three export options:
-  1. **Visits CSV:** Raw visit data export
-  2. **Averages CSV:** Aggregated duration averages per rep-customer pair
-  3. **Excel Report:** Formatted spreadsheet with:
-     - Title row and rep/date header
-     - Styled column headers (dark blue background, white text)
-     - Alternating row colors
-     - Skipped visits highlighted in red
-     - Total productive time calculation
-     - Requires selecting a specific rep and start date
+RLS: Admins manage all; reps can only view customers that have a `customer_assignments` row for their `rep_id`.
 
-#### Users Page (`/admin/users`)
-- Comprehensive user account management
-- View: Email, Name, Role (badge), Linked Rep, Created date, Last Sign In
-- Login audit trail: "Login changed [date] by [admin name]"
-- Actions per user (with tooltips):
-  - 📧 Change email (bypasses confirmation)
-  - 🛡️ Change role (admin ↔ rep)
-  - 🔑 Reset password (bypasses confirmation)
-  - 🗑️ Delete user (unlinks from rep record)
-- **Add User** button: Create with email, password, first name, surname, role
-- Self-deletion protection (admin cannot delete their own account)
+---
 
-#### Account Page (`/admin/account`)
-- Update own email (requires inbox confirmation)
-- Change own password
+### `customer_assignments`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid PK | |
+| `rep_id` | uuid FK → `reps` | |
+| `customer_id` | uuid FK → `customers` | |
+| `assigned_at` | timestamptz | |
+
+Unique: `(rep_id, customer_id)`. Upsert on conflict is used. RLS: Admins manage all; reps view own assignments only (read-only for reps).
+
+---
+
+### `visits`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid PK | |
+| `rep_id` | uuid FK → `reps` | |
+| `customer_id` | uuid FK → `customers` | |
+| `visit_date` | date | |
+| `arrival_time` | time | |
+| `leaving_time` | time | |
+| `duration_minutes` | integer | Calculated: `(leaving - arrival)` in minutes |
+| `notes` | text | |
+| `status` | text | `'visited'` or `'skipped'` |
+| `order_number` | text | Nullable — sales order reference |
+| `order_quantity` | integer | Nullable — units ordered |
+| `order_amount` | numeric | Nullable — currency amount |
+| `photo_url` | text | Public URL from `visit-photos` storage |
+| `latitude` | double precision | Reserved (GPS — currently unused) |
+| `longitude` | double precision | Reserved (GPS — currently unused) |
+| `location_address` | text | Reserved (reverse geocode — currently unused) |
+| `client_generated_id` | uuid UNIQUE | Client-generated UUID for offline deduplication |
+| `created_at` | timestamptz | |
+
+RLS: Admins manage all; reps can INSERT/SELECT/UPDATE/DELETE own visits (verified via `reps.user_id = auth.uid()`).
+
+---
+
+### `weekly_templates`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid PK | |
+| `name` | text | e.g., `'Week 1a'`, `'Week 1b'`, `'Week 2a'`, `'Week 2b'` |
+| `sort_order` | integer | Position in rotation (1–4) |
+| `is_active` | boolean | |
+| `created_at` | timestamptz | |
+
+Seeded with 4 rows. RLS: Admins manage all; all authenticated users can view.
+
+---
+
+### `schedule_templates`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid PK | |
+| `rep_id` | uuid FK → `reps` | |
+| `day_of_week` | integer | 1=Mon … 5=Fri |
+| `weekly_template_id` | uuid FK → `weekly_templates` | |
+| `is_active` | boolean | |
+| `created_at` | timestamptz | |
+
+Unique: `(rep_id, day_of_week, weekly_template_id)`. RLS: Admins manage all; reps view own.
+
+---
+
+### `schedule_template_items`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid PK | |
+| `template_id` | uuid FK → `schedule_templates` | |
+| `customer_id` | uuid FK → `customers` | |
+| `sort_order` | integer | Visit sequence within the day |
+
+Unique: `(template_id, customer_id)`. RLS: Admins manage all; reps view own (via `schedule_templates`).
+
+---
+
+### `daily_schedules`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid PK | |
+| `rep_id` | uuid FK → `reps` | |
+| `schedule_date` | date | |
+| `created_at` | timestamptz | |
+
+Unique: `(rep_id, schedule_date)`. Auto-generated by `auto_generate_daily_schedule()`. RLS: Admins manage all; reps view own.
+
+---
+
+### `schedule_items`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid PK | |
+| `schedule_id` | uuid FK → `daily_schedules` | |
+| `customer_id` | uuid FK → `customers` | |
+| `sort_order` | integer | |
+| `status` | text | `'pending'`, `'visited'`, `'skipped'` |
+| `arrival_time` | time | |
+| `leaving_time` | time | |
+| `duration_minutes` | integer | |
+| `notes` | text | |
+| `visit_id` | uuid FK → `visits` | Links to the visit record once completed |
+
+Unique: `(schedule_id, customer_id)`. RLS: Admins manage all; reps can view and update own.
+
+---
+
+### `app_settings`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid PK | |
+| `setting_key` | text UNIQUE | e.g., `'current_week_order'`, `'week_cycle_start_date'` |
+| `setting_value` | text | |
+| `updated_at` | timestamptz | |
+| `updated_by` | uuid FK → `auth.users` | |
+
+Used keys: `current_week_order` (int 1–4), `week_cycle_start_date` (date, e.g. `'2026-03-02'`). RLS: Admins manage all; all authenticated users can view.
+
+---
+
+### Database Functions
+
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `has_role` | `(uuid, app_role) → boolean` | SECURITY DEFINER — used in every RLS policy |
+| `get_my_rep_id` | `() → uuid` | SECURITY DEFINER — returns calling user's rep ID |
+| `get_week_order_for_date` | `(date) → integer` | Computes rotation week (1–4) for any date based on `week_cycle_start_date` |
+| `auto_generate_daily_schedule` | `(uuid, date) → uuid` | Idempotent — creates `daily_schedules` + `schedule_items` from the matching template; skips weekends; returns null if no template exists |
+| `auto_assign_role` | trigger on `auth.users` | First user → admin; subsequent users → rep (links to first unlinked rep row) |
+| `handle_new_user` | trigger on `auth.users` | Creates a `profiles` row on auth signup |
+
+---
+
+### Storage
+
+**Bucket:** `visit-photos` (public)
+
+- Upload path: `{rep_id}/{visit_id}.jpg`
+- RLS: Authenticated reps can INSERT; authenticated users can SELECT; reps can DELETE own files
+- Photos are always compressed before upload (max 1200px, 70% JPEG quality)
+
+---
+
+## Row-Level Security Summary
+
+All tables have RLS enabled. The general pattern:
+
+- **Admins:** Full access (`has_role(auth.uid(), 'admin')`)
+- **Reps:** Scoped read/write via join to `reps` where `reps.user_id = auth.uid()`, or via `get_my_rep_id()`
+
+| Table | Admin | Rep |
+|-------|-------|-----|
+| `profiles` | View all, manage all | View/update own |
+| `user_roles` | Manage all | View own |
+| `reps` | Manage all | View own |
+| `customers` | Manage all | View assigned (via `customer_assignments`) |
+| `customer_assignments` | Manage all | View own (read-only) |
+| `visits` | Manage all | INSERT / SELECT / UPDATE / DELETE own |
+| `weekly_templates` | Manage all | View all |
+| `schedule_templates` | Manage all | View own |
+| `schedule_template_items` | Manage all | View own (via `schedule_templates`) |
+| `daily_schedules` | Manage all | View own |
+| `schedule_items` | Manage all | View own, Update own |
+| `app_settings` | Manage all | View all |
+| `visit-photos` bucket | Implied full | INSERT own, SELECT all, DELETE own |
+
+Edge functions use the **service role key** and bypass RLS — they perform their own admin role check internally.
+
+---
+
+## Page Inventory
+
+### Public Pages
+
+#### `/auth` — [Auth.tsx](src/pages/Auth.tsx)
+Email + password sign-in form. Calls `supabase.auth.signIn()`. Redirects to `/` on success. No DB queries.
+
+---
+
+### Rep Pages
+
+#### `/` — [Index.tsx](src/pages/Index.tsx)
+Role-based redirect: admin → `/admin/visits`, rep → `/schedule`. No DB queries.
+
+#### `/schedule` — [DailySchedule.tsx](src/pages/DailySchedule.tsx)
+Main rep interface. Shows the day's customer visit schedule as expandable cards.
+
+**Tables read:** `daily_schedules`, `schedule_items`, `schedule_templates`, `weekly_templates`, `customers` (via join), `app_settings`
+
+**Tables written:** `schedule_items` (UPDATE arrival/leaving/duration/notes/status), `visits` (INSERT/UPDATE), `visit-photos` storage (UPLOAD)
+
+**RPCs called:** `auto_generate_daily_schedule(rep_id, date)` — idempotent, generates daily schedule from weekly template
+
+**Notable logic:**
+- Real-time subscription on `schedule_items` (filter: `schedule_id=eq.{id}`) and `daily_schedules` (filter: `rep_id=eq.{repId}`) via Supabase Realtime
+- Offline queue: schedule item updates → `upsertOfflineScheduleItemUpdate()`, visits → `saveVisitOffline()` with photo as base64
+- Photo capture inline within each schedule card
+- Order fields: `order_number` (string), `order_quantity` (integer), `order_amount` (numeric)
+- "Log Unscheduled Visit" section at bottom for ad-hoc visits
+
+#### `/log-visit` — [LogVisit.tsx](src/pages/LogVisit.tsx)
+Manual visit logging form. Intended for ad-hoc visits outside the daily schedule.
+
+**Tables read:** `customer_assignments` (to populate customer dropdown for rep), `cached_customers` (IndexedDB fallback)
+
+**Tables written:** `visits` (INSERT), `visit-photos` storage (UPLOAD)
+
+**Notable logic:**
+- Photo compression via `compressImage()` (max 1200px, 70% quality) then `stampImage()` burns date/time label onto image canvas
+- Duration auto-calculated from arrival/leaving times
+- Offline fallback: `addOfflineVisit()` queues to IndexedDB on network error
+- Customer list cached in IndexedDB (`setCachedCustomers` / `getCachedCustomers`)
+
+#### `/my-visits` — [MyVisits.tsx](src/pages/MyVisits.tsx)
+Rep's own visit history with filters and offline sync status.
+
+**Tables read:** `visits` (SELECT own), `customer_assignments` (for filter dropdown)
+
+**Tables written:** `visits` (UPDATE, DELETE)
+
+**Notable logic:**
+- Merges server visits + offline visits from IndexedDB, deduplicated by `client_generated_id`
+- Offline visit badges: `pending` / `synced` / `error`
+- "Sync Now" button triggers `syncPendingVisits()` when online
+- Photo lightbox modal on thumbnail click
+- Edit modal for synced visits (date, arrival, leaving, notes)
+
+#### `/averages` — [Averages.tsx](src/pages/Averages.tsx)
+Rep's own performance summary — average visit duration per customer.
+
+**Tables read:** `visits` (SELECT own, aggregates `duration_minutes`, `order_quantity`, `order_amount`)
+
+**Notable logic:**
+- Calculates `avg_duration = total_minutes / count`, `total_order_qty`, `total_order_amount`
+- Filters: date range (7d / 30d / all-time), sort by customer name or avg duration
+
+---
+
+### Admin Pages
+
+#### `/admin/visits` — [AdminVisits.tsx](src/pages/admin/AdminVisits.tsx)
+All visits across all reps with edit/delete.
+
+**Tables read:** `visits`, `reps`, `customers`
+
+**Tables written:** `visits` (UPDATE, DELETE) — delete also clears `schedule_items.visit_id`
+
+**Notable logic:**
+- Real-time subscription via `supabase.channel('admin-visits-realtime')` listening for INSERT/UPDATE on `visits`
+- Columns: Date, Rep, Customer, Account #, Arrival, Leaving, Duration, Photo, Order No., Qty, Amount, Notes
+- Edit modal includes all visit fields including order fields with time validation
+- Skipped visits highlighted with red background
+
+#### `/admin/customers` — [AdminCustomers.tsx](src/pages/admin/AdminCustomers.tsx)
+Full CRUD for customer records and rep assignments.
+
+**Tables read:** `customers`, `customer_assignments`, `reps`
+
+**Tables written:** `customers` (INSERT, UPDATE, DELETE), `customer_assignments` (INSERT, DELETE), `schedule_template_items` (DELETE — cascade cleanup on customer delete)
+
+**Notable logic:**
+- Account number uniqueness validated in real-time with **300ms debounce** against the `customers` table
+- Permanent delete cascades: removes `schedule_template_items`, `customer_assignments`, then the `customers` row
+- Filter/sort by rep, area, active status
+
+#### `/admin/reps` — [AdminReps.tsx](src/pages/admin/AdminReps.tsx)
+Rep record management.
+
+**Tables read:** `reps`
+
+**Tables written:** `reps` (INSERT, UPDATE) via the `manage-rep-user` edge function
+
+**Notable logic:**
+- "Set Login" (KeyRound icon) shown for reps with `user_id IS NULL` — calls `manage-rep-user` with `action: 'create'`
+- Updates use `manage-rep-user` with `action: 'update'`
+
+#### `/admin/assignments` — [AdminAssignments.tsx](src/pages/admin/AdminAssignments.tsx)
+Map reps to customers.
+
+**Tables read:** `customer_assignments`, `reps`, `customers`
+
+**Tables written:** `customer_assignments` (INSERT with upsert on `(rep_id, customer_id)`, DELETE)
+
+#### `/admin/schedules` — [AdminSchedules.tsx](src/pages/admin/AdminSchedules.tsx)
+Manage weekly rotation templates and view daily schedules.
+
+**Tables read:** `weekly_templates`, `schedule_templates`, `schedule_template_items`, `daily_schedules`, `schedule_items`, `app_settings`, `reps`, `customers`
+
+**Tables written:** `weekly_templates` (UPDATE sort_order), `schedule_templates` (INSERT, DELETE, UPDATE), `schedule_template_items` (INSERT, DELETE, UPDATE sort_order), `daily_schedules` (DELETE — future unstarted schedules), `app_settings` (UPDATE `current_week_order`, `week_cycle_start_date`)
+
+**Notable logic:**
+- Saving a template deletes future daily schedules for that rep/day that have no started items (forces regeneration)
+- Week cycle start date drives the `get_week_order_for_date()` calculation
+- Drag-to-reorder visit sequence within a day's template
+
+#### `/admin/reports` — [AdminExports.tsx](src/pages/admin/AdminExports.tsx)
+Export visit data as CSV or formatted Excel.
+
+**Tables read:** `visits`, `reps`, `customers`
+
+**Exports:**
+- **Visits CSV:** Raw visit data with all fields including order fields
+- **Averages CSV:** Aggregated per rep-customer pair (avg duration, total qty/amount)
+- **Excel XLSX:** Per-rep daily report — styled headers (dark blue/white), alternating row colors, skipped visits in red, totals row (productive time, qty, amount). Times formatted as 12-hour AM/PM. Duration as `Xh Ym`.
+
+#### `/admin/users` — [AdminUsers.tsx](src/pages/admin/AdminUsers.tsx)
+Full user account lifecycle management.
+
+**Tables read/written:** Via `manage-users` edge function (touches `auth.users`, `user_roles`, `reps`, `profiles`)
+
+**Actions:** `list`, `create_user`, `update_role`, `reset_password`, `delete_user`
+
+**Notable logic:**
+- Login audit trail from `profiles.login_updated_at` / `login_updated_by`
+- Self-deletion blocked (admin cannot delete own account)
+- Role change (admin ↔ rep) updates `user_roles` table
+
+#### `/admin/account` — [AdminAccount.tsx](src/pages/admin/AdminAccount.tsx)
+Admin's own email/password settings. Uses `supabase.auth.updateUser()` directly. No custom DB queries.
+
+---
+
+## Key Components
+
+### [AppLayout.tsx](src/components/AppLayout.tsx)
+Main layout wrapper used on every authenticated page. Responsibilities:
+- Sticky header with logo, nav links, offline indicator, role badge, sign-out
+- Auth guard — redirects unauthenticated users to `/auth`
+- Calls `setupAutoSync()` for reps on mount to start background sync loop (checks every 5s if online)
+- Handles `offline_bootstrap_required` state (shows guidance screen)
+- Route persistence: saves current path to `localStorage` for mobile background/restore
+- Consumed by: every page
+
+### [CameraCapture.tsx](src/components/CameraCapture.tsx)
+Full-screen camera overlay for taking store photos.
+- Uses `navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })`
+- **iOS requirement:** Must be triggered by a user gesture (tap) — cannot auto-open camera
+- Captures frame to canvas as JPEG blob
+- Consumed by: [DailySchedule.tsx](src/pages/DailySchedule.tsx), [LogVisit.tsx](src/pages/LogVisit.tsx)
+
+### [OfflineStatusBar.tsx](src/components/OfflineStatusBar.tsx)
+Visual banner displayed when `navigator.onLine === false`. Uses `useOnlineStatus` hook.
+Consumed by: [AppLayout.tsx](src/components/AppLayout.tsx)
+
+### [NavLink.tsx](src/components/NavLink.tsx)
+Styled navigation anchor with active/inactive variants using `.nav-link-active` / `.nav-link-inactive` CSS classes.
+Consumed by: [AppLayout.tsx](src/components/AppLayout.tsx)
+
+### `src/components/ui/` — shadcn/ui Component Library
+50+ components built on Radix primitives: `Button`, `Input`, `Select`, `Dialog`, `AlertDialog`, `Sheet`, `Popover`, `Table`, `Tabs`, `Badge`, `Checkbox`, `Label`, `Textarea`, `Toast` (Radix + Sonner implementations), `Card`, etc. Used throughout all pages.
+
+---
+
+## Supabase Edge Functions
+
+Both functions are configured with `verify_jwt = false` in `supabase/config.toml` because they handle auth verification internally using the **service role key**.
+
+### `manage-rep-user` — [supabase/functions/manage-rep-user/index.ts](supabase/functions/manage-rep-user/index.ts)
+
+**Called by:** [AdminReps.tsx](src/pages/admin/AdminReps.tsx)
+
+**Security:** Verifies caller has `'admin'` role in `user_roles` table using the service role key.
+
+| Action | What it does |
+|--------|-------------|
+| `create` | Creates a Supabase auth user (email + password), sets user metadata, updates `reps.user_id` to link the auth user to the rep record |
+| `update` | Updates `reps` table fields (name, email, etc.) and optionally updates the auth user's email/password |
+
+**Validation:** Email format, password 6–72 chars, strings < 255 chars. Sanitizes DB/auth error messages before returning.
+
+---
+
+### `manage-users` — [supabase/functions/manage-users/index.ts](supabase/functions/manage-users/index.ts)
+
+**Called by:** [AdminUsers.tsx](src/pages/admin/AdminUsers.tsx)
+
+**Security:** Verifies caller has `'admin'` role; rejects non-admins with HTTP 403.
+
+| Action | What it does |
+|--------|-------------|
+| `list` | Returns all Supabase auth users enriched with `user_roles`, linked `reps` record, `profiles` data (including login audit fields) |
+| `create_user` | Creates auth user with `email_confirm: true` (bypasses email confirmation), assigns role in `user_roles` |
+| `update_role` | Updates `user_roles` table for the given `user_id` |
+| `reset_password` | Sets new password via admin API with `email_confirm: true`; updates `profiles.login_updated_at/by` |
+| `delete_user` | Unlinks from `reps` (sets `user_id = null`), removes from `user_roles`, deletes from `auth.users`; blocks self-deletion |
+
+---
+
+## Active Constraints & Design Decisions
+
+### 1. Account Number Uniqueness Enforcement
+
+`customers.account_number` has a PostgreSQL UNIQUE constraint. In [AdminCustomers.tsx](src/pages/admin/AdminCustomers.tsx), the account number input validates against the database in real-time with a **300ms debounce** — an inline error is shown before the user submits. This prevents silent unique-constraint failures on insert.
+
+### 2. Date/Time Stamp Burned onto Photos via Canvas
+
+Photos are **never** stored with metadata-only timestamps. In [`src/lib/imageCompressor.ts`](src/lib/imageCompressor.ts), `stampImage(blob, label)` draws the date/time string (format: `DD/MM/YYYY HH:MM:SS`) directly onto the image canvas using a semi-transparent black background with white text sized at 2.8% of image width, positioned at the bottom-right corner. Font: `Arial`, weight `bold`. The result is re-encoded as JPEG at 88% quality. This makes the timestamp permanent and visible even if the file is shared outside the app.
+
+### 3. RLS Admin Role Requirement
+
+Every Supabase query from the frontend relies on RLS. The `has_role()` SECURITY DEFINER function is the single source of truth for role checks. **Do not** move role data to `auth.users.app_metadata` or `profiles` — the entire RLS policy structure assumes `user_roles` is the authoritative table.
+
+### 4. iOS `getUserMedia` Gesture Requirement
+
+Safari on iOS blocks `navigator.mediaDevices.getUserMedia()` unless called from within a user gesture handler (tap event). In [CameraCapture.tsx](src/components/CameraCapture.tsx), camera activation is always triggered by a button `onClick`. **Never** attempt to auto-open the camera on page load or in `useEffect` without a gesture chain — it will fail silently on iOS.
+
+### 5. Service Worker Caching Strategy
+
+Defined in [`src/sw-custom.ts`](src/sw-custom.ts), registered via `vite-plugin-pwa` with `injectManifest` strategy:
+
+| Route / Asset Type | Strategy | Cache Name | Max Entries | Max Age |
+|---|---|---|---|---|
+| Supabase API (`*.supabase.co`) | NetworkOnly | — | — | — |
+| JS / CSS bundles | CacheFirst | `static-code-v1` | 60 | 30 days |
+| Images / Fonts | CacheFirst | `static-assets-v1` | 120 | 30 days |
+| HTML / SPA navigation | NetworkFirst | — | — | — |
+
+On **activate**, the SW calls `clients.claim()` and re-caches `index.html` (via `refreshIndexHtml()`) to ensure the latest shell is served after an update. On **install**, `skipWaiting()` forces immediate takeover.
+
+**Do not** add Supabase API calls to any cache strategy — they must always go to the network.
+
+### 6. Vercel SPA Rewrite Rules
+
+`vercel.json` contains a catch-all rewrite rule so that direct navigation to any route (e.g. `/admin/visits`) returns `index.html` instead of a 404:
+
+```json
+{
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
+```
+
+Without this rule, refreshing any non-root route in production returns a 404 from Vercel's CDN.
 
 ---
 
 ## Offline-First Architecture
 
-The app is designed to **never block the user** with offline screens. All actions complete immediately via optimistic UI updates and queue for background sync.
-
 ### IndexedDB Schema (`src/lib/offlineDb.ts`)
 
-Database name: `checkin-tracker-offline`, version 4
+Database name: `checkin-tracker-offline`, version **4** (increment version if adding stores)
 
-| Store | Key | Purpose |
-|-------|-----|---------|
-| `offline_visits_queue` | `client_generated_id` | Queued visit records awaiting sync |
-| `offline_schedule_item_updates` | `schedule_item_id` | Queued schedule item updates |
-| `cached_customers` | `id` | Cached customer list for offline dropdowns |
-| `cached_schedules` | `key` (repId_date) | Cached daily schedules |
-| `cached_user_auth` | `user_id` | Cached role, repId, permissions |
-
-### Offline Visit Record Structure
-```typescript
-interface OfflineVisit {
-  client_generated_id: string;      // UUID for deduplication
-  payload: {                         // Mirrors the visits table insert
-    rep_id, customer_id, visit_date,
-    arrival_time, leaving_time, duration_minutes,
-    notes, client_generated_id, status?
-  };
-  created_at_local: string;
-  sync_status: "pending" | "synced" | "error";
-  last_sync_attempt: string | null;
-  error_message: string | null;
-  customer_name?: string;            // For display while offline
-  photo_base64?: string | null;      // Compressed JPEG as data URL
-}
-```
+| Store | Key | Stored Data |
+|-------|-----|-------------|
+| `offline_visits_queue` | `client_generated_id` | Full visit payload + `photo_base64` (JPEG data URL) + `sync_status` |
+| `offline_schedule_item_updates` | `schedule_item_id` | Schedule item update payload + sync metadata |
+| `cached_customers` | `id` | `{id, customer_name, account_number, area}` |
+| `cached_schedules` | `key` (`{repId}_{date}`) | Full daily schedule + items |
+| `cached_user_auth` | `user_id` | `{role, rep_id, rep_name, profile, permissions, cached_at}` |
 
 ### Sync Engine (`src/lib/syncEngine.ts`)
 
-**Trigger points:**
-- `online` event (1.5s delay)
-- `visibilitychange` to "visible" when online (1s delay)
+Triggered by:
+- `online` DOM event (1.5s delay)
+- `visibilitychange` → visible, when online (1s delay)
 - App load when online (2s delay)
-- Manual "Sync Now" button
+- Manual "Sync Now" button in [MyVisits.tsx](src/pages/MyVisits.tsx)
 
-**Visit sync flow:**
-1. Get all pending/error visits from IndexedDB
-2. Sort by `created_at_local` (chronological order)
-3. For each visit:
-   - Check idempotency: query `visits` by `client_generated_id`
-   - Check duplicate: query by rep_id + customer_id + date + times
-   - If neither exists, insert the visit
-   - On success: link to schedule item, upload queued photo
-   - Mark as synced or error in IndexedDB
-4. Remove all synced records from IndexedDB
-5. Also sync pending schedule item updates
+**Visit sync flow (idempotent):**
+1. Get all `pending` / `error` visits from IndexedDB, sorted by `created_at_local`
+2. Per visit: check for existing record by `client_generated_id`; check for duplicate (same `rep_id + customer_id + visit_date + times`)
+3. If new: INSERT into `visits`
+4. On success: `linkVisitToScheduleItem()` updates the matching `schedule_items` row; upload `photo_base64` to `visit-photos` bucket; UPDATE `visits.photo_url`
+5. Mark as `synced` in IndexedDB; remove synced records after pass completes
 
-**Duplicate prevention:** The `client_generated_id` field ensures visits are never duplicated even if the sync runs multiple times.
+**Schedule item sync:** Updates `schedule_items` fields (arrival/leaving/duration/notes/status) from `offline_schedule_item_updates` queue.
 
 ### Offline Bootstrap (`src/lib/offlineBootstrap.ts`)
-On first online login, the app pre-caches:
-- Assigned customers list
-- Daily schedules for a window of -2 to +7 days
 
-This enables full offline operation after a single online session.
+On first successful online sign-in, pre-caches:
+- Assigned customers list → `cached_customers`
+- Daily schedules for window `-2` to `+7` days → `cached_schedules`
+- User auth context → `cached_user_auth`
 
-### Optimistic UI Updates
-Schedule item changes (arrival, leaving, notes, status) are applied to local state immediately, then persisted to IndexedDB cached schedules, and finally synced to the server. The UI never waits for server confirmation.
-
-### Route Persistence
-The current route is saved to `localStorage` so that if the app is backgrounded and restored (common on mobile), the user returns to the same screen instead of the home page.
+This enables full offline operation after a single online session. If a user has never signed in online, `roleState` becomes `'offline_bootstrap_required'`.
 
 ---
 
 ## Scheduling System & Week Rotation
 
-### Rotation Logic
-The system uses a configurable N-week rotation (default 4 weeks):
-- Weekly templates have a `sort_order` (1, 2, 3, 4)
-- A reference start date is stored in `app_settings` (`week_cycle_start_date`)
-- The `get_week_order_for_date()` function computes which week any given date falls in:
-  ```
-  weeks_elapsed = floor((target_date - start_date) / 7)
-  week_index = ((weeks_elapsed % total_weeks) + total_weeks) % total_weeks + 1
-  ```
+### 4-Week Rotation
 
-### Schedule Generation Flow
-1. Rep opens schedule page for a date
-2. App checks if `daily_schedules` record exists for that rep + date
-3. If not, calls `auto_generate_daily_schedule()` RPC
-4. RPC determines the day of week and rotation week
-5. Finds matching template and copies items to a new daily schedule
-6. Rep sees the generated schedule immediately
+Four `weekly_templates` (Week 1a, 1b, 2a, 2b) with `sort_order` 1–4. A reference date (`week_cycle_start_date`) in `app_settings` anchors the rotation.
+
+### `get_week_order_for_date(p_date date) → integer`
+
+```
+weeks_elapsed = floor((p_date - week_cycle_start_date) / 7)
+week_index = ((weeks_elapsed % total_active_templates) + total_active_templates) % total_active_templates + 1
+```
+
+Handles negative values (dates before the cycle start). Returns `1`–`4`.
+
+### `auto_generate_daily_schedule(p_rep_id, p_schedule_date) → uuid`
+
+1. Check if `daily_schedules` row already exists (idempotent)
+2. Skip if `ISODOW > 5` (weekend)
+3. Call `get_week_order_for_date()` to determine week
+4. Find `schedule_templates` row for `(rep_id, day_of_week, weekly_template_id.sort_order = week_order)`
+5. Create `daily_schedules` row
+6. Copy `schedule_template_items` → `schedule_items` with same `sort_order`
+7. Returns the new `daily_schedule.id`; returns `NULL` if no template or empty template
 
 ### Template Save → Regeneration
-When an admin saves a template:
-1. Template items are replaced
-2. Future daily schedules for that rep/day that have no started items (no arrivals, no visited/skipped) are deleted
-3. Next time the rep opens that date, the schedule auto-regenerates from the updated template
-4. Supabase Realtime pushes the change to any connected rep
+
+When admin saves a template, [AdminSchedules.tsx](src/pages/admin/AdminSchedules.tsx) deletes future `daily_schedules` rows for that rep/day where no items have been started (no arrivals, no visited/skipped status). Next time the rep opens that date, `auto_generate_daily_schedule()` runs again from the updated template.
 
 ---
 
-## Visit Logging Workflow
+## Environment Variables
 
-### Scheduled Visit Flow (DailySchedule page)
-1. **Arrive:** Rep taps "Now" next to arrival time → records current time
-2. **Photo (optional):** Camera button appears after arrival → take photo or select from gallery
-3. **Leave:** Rep taps "Now" next to leaving time → records current time, status becomes "visited", item moves to "Completed" tab
-4. **Duration:** Auto-calculated as `leaving - arrival` in minutes. Zero-minute visits are allowed.
+All required. Never commit actual values.
 
-### Skip Flow
-1. Rep writes a reason in the notes field (mandatory)
-2. Taps "Skip" button
-3. Status becomes "skipped", a visit record is created with 00:00 times and 0 duration
+| Variable | Purpose |
+|----------|---------|
+| `VITE_SUPABASE_URL` | Supabase project REST/Auth/Realtime base URL (e.g., `https://<project-ref>.supabase.co`) |
+| `VITE_SUPABASE_ANON_KEY` | Supabase anonymous/public key — used by the frontend Supabase client for all authenticated requests |
 
-### Ad-hoc Visit Flow
-1. Rep expands "Log Unscheduled Visit" section
-2. Selects customer, enters times, optional notes
-3. Creates a visit record not linked to any schedule item
-
-### Offline Visit Flow
-1. All the above flows work identically offline
-2. Visit data is saved to IndexedDB with `sync_status: "pending"`
-3. Schedule item updates are also queued separately
-4. On reconnection, the sync engine processes the queue
-
----
-
-## Photo Capture & Storage
-
-### Capture
-- File input with `accept="image/*"` and `capture="environment"` (opens rear camera on mobile)
-- Photos are **compressed** client-side using canvas: max 1200px dimension, 70% JPEG quality (`src/lib/imageCompressor.ts`)
-
-### Online Upload
-1. Visit is inserted into the database
-2. Photo blob is uploaded to `visit-photos` storage bucket at path `{rep_id}/{visit_id}.jpg`
-3. Public URL is retrieved and stored in `visits.photo_url`
-
-### Offline Storage
-1. Compressed photo is converted to Base64 data URL
-2. Stored in IndexedDB alongside the visit record (`photo_base64` field)
-3. On sync: Base64 is converted back to Blob, uploaded to storage, and `photo_url` is updated
-
-### Display
-- **40x40px thumbnails** in visit tables (admin and rep views)
-- **Lightbox modal** on click: full-size image with customer name, rep name (admin), and date
-- Lazy loading on thumbnails for performance
-
-### Storage Bucket
-- Bucket name: `visit-photos`
-- Public: Yes (photos accessible via public URL)
-- RLS policies allow reps to upload to their own path and read all photos
-
----
-
-## Edge Functions (Backend Logic)
-
-### `manage-rep-user`
-**Purpose:** Create or update auth user accounts linked to rep records.
-
-**Actions:**
-- `create`: Creates an auth user, links to rep via `user_id`, sets email on rep record
-- `update`: Updates rep details and optionally updates auth user email/password
-
-**Security:** Verifies caller is admin via `user_roles` check using service role key.
-
-### `manage-users`
-**Purpose:** Full user lifecycle management for the admin Users page.
-
-**Actions:**
-- `list`: Returns all users enriched with roles, linked reps, profiles, and login audit data
-- `create_user`: Creates auth user with role assignment (bypasses email confirmation)
-- `update_role`: Changes a user's role (admin ↔ rep)
-- `update_email`: Changes email (bypasses confirmation, records audit)
-- `reset_password`: Sets new password (bypasses confirmation, records audit)
-- `delete_user`: Unlinks from rep, removes role, deletes auth user (self-deletion blocked)
-
-**Security:** Both functions verify admin role using service role key and reject non-admin callers with 403.
-
-**Config:** Both are set to `verify_jwt = false` in `supabase/config.toml` because they handle their own auth verification internally.
-
----
-
-## File Storage
-
-| Bucket | Public | Purpose |
-|--------|--------|---------|
-| `visit-photos` | Yes | Store photos taken during rep check-ins |
-
-Upload path pattern: `{rep_id}/{visit_id}.jpg`
-
----
-
-## Realtime Subscriptions
-
-The app uses Supabase Realtime PostgreSQL changes for live updates:
-
-| Channel | Table | Filter | Purpose |
-|---------|-------|--------|---------|
-| `schedule-items-{id}` | `schedule_items` | `schedule_id=eq.{id}` | Refresh when admin edits items |
-| `daily-schedules-{repId}` | `daily_schedules` | `rep_id=eq.{repId}` | Refresh when schedule is created/deleted |
-
-Both channels listen for all events (`*`: INSERT, UPDATE, DELETE).
-
----
-
-## UI & Navigation Structure
-
-### Layout (`src/components/AppLayout.tsx`)
-- Sticky header with logo, navigation links, offline status indicator, role badge, sign out button
-- Desktop: horizontal nav bar
-- Mobile: hamburger menu with slide-down nav
-- Main content area: max-width 7xl, padded
-
-### Routing
-
-| Path | Component | Access |
-|------|-----------|--------|
-| `/auth` | Auth (login) | Public |
-| `/` | Index (redirect) | Redirects admin → `/admin/visits`, rep → `/schedule` |
-| `/schedule` | DailySchedule | Rep |
-| `/log-visit` | LogVisit | Rep |
-| `/my-visits` | MyVisits | Rep |
-| `/admin/customers` | AdminCustomers | Admin |
-| `/admin/reps` | AdminReps | Admin |
-| `/admin/assignments` | AdminAssignments | Admin |
-| `/admin/schedules` | AdminSchedules | Admin |
-| `/admin/visits` | AdminVisits | Admin |
-| `/admin/reports` | AdminExports | Admin |
-| `/admin/users` | AdminUsers | Admin |
-| `/admin/account` | AdminAccount | Admin |
-| `*` | NotFound | All |
-
-### Global Error Handling
-- Unhandled promise rejections are caught globally
-- Offline-related errors (load failed, fetch failed, network error) are silently suppressed
-- Other errors show a toast notification
-
-### Offline Status Bar (`src/components/OfflineStatusBar.tsx`)
-- Shows a visual indicator when the device is offline
-- Uses `useOnlineStatus` hook monitoring `navigator.onLine` and `online`/`offline` events
-
----
-
-## Design System & Theming
-
-### Color Palette (HSL)
-The app uses a **green + blue professional theme**:
-
-| Token | Light Mode | Purpose |
-|-------|-----------|---------|
-| `--primary` | `138 65% 38%` (Forest Green) | Primary actions, active nav |
-| `--accent` | `210 75% 40%` (Blue) | Secondary actions, icons |
-| `--background` | `140 15% 97%` (Light sage) | Page background |
-| `--foreground` | `215 50% 12%` (Dark navy) | Text |
-| `--destructive` | `0 72% 51%` (Red) | Errors, delete actions |
-| `--success` | `138 65% 38%` (Green) | Success states |
-| `--warning` | `38 92% 50%` (Orange) | Warning states |
-
-Dark mode is defined but the app primarily operates in light mode.
-
-### Typography
-- Font: Inter, system-ui, -apple-system, sans-serif
-- Nav links use custom utility classes: `.nav-link`, `.nav-link-active`, `.nav-link-inactive`
-
-### Component Library
-All UI components are from **shadcn/ui** built on Radix primitives:
-- Card, Dialog, AlertDialog, Sheet, Popover
-- Table, Tabs, Badge, Button
-- Input, Textarea, Select, Checkbox, Label
-- Toast (both Radix and Sonner implementations)
-
----
-
-## PWA Support
-
-The app is configured as a Progressive Web App via `vite-plugin-pwa`:
-- Service worker for asset caching
-- App icons: `pwa-192x192.png`, `pwa-512x512.png`
-- Custom service worker logic in `src/sw-custom.ts`
-- Installable on mobile home screens
+Edge functions access the **service role key** via `Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')` — this is injected automatically by Supabase and is never exposed to the frontend.
 
 ---
 
@@ -692,63 +731,66 @@ The app is configured as a Progressive Web App via `vite-plugin-pwa`:
 
 ```
 src/
-├── assets/              # Static assets (logo)
+├── assets/                    # Static assets (logo)
 ├── components/
-│   ├── ui/              # shadcn/ui components (50+ components)
-│   ├── AppLayout.tsx     # Main layout with nav, auth guard, auto-sync
-│   ├── NavLink.tsx       # Navigation link component
-│   └── OfflineStatusBar.tsx  # Offline indicator
+│   ├── ui/                    # shadcn/ui components (50+)
+│   ├── AppLayout.tsx          # Main layout, auth guard, auto-sync setup
+│   ├── CameraCapture.tsx      # Full-screen camera overlay
+│   ├── NavLink.tsx            # Styled nav link
+│   └── OfflineStatusBar.tsx   # Offline indicator banner
 ├── hooks/
-│   ├── useAuth.tsx       # Auth context provider & consumer
-│   ├── useOnlineStatus.ts # Online/offline state hook
-│   ├── use-mobile.tsx    # Mobile breakpoint detection
-│   └── use-toast.ts      # Toast hook
+│   ├── useAuth.tsx            # Auth context provider — role, repId, profile, permissions
+│   ├── useOnlineStatus.ts     # navigator.onLine + event listeners
+│   ├── use-mobile.tsx         # Mobile breakpoint detection
+│   └── use-toast.ts           # Toast hook
 ├── integrations/
 │   └── supabase/
-│       ├── client.ts     # Supabase client (auto-generated, DO NOT EDIT)
-│       └── types.ts      # Database types (auto-generated, DO NOT EDIT)
+│       ├── client.ts          # Supabase client init — reads VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
+│       └── types.ts           # Auto-generated DB types — DO NOT EDIT manually
 ├── lib/
-│   ├── imageCompressor.ts  # JPEG compression + base64 conversion
-│   ├── offlineBootstrap.ts # Pre-cache data on first online login
-│   ├── offlineDb.ts        # IndexedDB operations (visits, schedules, auth cache)
-│   ├── syncEngine.ts       # Background sync for offline visits/updates
-│   └── utils.ts            # Tailwind merge utility
+│   ├── imageCompressor.ts     # compressImage(), stampImage(), blobToBase64(), base64ToBlob()
+│   ├── offlineBootstrap.ts    # Pre-cache customers/schedules/auth on first online login
+│   ├── offlineDb.ts           # All IndexedDB read/write operations
+│   ├── syncEngine.ts          # syncPendingVisits(), syncPendingScheduleItemUpdates()
+│   └── utils.ts               # cn() Tailwind merge utility
 ├── pages/
-│   ├── Auth.tsx           # Login page
-│   ├── DailySchedule.tsx  # Rep: daily schedule with check-in flow
-│   ├── Index.tsx          # Role-based redirect
-│   ├── LogVisit.tsx       # Rep: manual visit logging
-│   ├── MyVisits.tsx       # Rep: visit history
-│   ├── NotFound.tsx       # 404 page
+│   ├── Auth.tsx               # /auth — login form
+│   ├── DailySchedule.tsx      # /schedule — rep daily schedule
+│   ├── Index.tsx              # / — role-based redirect
+│   ├── LogVisit.tsx           # /log-visit — manual visit form
+│   ├── MyVisits.tsx           # /my-visits — rep visit history
+│   ├── Averages.tsx           # /averages — rep performance summary
+│   ├── NotFound.tsx           # * — 404
 │   └── admin/
-│       ├── AdminAccount.tsx      # Admin: change own email/password
-│       ├── AdminAssignments.tsx   # Admin: customer-rep assignments
-│       ├── AdminCustomers.tsx     # Admin: customer CRUD
-│       ├── AdminExports.tsx       # Admin: CSV/Excel exports
-│       ├── AdminReps.tsx          # Admin: rep management
-│       ├── AdminSchedules.tsx     # Admin: schedule templates & daily schedules
-│       ├── AdminUsers.tsx         # Admin: user account management
-│       └── AdminVisits.tsx        # Admin: all visits view
-├── App.tsx               # Root component, routing, providers
-├── App.css               # Minimal global styles
-├── index.css             # Tailwind + design tokens
-├── main.tsx              # Entry point
-└── vite-env.d.ts         # Vite type declarations
+│       ├── AdminAccount.tsx   # /admin/account
+│       ├── AdminAssignments.tsx  # /admin/assignments
+│       ├── AdminCustomers.tsx # /admin/customers
+│       ├── AdminExports.tsx   # /admin/reports
+│       ├── AdminReps.tsx      # /admin/reps
+│       ├── AdminSchedules.tsx # /admin/schedules
+│       ├── AdminUsers.tsx     # /admin/users
+│       └── AdminVisits.tsx    # /admin/visits
+├── sw-custom.ts               # Custom service worker (caching routes)
+├── App.tsx                    # Root: router, providers
+├── index.css                  # Tailwind directives + HSL design tokens
+└── main.tsx                   # Entry point
 
 supabase/
-├── config.toml           # Edge function config (auto-managed)
+├── config.toml                # Edge function config (verify_jwt = false for both functions)
 ├── functions/
-│   ├── manage-rep-user/index.ts   # Rep user account management
-│   └── manage-users/index.ts      # Full user lifecycle management
-└── migrations/           # Database migrations (auto-managed, DO NOT EDIT)
+│   ├── manage-rep-user/index.ts   # Create/update rep auth accounts
+│   └── manage-users/index.ts      # Full user lifecycle (list, create, role, password, delete)
+└── migrations/                # PostgreSQL migrations — DO NOT EDIT
 
 public/
 ├── favicon.ico
 ├── logo.png
 ├── pwa-192x192.png
 ├── pwa-512x512.png
-├── placeholder.svg
 └── robots.txt
+
+vercel.json                    # Build config + SPA catch-all rewrite rule
+vite.config.ts                 # Vite + PWA plugin config (injectManifest, sw-custom.ts)
 ```
 
 ---
@@ -757,59 +799,61 @@ public/
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `@supabase/supabase-js` | ^2.95.3 | Database, auth, storage, edge functions |
+| `@supabase/supabase-js` | ^2.95.3 | DB, Auth, Storage, Realtime, Edge Functions |
 | `@tanstack/react-query` | ^5.83.0 | Server state management |
 | `react-router-dom` | ^6.30.1 | Client-side routing |
-| `idb` | ^8.0.3 | IndexedDB wrapper for offline storage |
-| `uuid` | ^13.0.0 | Client-generated IDs for deduplication |
+| `idb` | ^8.0.3 | IndexedDB wrapper (offline storage) |
+| `uuid` | ^13.0.0 | Client-generated UUIDs for offline deduplication |
 | `xlsx` | ^0.18.5 | Excel file generation |
 | `date-fns` | ^3.6.0 | Date formatting |
 | `sonner` | ^1.7.4 | Toast notifications |
 | `lucide-react` | ^0.462.0 | Icons |
-| `vite-plugin-pwa` | ^1.2.0 | PWA support |
-| `recharts` | ^2.15.4 | Charts (available, used for averages) |
+| `vite-plugin-pwa` | ^1.2.0 | PWA + service worker injection |
 | `zod` | ^3.25.76 | Schema validation |
-| `react-hook-form` | ^7.61.1 | Form management |
+| `react-hook-form` | ^7.61.1 | Form state management |
+| `recharts` | ^2.15.4 | Charts (available, used in averages) |
 
 ---
 
 ## Development Setup
 
 ```bash
-# Clone the repository
-git clone <YOUR_GIT_URL>
-cd <YOUR_PROJECT_NAME>
-
 # Install dependencies
 npm install
 
-# Start development server
+# Start development server (port 8080)
 npm run dev
-```
 
-The app connects to the Lovable Cloud backend automatically via environment variables configured in `.env` (auto-managed, never edit manually):
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_PUBLISHABLE_KEY`
-- `VITE_SUPABASE_PROJECT_ID`
+# Production build
+npm run build
 
-### Running Tests
-```bash
+# Preview production build
+npm run preview
+
+# Run tests
 npm test
 ```
 
-Tests use Vitest with the configuration in `vitest.config.ts`.
+Copy `.env.example` to `.env` and fill in your Supabase project values:
+
+```
+VITE_SUPABASE_URL=https://<your-project-ref>.supabase.co
+VITE_SUPABASE_ANON_KEY=<your-anon-key>
+```
 
 ---
 
-## Important Notes for Rebuilding
+## Important Notes for AI-Assisted Development
 
-1. **Never store roles on `profiles` or `auth.users`** — always use the separate `user_roles` table
-2. **Never edit auto-generated files:** `src/integrations/supabase/client.ts`, `types.ts`, `.env`, `supabase/config.toml`
-3. **Edge functions deploy automatically** — no manual deployment needed
-4. **The first user must be created through the app** — it auto-assigns admin role
-5. **IndexedDB version must be incremented** if you add new object stores
-6. **RLS policies use RESTRICTIVE mode** (`Permissive: No`) — all policies must explicitly allow access
-7. **Photos are always compressed** before storage (max 1200px, 70% JPEG quality)
-8. **The sync engine is idempotent** — running it multiple times never creates duplicates thanks to `client_generated_id`
-9. **Schedule template saves cascade** — saving a template deletes future unstarted daily schedules to force regeneration
-10. **Email confirmation is bypassed** for admin-created accounts (`email_confirm: true` in edge functions)
+1. **Never store roles in `profiles` or `auth.users` metadata** — always use `user_roles` table; all RLS depends on it
+2. **Never edit auto-generated files:** `src/integrations/supabase/client.ts`, `types.ts`, `supabase/config.toml`
+3. **IndexedDB schema version must be incremented** in `offlineDb.ts` if you add/rename any object stores
+4. **`client_generated_id` is the deduplication key** — always set it client-side (UUID v4) before inserting a visit; the sync engine uses it to prevent double-submit
+5. **Photos are always compressed** before storage (`compressImage` → `stampImage`) — never upload raw camera output
+6. **Camera must be triggered by a user gesture** on iOS — no auto-open in `useEffect`
+7. **Edge functions use service role key** and handle their own admin check — do not rely on JWT/RLS inside edge functions
+8. **Template saves delete future unstarted daily schedules** — this is intentional to force regeneration from the updated template
+9. **`auto_generate_daily_schedule` is idempotent** — safe to call multiple times; it will not create duplicate schedules
+10. **Supabase API routes must use NetworkOnly** in the service worker — never cache auth or database responses
+11. **The sync engine is idempotent** — re-running it never creates duplicates thanks to `client_generated_id` + the duplicate-check query
+12. **Account number uniqueness** is enforced at both DB level (UNIQUE constraint) and UI level (debounced real-time check) — both layers are needed
