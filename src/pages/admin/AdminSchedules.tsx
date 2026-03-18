@@ -44,10 +44,9 @@ export default function AdminSchedules() {
   // Daily schedules
   const [dailySchedules, setDailySchedules] = useState<any[]>([]);
 
-  // Week rename
-  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
-  const [renameWeekId, setRenameWeekId] = useState("");
-  const [renameValue, setRenameValue] = useState("");
+  // Inline week rename
+  const [editingWeekId, setEditingWeekId] = useState<string | null>(null);
+  const [editingWeekName, setEditingWeekName] = useState("");
 
   // Template dialog filters
   const [customerSearch, setCustomerSearch] = useState("");
@@ -140,19 +139,21 @@ export default function AdminSchedules() {
     fetchBaseData();
   };
 
-  // --- Rename week ---
-  const openRename = (wk: any) => {
-    setRenameWeekId(wk.id);
-    setRenameValue(wk.name);
-    setRenameDialogOpen(true);
+  // --- Inline week rename ---
+  const startEditWeek = (wk: any) => {
+    setEditingWeekId(wk.id);
+    setEditingWeekName(wk.name);
   };
 
-  const saveRename = async () => {
-    if (!renameValue.trim()) return;
-    await supabase.from("weekly_templates").update({ name: renameValue.trim() }).eq("id", renameWeekId);
-    toast.success("Week renamed");
-    setRenameDialogOpen(false);
-    fetchBaseData();
+  const saveWeekName = async (id: string, name: string) => {
+    const trimmed = name.trim();
+    setEditingWeekId(null);
+    if (!trimmed) return;
+    const original = weeklyTemplates.find(w => w.id === id)?.name;
+    if (trimmed === original) return;
+    const { error } = await supabase.from("weekly_templates").update({ name: trimmed }).eq("id", id);
+    if (error) toast.error(error.message);
+    else { toast.success("Week renamed"); fetchBaseData(); }
   };
 
   // --- Template CRUD ---
@@ -302,11 +303,30 @@ export default function AdminSchedules() {
               {weeklyTemplates.map((wk, idx) => (
                 <div key={wk.id} className="flex items-center gap-2 p-2 border rounded-md">
                   <span className="font-mono text-sm text-muted-foreground w-6">{wk.sort_order}.</span>
-                  <span className="font-medium flex-1">{wk.name}</span>
+                  {editingWeekId === wk.id ? (
+                    <Input
+                      autoFocus
+                      className="h-7 text-sm font-medium flex-1 py-0"
+                      value={editingWeekName}
+                      onChange={e => setEditingWeekName(e.target.value)}
+                      onBlur={() => saveWeekName(wk.id, editingWeekName)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                        if (e.key === "Escape") setEditingWeekId(null);
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className="font-medium flex-1 cursor-pointer hover:text-primary"
+                      onClick={() => startEditWeek(wk)}
+                    >
+                      {wk.name}
+                    </span>
+                  )}
                   {wk.sort_order === currentWeekOrder && (
                     <Badge variant="default" className="text-xs">Current</Badge>
                   )}
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openRename(wk)}>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => startEditWeek(wk)}>
                     <Settings className="h-3 w-3" />
                   </Button>
                   <Button variant="ghost" size="icon" className="h-8 w-8" disabled={idx === 0} onClick={() => moveWeek(wk.id, "up")}>
@@ -528,17 +548,6 @@ export default function AdminSchedules() {
         </DialogContent>
       </Dialog>
 
-      {/* Rename Dialog */}
-      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Rename Week</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <Label>Name</Label>
-            <Input value={renameValue} onChange={e => setRenameValue(e.target.value)} />
-          </div>
-          <DialogFooter><Button onClick={saveRename}>Save</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
