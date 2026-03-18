@@ -52,6 +52,9 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // ExcelJS ships a browser-safe bundle; alias to it so Vite never
+      // tries to resolve Node.js built-ins (fs, stream, zlib, etc.).
+      "exceljs": path.resolve(__dirname, "node_modules/exceljs/dist/exceljs.min.js"),
     },
   },
 }));

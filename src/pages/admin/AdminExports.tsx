@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Download, FileSpreadsheet } from "lucide-react";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
 
 function downloadCSV(filename: string, headers: string[], rows: string[][]) {
   const csv = [headers.join(","), ...rows.map((r) => r.map((c) => `"${(c ?? "").replace(/"/g, '""')}"`).join(","))].join("\n");
@@ -84,13 +85,17 @@ export default function AdminExports() {
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
   };
 
+  const formatDateLabel = (dateStr: string) =>
+    new Date(dateStr + "T00:00:00").toLocaleDateString("en-GB", {
+      day: "numeric", month: "short", year: "numeric",
+    });
+
   const exportReportExcel = async () => {
     if (repFilter === "all") { toast.error("Please select a specific rep for the Excel report"); return; }
     if (!dateFrom) { toast.error("Please select a 'From' date for the Excel report"); return; }
 
     const selectedRep = reps.find((r) => r.id === repFilter);
     const repName = selectedRep?.rep_name || "Unknown";
-    const reportDate = dateFrom;
 
     let q = supabase
       .from("visits")
@@ -104,127 +109,227 @@ export default function AdminExports() {
     const { data } = await q;
     if (!data || data.length === 0) { toast.error("No data to export"); return; }
 
-    const wb = XLSX.utils.book_new();
-    const colCount = 10; // Account #, Customer Name, Area, Time In, Time Out, Duration, Notes, Order No., Qty, Amount
+    // Sort client-side: visit_date asc, then arrival_time asc
+    const rows = [...(data as any[])].sort((a, b) => {
+      const dc = (a.visit_date || "").localeCompare(b.visit_date || "");
+      return dc !== 0 ? dc : (a.arrival_time || "").localeCompare(b.arrival_time || "");
+    });
 
-    // Build rows array
-    const wsData: any[][] = [];
-
-    // Row 1: Title
-    wsData.push(["Daily Visit Report", "", "", "", "", "", "", "", "", ""]);
-    const formattedDate = new Date(reportDate + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-    wsData.push([`Rep: ${repName} | Date: ${formattedDate}`, "", "", "", "", "", "", "", "", ""]);
-    wsData.push(["", "", "", "", "", "", "", "", "", ""]);
-    wsData.push(["Account #", "Customer Name", "Area", "Time In", "Time Out", "Duration", "Order No.", "Qty", "Amount", "Notes"]);
-
-    // Data rows
+    // Pre-calculate totals (productive = non-skipped only)
     let totalProductiveMins = 0;
     let totalOrderQty = 0;
     let totalOrderAmount = 0;
-    for (const v of data as any[]) {
-      const isSkipped = v.status === "skipped";
-      const dur = v.duration_minutes || 0;
-      if (!isSkipped) {
-        totalProductiveMins += dur;
-        totalOrderQty += v.order_quantity || 0;
-        totalOrderAmount += v.order_amount || 0;
+    let skippedCount = 0;
+    for (const v of rows) {
+      if (v.status === "skipped") {
+        skippedCount++;
+      } else {
+        totalProductiveMins += v.duration_minutes || 0;
+        totalOrderQty       += v.order_quantity   || 0;
+        totalOrderAmount    += Number(v.order_amount) || 0;
       }
-      wsData.push([
+    }
+
+    const periodText = dateTo && dateTo !== dateFrom
+      ? `${formatDateLabel(dateFrom)} to ${formatDateLabel(dateTo)}`
+      : formatDateLabel(dateFrom);
+
+    const formatRand = (n: number) =>
+      `R ${n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
+
+    // ── ARGB color constants (FF prefix = fully opaque) ─────────────────────
+    const NAVY     = "FF1B2A4A";
+    const WHITE    = "FFFFFFFF";
+    const LT_GREY  = "FFF0EDE8";
+    const ALT_GREY = "FFF5F2ED";
+    const RED_BG   = "FFFFE0E0";
+    const BDR      = "FFD5D0C8";
+
+    // ── Re-usable style fragments ────────────────────────────────────────────
+    const navyFill   = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: NAVY    } };
+    const whiteFill  = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: WHITE   } };
+    const ltGreyFill = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: LT_GREY } };
+    const altGreyFill = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: ALT_GREY } };
+    const redFill    = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: RED_BG  } };
+
+    const thinBorder = {
+      top:    { style: "thin" as const, color: { argb: BDR } },
+      bottom: { style: "thin" as const, color: { argb: BDR } },
+      left:   { style: "thin" as const, color: { argb: BDR } },
+      right:  { style: "thin" as const, color: { argb: BDR } },
+    };
+
+    // ── Workbook & worksheet ─────────────────────────────────────────────────
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "Check-In Tracker";
+    const sheet = workbook.addWorksheet("Visit Report");
+
+    // Column widths  (A=1 … K=11)
+    sheet.columns = [
+      { width: 5  }, // A: #
+      { width: 14 }, // B: Account #
+      { width: 28 }, // C: Customer
+      { width: 18 }, // D: Area
+      { width: 13 }, // E: Arrival
+      { width: 13 }, // F: Departure
+      { width: 12 }, // G: Duration
+      { width: 14 }, // H: Order No.
+      { width: 8  }, // I: Qty
+      { width: 14 }, // J: Amount (R)
+      { width: 35 }, // K: Notes
+    ];
+
+    // ── Row 1: Main title ────────────────────────────────────────────────────
+    sheet.mergeCells(1, 1, 1, 11);
+    const titleCell = sheet.getCell(1, 1);
+    titleCell.value     = "Daily Visit Report";
+    titleCell.font      = { name: "Calibri", size: 18, bold: true, color: { argb: WHITE } };
+    titleCell.fill      = navyFill;
+    titleCell.alignment = { horizontal: "center", vertical: "middle" };
+    sheet.getRow(1).height = 45;
+
+    // ── Row 2: Spacer ────────────────────────────────────────────────────────
+    sheet.getRow(2).height = 6;
+
+    // ── Rows 3-6: Info block ─────────────────────────────────────────────────
+    const infoLeft: [string, string][] = [
+      ["Rep Name",    repName],
+      ["Report Date", formatDateLabel(dateFrom)],
+      ["Period",      periodText],
+      ["Total Visits", String(rows.length)],
+    ];
+    const infoRight: [string, string][] = [
+      ["Total Productive Time", formatDuration(totalProductiveMins)],
+      ["Total Order Qty",       String(totalOrderQty)],
+      ["Total Order Amount",    formatRand(totalOrderAmount)],
+      ["Skipped Visits",        String(skippedCount)],
+    ];
+
+    for (let i = 0; i < 4; i++) {
+      const rowNum = 3 + i;
+      sheet.getRow(rowNum).height = 20;
+
+      const lLabel = sheet.getCell(rowNum, 1);
+      lLabel.value     = infoLeft[i][0];
+      lLabel.font      = { name: "Calibri", size: 10, bold: true, color: { argb: NAVY } };
+      lLabel.fill      = ltGreyFill;
+      lLabel.alignment = { horizontal: "left", vertical: "middle" };
+
+      const lVal = sheet.getCell(rowNum, 2);
+      lVal.value     = infoLeft[i][1];
+      lVal.font      = { name: "Calibri", size: 10 };
+      lVal.fill      = whiteFill;
+      lVal.alignment = { horizontal: "left", vertical: "middle" };
+
+      const rLabel = sheet.getCell(rowNum, 7);
+      rLabel.value     = infoRight[i][0];
+      rLabel.font      = { name: "Calibri", size: 10, bold: true, color: { argb: NAVY } };
+      rLabel.fill      = ltGreyFill;
+      rLabel.alignment = { horizontal: "left", vertical: "middle" };
+
+      const rVal = sheet.getCell(rowNum, 8);
+      rVal.value     = infoRight[i][1];
+      rVal.font      = { name: "Calibri", size: 10 };
+      rVal.fill      = whiteFill;
+      rVal.alignment = { horizontal: "left", vertical: "middle" };
+    }
+
+    // ── Row 7: Spacer ────────────────────────────────────────────────────────
+    sheet.getRow(7).height = 6;
+
+    // ── Row 8: Column headers ────────────────────────────────────────────────
+    const HEADERS  = ["#", "Account #", "Customer", "Area", "Arrival", "Departure", "Duration", "Order No.", "Qty", "Amount (R)", "Notes"];
+    const HDR_ALIGN: ExcelJS.Alignment["horizontal"][] = [
+      "center", "left", "left", "left", "center", "center", "center", "left", "center", "right", "left",
+    ];
+
+    sheet.getRow(8).height = 28;
+    HEADERS.forEach((label, idx) => {
+      const cell = sheet.getCell(8, idx + 1);
+      cell.value     = label;
+      cell.font      = { name: "Calibri", size: 10, bold: true, color: { argb: WHITE } };
+      cell.fill      = navyFill;
+      cell.alignment = { horizontal: HDR_ALIGN[idx], vertical: "middle" };
+      cell.border    = thinBorder;
+    });
+
+    // ── Data rows (row 9 onwards) ────────────────────────────────────────────
+    const DATA_ALIGN: ExcelJS.Alignment["horizontal"][] = [
+      "center", "left", "left", "left", "center", "center", "center", "left", "center", "right", "left",
+    ];
+
+    rows.forEach((v: any, idx: number) => {
+      const isSkipped = v.status === "skipped";
+      const dur       = v.duration_minutes || 0;
+      const rowNum    = 9 + idx;
+
+      sheet.getRow(rowNum).height = 22;
+
+      const rowFill = isSkipped ? redFill : idx % 2 === 0 ? whiteFill : altGreyFill;
+
+      const values: any[] = [
+        idx + 1,
         v.customers?.account_number || "",
-        v.customers?.customer_name || "",
-        v.customers?.area || "",
+        v.customers?.customer_name  || "",
+        v.customers?.area           || "",
         formatTime12h(v.arrival_time),
         formatTime12h(v.leaving_time),
         dur > 0 ? formatDuration(dur) : "",
         v.order_number || "",
-        v.order_quantity != null ? v.order_quantity : "",
-        v.order_amount != null ? v.order_amount : "",
-        v.notes || "",
-      ]);
+        v.order_quantity  != null ? v.order_quantity  : "",
+        v.order_amount    != null ? Number(v.order_amount).toFixed(2) : "",
+        (isSkipped ? "[SKIPPED] " : "") + (v.notes || ""),
+      ];
+
+      values.forEach((val, colIdx) => {
+        const cell = sheet.getCell(rowNum, colIdx + 1);
+        cell.value     = val;
+        cell.font      = { name: "Calibri", size: 10 };
+        cell.fill      = rowFill;
+        cell.alignment = { horizontal: DATA_ALIGN[colIdx], vertical: "middle" };
+        cell.border    = thinBorder;
+      });
+    });
+
+    // ── Totals row ───────────────────────────────────────────────────────────
+    const totalsRowNum = 9 + rows.length;
+    sheet.getRow(totalsRowNum).height = 28;
+
+    // Style all 11 cells BEFORE merging so individual borders are preserved
+    for (let c = 1; c <= 11; c++) {
+      const cell = sheet.getCell(totalsRowNum, c);
+      cell.fill      = navyFill;
+      cell.font      = { name: "Calibri", size: 10, bold: true, color: { argb: WHITE } };
+      cell.border    = thinBorder;
+      cell.alignment = { horizontal: "center", vertical: "middle" };
     }
 
-    // Totals row
-    const totalsRowIdx = wsData.length;
-    wsData.push(["Total Productive Time", "", "", "", "", formatDuration(totalProductiveMins), "", "", totalOrderQty, totalOrderAmount]);
+    // Merge A–F, then set "Totals" on the master cell
+    sheet.mergeCells(totalsRowNum, 1, totalsRowNum, 6);
+    const totalsLabelCell = sheet.getCell(totalsRowNum, 1);
+    totalsLabelCell.value     = "Totals";
+    totalsLabelCell.alignment = { horizontal: "left", vertical: "middle" };
 
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    // G: Duration total
+    const totDurCell = sheet.getCell(totalsRowNum, 7);
+    totDurCell.value     = formatDuration(totalProductiveMins);
+    totDurCell.alignment = { horizontal: "center", vertical: "middle" };
 
-    // Merge cells
-    ws["!merges"] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } }, // Title
-      { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
-      { s: { r: totalsRowIdx, c: 0 }, e: { r: totalsRowIdx, c: 4 } },
-    ];
+    // I: Qty total
+    const totQtyCell = sheet.getCell(totalsRowNum, 9);
+    totQtyCell.value     = totalOrderQty > 0 ? totalOrderQty : "";
+    totQtyCell.alignment = { horizontal: "center", vertical: "middle" };
 
-    // Column widths
-    ws["!cols"] = [
-      { wch: 14 }, // Account #
-      { wch: 25 }, // Customer Name
-      { wch: 18 }, // Area
-      { wch: 14 }, // Time In
-      { wch: 14 }, // Time Out
-      { wch: 12 }, // Duration
-      { wch: 14 }, // Order No.
-      { wch: 10 }, // Qty
-      { wch: 14 }, // Amount
-      { wch: 35 }, // Notes
-    ];
+    // J: Amount total
+    const totAmtCell = sheet.getCell(totalsRowNum, 10);
+    totAmtCell.value     = totalOrderAmount > 0 ? totalOrderAmount.toFixed(2) : "";
+    totAmtCell.alignment = { horizontal: "right", vertical: "middle" };
 
-    // Apply styles (SheetJS community edition has limited style support, using cell properties)
-    // Title row
-    const titleCell = ws[XLSX.utils.encode_cell({ r: 0, c: 0 })];
-    if (titleCell) { titleCell.s = { font: { bold: true, sz: 16 }, alignment: { horizontal: "center" } }; }
-    // Sub-title
-    const subCell = ws[XLSX.utils.encode_cell({ r: 1, c: 0 })];
-    if (subCell) { subCell.s = { font: { italic: true, sz: 12 }, alignment: { horizontal: "center" } }; }
-
-    // Header row (row index 3)
-    const darkBlue = { rgb: "1B3A5C" };
-    const white = { rgb: "FFFFFF" };
-    for (let c = 0; c < colCount; c++) {
-      const ref = XLSX.utils.encode_cell({ r: 3, c });
-      if (ws[ref]) {
-        ws[ref].s = {
-          font: { bold: true, color: white, sz: 11 },
-          fill: { fgColor: darkBlue },
-          alignment: { horizontal: "center" },
-        };
-      }
-    }
-
-    // Data rows styling
-    const lightGrey = { rgb: "F2F2F2" };
-    const redBg = { rgb: "FFCCCC" };
-    for (let r = 4; r < totalsRowIdx; r++) {
-      const visitIdx = r - 4;
-      const v = data[visitIdx] as any;
-      const isSkipped = v?.status === "skipped";
-      const isOddRow = (r - 4) % 2 === 1;
-      for (let c = 0; c < colCount; c++) {
-        const ref = XLSX.utils.encode_cell({ r, c });
-        if (ws[ref]) {
-          ws[ref].s = {
-            fill: isSkipped ? { fgColor: redBg } : isOddRow ? { fgColor: lightGrey } : undefined,
-            alignment: { horizontal: c === 6 || c === 9 ? "left" : "center" },
-          };
-        }
-      }
-    }
-
-    // Totals row styling
-    for (let c = 0; c < colCount; c++) {
-      const ref = XLSX.utils.encode_cell({ r: totalsRowIdx, c });
-      if (ws[ref]) {
-        ws[ref].s = {
-          font: { bold: true, color: white, sz: 11 },
-          fill: { fgColor: darkBlue },
-          alignment: { horizontal: "center" },
-        };
-      }
-    }
-
-    XLSX.utils.book_append_sheet(wb, ws, "Visit Report");
-    XLSX.writeFile(wb, `visit_report_${repName.replace(/\s+/g, "_")}_${reportDate}.xlsx`);
+    // ── Save ─────────────────────────────────────────────────────────────────
+    const repSlug  = repName.replace(/\s+/g, "_");
+    const filename = `visit_report_${repSlug}_${dateFrom}.xlsx`;
+    const buffer   = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), filename);
     toast.success("Excel report exported");
   };
 
