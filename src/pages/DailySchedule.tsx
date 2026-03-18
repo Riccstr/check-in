@@ -26,6 +26,20 @@ import {
   updateCachedScheduleItem,
 } from "@/lib/offlineDb";
 
+// ─── mobile zoom reset ────────────────────────────────────────────────────────
+// Safety net: resets any residual viewport zoom after an input loses focus.
+// The primary fix is the 16px font-size rule in index.css; this handles edge
+// cases on older WebKit browsers that zoom despite the font-size being 16px.
+function resetMobileZoom() {
+  const viewport = document.querySelector('meta[name="viewport"]');
+  if (viewport) {
+    viewport.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1');
+    setTimeout(() => {
+      viewport.setAttribute('content', 'width=device-width, initial-scale=1');
+    }, 100);
+  }
+}
+
 // ─── color palette ────────────────────────────────────────────────────────────
 const C = {
   bg:          "#F4F1EC",
@@ -568,7 +582,7 @@ function ScheduleCard({
                 placeholder="Notes (required to skip)..."
                 value={localNotes}
                 onChange={(e) => setLocalNotes(e.target.value)}
-                onBlur={commitNotes}
+                onBlur={() => { commitNotes(); resetMobileZoom(); }}
                 rows={2}
                 className="text-sm resize-none"
                 style={{ borderColor: C.border, background: C.bg, flex: "0 0 58%" }}
@@ -579,6 +593,7 @@ function ScheduleCard({
                   placeholder="Order No."
                   value={localOrderNumber}
                   onChange={(e) => setLocalOrderNumber(e.target.value)}
+                  onBlur={resetMobileZoom}
                   className="h-8 text-sm"
                   style={{ borderColor: C.border, background: C.bg }}
                 />
@@ -587,6 +602,7 @@ function ScheduleCard({
                   placeholder="Qty"
                   value={localOrderQty}
                   onChange={(e) => setLocalOrderQty(e.target.value)}
+                  onBlur={resetMobileZoom}
                   min="0"
                   step="1"
                   className="h-8 text-sm"
@@ -597,6 +613,7 @@ function ScheduleCard({
                   placeholder="Amount"
                   value={localOrderAmount}
                   onChange={(e) => setLocalOrderAmount(e.target.value)}
+                  onBlur={resetMobileZoom}
                   min="0"
                   step="0.01"
                   className="h-8 text-sm"
@@ -1103,6 +1120,7 @@ export default function DailySchedule() {
                     <Label className="text-xs" style={{ color: C.textMuted }}>Arrival</Label>
                     <div className="flex gap-1">
                       <Input type="time" value={adHocArrival} onChange={(e) => setAdHocArrival(e.target.value)}
+                        onBlur={resetMobileZoom}
                         className="h-9 text-sm time-input-clean" style={{ borderColor: C.border, background: C.bg }} />
                       <Button type="button" variant="outline" size="sm" className="h-9 px-2 shrink-0"
                         onClick={() => setAdHocArrival(nowTime())} style={{ borderColor: C.border }}>
@@ -1114,6 +1132,7 @@ export default function DailySchedule() {
                     <Label className="text-xs" style={{ color: C.textMuted }}>Leaving</Label>
                     <div className="flex gap-1">
                       <Input type="time" value={adHocLeaving} onChange={(e) => setAdHocLeaving(e.target.value)}
+                        onBlur={resetMobileZoom}
                         className="h-9 text-sm time-input-clean" style={{ borderColor: C.border, background: C.bg }} />
                       <Button type="button" variant="outline" size="sm" className="h-9 px-2 shrink-0"
                         onClick={() => setAdHocLeaving(nowTime())} style={{ borderColor: C.border }}>
@@ -1125,7 +1144,8 @@ export default function DailySchedule() {
 
                 <div>
                   <Label className="text-xs" style={{ color: C.textMuted }}>Notes</Label>
-                  <Textarea value={adHocNotes} onChange={(e) => setAdHocNotes(e.target.value)} rows={2}
+                  <Textarea value={adHocNotes} onChange={(e) => setAdHocNotes(e.target.value)}
+                    onBlur={resetMobileZoom} rows={2}
                     className="text-sm resize-none" style={{ borderColor: C.border, background: C.bg }} />
                 </div>
 

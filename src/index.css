@@ -125,3 +125,15 @@
 /* Hide scrollbar while keeping scroll functional */
 .scrollbar-hidden                    { scrollbar-width: none; -ms-overflow-style: none; }
 .scrollbar-hidden::-webkit-scrollbar { display: none; }
+
+/* ─────────────────────────────────────────────────────────────
+   Prevent mobile browser auto-zoom on input focus.
+   Browsers zoom in when the input font-size is below 16px.
+   Clamping to 16px on mobile eliminates the trigger entirely.
+   Desktop is unaffected.
+   ───────────────────────────────────────────────────────────── */
+@media screen and (max-width: 768px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
