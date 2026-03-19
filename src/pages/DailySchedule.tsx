@@ -680,6 +680,9 @@ export default function DailySchedule() {
   const [adHocArrival,     setAdHocArrival]     = useState("");
   const [adHocLeaving,     setAdHocLeaving]     = useState("");
   const [adHocNotes,       setAdHocNotes]       = useState("");
+  const [adHocOrderNumber, setAdHocOrderNumber] = useState("");
+  const [adHocOrderQty,    setAdHocOrderQty]    = useState("");
+  const [adHocOrderAmount, setAdHocOrderAmount] = useState("");
   const [adHocSubmitting,  setAdHocSubmitting]  = useState(false);
 
   // online/offline listener
@@ -883,10 +886,13 @@ export default function DailySchedule() {
       const { error } = await supabase.from("visits").insert({
         rep_id: repId, customer_id: adHocCustomerId, visit_date: scheduleDate,
         arrival_time: adHocArrival, leaving_time: adHocLeaving, duration_minutes: dur, notes: adHocNotes || null,
+        order_number: adHocOrderNumber || null,
+        order_quantity: adHocOrderQty !== "" ? Number(adHocOrderQty) : null,
+        order_amount: adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null,
       });
       if (error) {
         if (isOfflineError(error)) {
-          await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrival, adHocLeaving, dur, adHocNotes || null, customerName);
+          await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrival, adHocLeaving, dur, adHocNotes || null, customerName, undefined, null, adHocOrderNumber || null, adHocOrderQty !== "" ? Number(adHocOrderQty) : null, adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null);
           toast.success("Saved offline. Will sync when online.");
           resetAdHoc();
         } else {
@@ -899,7 +905,7 @@ export default function DailySchedule() {
     } catch (err: any) {
       console.warn("[Schedule] Network error on ad-hoc:", err?.message);
       try {
-        await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrival, adHocLeaving, dur, adHocNotes || null, customerName);
+        await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrival, adHocLeaving, dur, adHocNotes || null, customerName, undefined, null, adHocOrderNumber || null, adHocOrderQty !== "" ? Number(adHocOrderQty) : null, adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null);
         toast.success("Saved offline. Will sync when online.");
         resetAdHoc();
       } catch (idbErr) {
@@ -913,6 +919,7 @@ export default function DailySchedule() {
   const resetAdHoc = () => {
     setAdHocOpen(false);
     setAdHocCustomerId(""); setAdHocArrival(""); setAdHocLeaving(""); setAdHocNotes("");
+    setAdHocOrderNumber(""); setAdHocOrderQty(""); setAdHocOrderAmount("");
   };
 
   // ─── date navigation ────────────────────────────────────────────────────────
@@ -1147,6 +1154,27 @@ export default function DailySchedule() {
                   <Textarea value={adHocNotes} onChange={(e) => setAdHocNotes(e.target.value)}
                     onBlur={resetMobileZoom} rows={2}
                     className="text-sm resize-none" style={{ borderColor: C.border, background: C.bg }} />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <Label className="text-xs" style={{ color: C.textMuted }}>Order No.</Label>
+                    <Input value={adHocOrderNumber} onChange={(e) => setAdHocOrderNumber(e.target.value)}
+                      onBlur={resetMobileZoom}
+                      className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="Order #" />
+                  </div>
+                  <div>
+                    <Label className="text-xs" style={{ color: C.textMuted }}>Qty</Label>
+                    <Input type="number" min="0" step="1" value={adHocOrderQty} onChange={(e) => setAdHocOrderQty(e.target.value)}
+                      onBlur={resetMobileZoom}
+                      className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0" />
+                  </div>
+                  <div>
+                    <Label className="text-xs" style={{ color: C.textMuted }}>Amount</Label>
+                    <Input type="number" min="0" step="0.01" value={adHocOrderAmount} onChange={(e) => setAdHocOrderAmount(e.target.value)}
+                      onBlur={resetMobileZoom}
+                      className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0.00" />
+                  </div>
                 </div>
 
                 <Button
