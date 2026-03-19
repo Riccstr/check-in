@@ -503,7 +503,7 @@ export default function AdminExports() {
       startY: tableStartY,
       head: [["#", "Account #", "Customer", "Area", "Arrival", "Departure", "Duration", "Order No.", "Qty", "Amount (R)", "Notes"]],
       body: bodyRows,
-      foot: [["Totals", "", "", "", "", "", formatDuration(totalProductiveMins), "", String(totalOrderQty), totalOrderAmount.toFixed(2), ""]],
+      foot: [["Tot", "", "", "", "", "", formatDuration(totalProductiveMins), "", String(totalOrderQty), totalOrderAmount.toFixed(2), ""]],
       theme: "grid",
       styles: {
         font: "helvetica",
