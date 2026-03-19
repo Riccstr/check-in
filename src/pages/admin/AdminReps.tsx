@@ -6,15 +6,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { UserCog, Plus, Pencil, KeyRound } from "lucide-react";
+import { UserCog, Plus, Pencil, KeyRound, Trash2 } from "lucide-react";
 
 export default function AdminReps() {
   const [reps, setReps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [credDialogOpen, setCredDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [surname, setSurname] = useState("");
@@ -51,8 +52,6 @@ export default function AdminReps() {
     setSaving(true);
 
     if (editId) {
-      // Update rep details via edge function
-      const { data: { session } } = await supabase.auth.getSession();
       const res = await supabase.functions.invoke("manage-rep-user", {
         body: { action: "update", rep_id: editId, rep_name: name.trim(), surname: surname.trim(), email: email.trim() || undefined, password: password || undefined },
       });
@@ -89,9 +88,44 @@ export default function AdminReps() {
     setCredDialogOpen(false); fetchReps();
   };
 
-  const toggleActive = async (r: any) => {
-    await supabase.from("reps").update({ is_active: !r.is_active }).eq("id", r.id);
-    toast.success(r.is_active ? "Deactivated" : "Reactivated"); fetchReps();
+  const deleteRep = async () => {
+    if (!deleteTarget) return;
+    const repId = deleteTarget.id;
+
+    // 1. Delete schedule_items for all daily_schedules belonging to this rep
+    const { data: schedules } = await supabase.from("daily_schedules").select("id").eq("rep_id", repId);
+    if (schedules && schedules.length > 0) {
+      const scheduleIds = schedules.map((s: any) => s.id);
+      await supabase.from("schedule_items").delete().in("schedule_id", scheduleIds);
+    }
+
+    // 2. Delete daily_schedules for this rep
+    await supabase.from("daily_schedules").delete().eq("rep_id", repId);
+
+    // 3. Delete schedule_templates for this rep
+    await supabase.from("schedule_templates").delete().eq("rep_id", repId);
+
+    // 4. Delete customer_assignments for this rep
+    await supabase.from("customer_assignments").delete().eq("rep_id", repId);
+
+    // 5. Delete visits for this rep
+    await supabase.from("visits").delete().eq("rep_id", repId);
+
+    // 6. Unlink auth user if linked (don't delete the auth user — admin handles that separately)
+    if (deleteTarget.user_id) {
+      await supabase.from("reps").update({ user_id: null }).eq("id", repId);
+    }
+
+    // 7. Delete the rep record itself
+    const { error } = await supabase.from("reps").delete().eq("id", repId);
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success(`${deleteTarget.rep_name} deleted`);
+    }
+
+    setDeleteTarget(null);
+    fetchReps();
   };
 
   return (
@@ -107,7 +141,6 @@ export default function AdminReps() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Surname</TableHead>
-                <TableHead>Status</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -116,13 +149,12 @@ export default function AdminReps() {
                 <TableRow key={r.id}>
                   <TableCell className="font-medium">{r.rep_name}</TableCell>
                   <TableCell>{r.surname || "—"}</TableCell>
-                  <TableCell><Badge variant={r.is_active ? "default" : "secondary"}>{r.is_active ? "Active" : "Inactive"}</Badge></TableCell>
                   <TableCell className="text-right space-x-1">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(r)} title="Edit"><Pencil className="h-4 w-4" /></Button>
                     {!r.user_id && (
                       <Button variant="ghost" size="icon" onClick={() => openCredentials(r)} title="Set login"><KeyRound className="h-4 w-4" /></Button>
                     )}
-                    <Button variant="ghost" size="sm" onClick={() => toggleActive(r)}>{r.is_active ? "Deactivate" : "Reactivate"}</Button>
+                    <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(r)} className="text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -160,6 +192,22 @@ export default function AdminReps() {
           <DialogFooter><Button onClick={saveCredentials} disabled={saving}>{saving ? "Creating..." : "Create Login"}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete rep permanently?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <strong>{deleteTarget?.rep_name}</strong> and all associated schedules, assignments, and visit records. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={deleteRep} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }
