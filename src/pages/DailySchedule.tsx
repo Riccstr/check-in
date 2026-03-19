@@ -511,41 +511,37 @@ function ScheduleCard({
             {/* time row */}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-xs font-medium mb-1 block" style={{ color: C.textMuted }}>Arrival</label>
+                <Label className="text-xs" style={{ color: C.textMuted }}>Arrival</Label>
                 <div className="flex gap-1">
                   <Input
                     type="time"
                     value={localArrival}
                     onChange={(e) => setLocalArrival(e.target.value)}
-                    onBlur={commitArrival}
+                    onBlur={() => { commitArrival(); resetMobileZoom(); }}
                     className="h-9 text-sm time-input-clean"
                     style={{ borderColor: C.border, background: C.bg }}
                   />
-                  {!localArrival && (
-                    <Button size="sm" variant="outline" className="h-9 px-2 shrink-0 text-xs" onClick={markArrived}
-                      style={{ borderColor: C.border, color: C.green }}>
-                      Now
-                    </Button>
-                  )}
+                  <Button type="button" variant="outline" size="sm" className="h-9 px-2 shrink-0"
+                    onClick={markArrived} style={{ borderColor: C.border }}>
+                    <Clock size={13} />
+                  </Button>
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium mb-1 block" style={{ color: C.textMuted }}>Leaving</label>
+                <Label className="text-xs" style={{ color: C.textMuted }}>Leaving</Label>
                 <div className="flex gap-1">
                   <Input
                     type="time"
                     value={localLeaving}
                     onChange={(e) => setLocalLeaving(e.target.value)}
-                    onBlur={commitLeaving}
+                    onBlur={() => { commitLeaving(); resetMobileZoom(); }}
                     className="h-9 text-sm time-input-clean"
                     style={{ borderColor: C.border, background: C.bg }}
                   />
-                  {localArrival && !localLeaving && (
-                    <Button size="sm" variant="outline" className="h-9 px-2 shrink-0 text-xs" onClick={markLeft}
-                      style={{ borderColor: C.border, color: C.green }}>
-                      Now
-                    </Button>
-                  )}
+                  <Button type="button" variant="outline" size="sm" className="h-9 px-2 shrink-0"
+                    onClick={markLeft} style={{ borderColor: C.border }}>
+                    <Clock size={13} />
+                  </Button>
                 </div>
               </div>
             </div>
@@ -575,8 +571,52 @@ function ScheduleCard({
               </div>
             )}
 
-            {/* notes + order fields */}
-            <div className="flex gap-2 items-stretch">
+            {/* order fields */}
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <Label className="text-xs" style={{ color: C.textMuted }}>Order No.</Label>
+                <Input
+                  value={localOrderNumber}
+                  onChange={(e) => setLocalOrderNumber(e.target.value)}
+                  onBlur={resetMobileZoom}
+                  className="h-9 text-sm"
+                  style={{ borderColor: C.border, background: C.bg }}
+                  placeholder="Order #"
+                />
+              </div>
+              <div>
+                <Label className="text-xs" style={{ color: C.textMuted }}>Qty</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={localOrderQty}
+                  onChange={(e) => setLocalOrderQty(e.target.value)}
+                  onBlur={resetMobileZoom}
+                  className="h-9 text-sm"
+                  style={{ borderColor: C.border, background: C.bg }}
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <Label className="text-xs" style={{ color: C.textMuted }}>Amount</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={localOrderAmount}
+                  onChange={(e) => setLocalOrderAmount(e.target.value)}
+                  onBlur={resetMobileZoom}
+                  className="h-9 text-sm"
+                  style={{ borderColor: C.border, background: C.bg }}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            {/* notes */}
+            <div>
+              <Label className="text-xs" style={{ color: C.textMuted }}>Notes</Label>
               <Textarea
                 ref={notesRef}
                 placeholder="Notes (required to skip)..."
@@ -585,41 +625,8 @@ function ScheduleCard({
                 onBlur={() => { commitNotes(); resetMobileZoom(); }}
                 rows={2}
                 className="text-sm resize-none"
-                style={{ borderColor: C.border, background: C.bg, flex: "0 0 58%" }}
+                style={{ borderColor: C.border, background: C.bg }}
               />
-              <div className="flex flex-col justify-between flex-1">
-                <Input
-                  type="text"
-                  placeholder="Order No."
-                  value={localOrderNumber}
-                  onChange={(e) => setLocalOrderNumber(e.target.value)}
-                  onBlur={resetMobileZoom}
-                  className="h-8 text-sm"
-                  style={{ borderColor: C.border, background: C.bg }}
-                />
-                <Input
-                  type="number"
-                  placeholder="Qty"
-                  value={localOrderQty}
-                  onChange={(e) => setLocalOrderQty(e.target.value)}
-                  onBlur={resetMobileZoom}
-                  min="0"
-                  step="1"
-                  className="h-8 text-sm"
-                  style={{ borderColor: C.border, background: C.bg }}
-                />
-                <Input
-                  type="number"
-                  placeholder="Amount"
-                  value={localOrderAmount}
-                  onChange={(e) => setLocalOrderAmount(e.target.value)}
-                  onBlur={resetMobileZoom}
-                  min="0"
-                  step="0.01"
-                  className="h-8 text-sm"
-                  style={{ borderColor: C.border, background: C.bg }}
-                />
-              </div>
             </div>
 
             {/* actions */}
@@ -1149,13 +1156,6 @@ export default function DailySchedule() {
                   </div>
                 </div>
 
-                <div>
-                  <Label className="text-xs" style={{ color: C.textMuted }}>Notes</Label>
-                  <Textarea value={adHocNotes} onChange={(e) => setAdHocNotes(e.target.value)}
-                    onBlur={resetMobileZoom} rows={2}
-                    className="text-sm resize-none" style={{ borderColor: C.border, background: C.bg }} />
-                </div>
-
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <Label className="text-xs" style={{ color: C.textMuted }}>Order No.</Label>
@@ -1175,6 +1175,13 @@ export default function DailySchedule() {
                       onBlur={resetMobileZoom}
                       className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0.00" />
                   </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs" style={{ color: C.textMuted }}>Notes</Label>
+                  <Textarea value={adHocNotes} onChange={(e) => setAdHocNotes(e.target.value)}
+                    onBlur={resetMobileZoom} rows={2}
+                    className="text-sm resize-none" style={{ borderColor: C.border, background: C.bg }} />
                 </div>
 
                 <Button
