@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Download, FileSpreadsheet } from "lucide-react";
 import XLSX from "xlsx-js-style";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 function downloadCSV(filename: string, headers: string[], rows: string[][]) {
   const csv = [headers.join(","), ...rows.map((r) => r.map((c) => `"${(c ?? "").replace(/"/g, '""')}"`).join(","))].join("\n");
@@ -351,6 +353,209 @@ export default function AdminExports() {
     toast.success("Excel report exported");
   };
 
+  const exportReportPDF = async () => {
+    if (repFilter === "all") { toast.error("Please select a specific rep for the PDF report"); return; }
+    if (!dateFrom) { toast.error("Please select a 'From' date for the PDF report"); return; }
+
+    const selectedRep = reps.find((r) => r.id === repFilter);
+    const repName = selectedRep?.rep_name || "Unknown";
+
+    let q = supabase
+      .from("visits")
+      .select("*, reps(rep_name), customers(customer_name, area, account_number)")
+      .eq("rep_id", repFilter)
+      .order("visit_date", { ascending: true })
+      .order("arrival_time", { ascending: true });
+    if (dateFrom) q = q.gte("visit_date", dateFrom);
+    if (dateTo) q = q.lte("visit_date", dateTo);
+    if (custFilter !== "all") q = q.eq("customer_id", custFilter);
+
+    const { data } = await q;
+    if (!data || data.length === 0) { toast.error("No data to export"); return; }
+
+    // Pre-calculate totals (non-skipped only)
+    let totalProductiveMins = 0;
+    let totalOrderQty = 0;
+    let totalOrderAmount = 0;
+    let skippedCount = 0;
+    for (const v of data as any[]) {
+      if (v.status === "skipped") { skippedCount++; continue; }
+      totalProductiveMins += v.duration_minutes || 0;
+      totalOrderQty       += v.order_quantity   || 0;
+      totalOrderAmount    += Number(v.order_amount) || 0;
+    }
+
+    const period = dateTo && dateTo !== dateFrom
+      ? `${fmtDate(dateFrom)} – ${fmtDate(dateTo)}`
+      : fmtDate(dateFrom);
+
+    // ── Document setup ───────────────────────────────────────────────────────
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const PW = 297; // page width
+    const ML = 12;  // margin left
+    const MR = 12;  // margin right
+    const MT = 12;  // margin top
+    const CW = PW - ML - MR; // content width = 273mm
+
+    // ── Section 1: Title banner ──────────────────────────────────────────────
+    const BANNER_H = 16;
+    doc.setFillColor(27, 42, 74);          // #1B2A4A
+    doc.rect(ML, MT, CW, BANNER_H, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(255, 255, 255);
+    doc.text("Daily Visit Report", ML + 6, MT + BANNER_H / 2 + 2.8); // vertically centered
+
+    // Accent bar below banner
+    const ACCENT_Y = MT + BANNER_H;
+    doc.setFillColor(46, 80, 144);         // #2E5090
+    doc.rect(ML, ACCENT_Y, CW, 2, "F");
+
+    // ── Section 2: Info summary block ────────────────────────────────────────
+    const INFO_Y    = ACCENT_Y + 2 + 4;   // 4mm gap below accent bar
+    const ROW_H     = 7;
+    const LBL_CLR: [number, number, number] = [237, 234, 228]; // #EDEAE4
+    const VAL_CLR: [number, number, number] = [255, 255, 255]; // #FFFFFF
+    const BDR_CLR: [number, number, number] = [213, 208, 200]; // #D5D0C8
+    const NAVY_TXT: [number, number, number]  = [27, 42, 74];
+    const DARK_TXT: [number, number, number]  = [51, 51, 51];
+
+    // Column x-positions and widths
+    const LX  = ML,      LW  = 28; // left label
+    const LVX = ML + LW, LVW = 48; // left value
+    const RX  = 168,     RW  = 40; // right label
+    const RVX = 208,     RVW = PW - MR - 208; // right value (fills to right margin)
+
+    const leftLabels  = ["Name",  "Date",          "Period",  "Visits"];
+    const leftValues  = [repName, fmtDate(dateFrom), period,   String(data.length)];
+    const rightLabels = ["Productive Time",   "Order Qty",       "Order Amount (R)",                                                    "Skipped"];
+    const rightValues = [
+      formatDuration(totalProductiveMins),
+      String(totalOrderQty),
+      totalOrderAmount.toFixed(2),
+      String(skippedCount),
+    ];
+
+    for (let i = 0; i < 4; i++) {
+      const y = INFO_Y + i * ROW_H;
+
+      // Left label cell
+      doc.setFillColor(...LBL_CLR);
+      doc.rect(LX, y, LW, ROW_H, "F");
+      doc.setDrawColor(...BDR_CLR);
+      doc.rect(LX, y, LW, ROW_H, "S");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(...NAVY_TXT);
+      doc.text(leftLabels[i], LX + 2, y + ROW_H / 2 + 1.5);
+
+      // Left value cell
+      doc.setFillColor(...VAL_CLR);
+      doc.rect(LVX, y, LVW, ROW_H, "F");
+      doc.rect(LVX, y, LVW, ROW_H, "S");
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...DARK_TXT);
+      doc.text(leftValues[i], LVX + 2, y + ROW_H / 2 + 1.5);
+
+      // Right label cell
+      doc.setFillColor(...LBL_CLR);
+      doc.rect(RX, y, RW, ROW_H, "F");
+      doc.rect(RX, y, RW, ROW_H, "S");
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...NAVY_TXT);
+      doc.text(rightLabels[i], RX + 2, y + ROW_H / 2 + 1.5);
+
+      // Right value cell
+      doc.setFillColor(...VAL_CLR);
+      doc.rect(RVX, y, RVW, ROW_H, "F");
+      doc.rect(RVX, y, RVW, ROW_H, "S");
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...DARK_TXT);
+      doc.text(rightValues[i], RVX + 2, y + ROW_H / 2 + 1.5);
+    }
+
+    // ── Section 3: Data table ─────────────────────────────────────────────────
+    const tableStartY = INFO_Y + 4 * ROW_H + 6;
+
+    const bodyRows: any[][] = [];
+    for (let idx = 0; idx < (data as any[]).length; idx++) {
+      const v = data[idx] as any;
+      const isSkipped = v.status === "skipped";
+      const dur = v.duration_minutes || 0;
+      const row: any[] = [
+        idx + 1,
+        v.customers?.account_number || "",
+        v.customers?.customer_name  || "",
+        v.customers?.area           || "",
+        isSkipped ? "—" : formatTime12h(v.arrival_time),
+        isSkipped ? "—" : formatTime12h(v.leaving_time),
+        dur > 0 ? formatDuration(dur) : "",
+        v.order_number || "",
+        v.order_quantity != null ? String(v.order_quantity) : "",
+        v.order_amount   != null ? Number(v.order_amount).toFixed(2) : "",
+        isSkipped ? `[SKIPPED] ${v.notes || ""}` : (v.notes || ""),
+      ];
+      (row as any).__skipped = isSkipped;
+      bodyRows.push(row);
+    }
+
+    autoTable(doc, {
+      startY: tableStartY,
+      head: [["#", "Account #", "Customer", "Area", "Arrival", "Departure", "Duration", "Order No.", "Qty", "Amount (R)", "Notes"]],
+      body: bodyRows,
+      foot: [["Totals", "", "", "", "", "", formatDuration(totalProductiveMins), "", String(totalOrderQty), totalOrderAmount.toFixed(2), ""]],
+      theme: "grid",
+      styles: {
+        font: "helvetica",
+        fontSize: 8,
+        cellPadding: 2,
+        lineColor: [213, 208, 200],
+        lineWidth: 0.3,
+        overflow: "linebreak",
+      },
+      headStyles: {
+        fillColor: [27, 42, 74],
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        halign: "center",
+        fontSize: 8,
+      },
+      footStyles: {
+        fillColor: [27, 42, 74],
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        halign: "center",
+        fontSize: 8,
+      },
+      alternateRowStyles: {
+        fillColor: [245, 242, 237],
+      },
+      columnStyles: {
+        0:  { halign: "center", cellWidth: 8 },
+        1:  { halign: "left",   cellWidth: 18 },
+        2:  { halign: "left",   cellWidth: 35 },
+        3:  { halign: "left",   cellWidth: 22 },
+        4:  { halign: "center", cellWidth: 20 },
+        5:  { halign: "center", cellWidth: 20 },
+        6:  { halign: "center", cellWidth: 16 },
+        7:  { halign: "left",   cellWidth: 20 },
+        8:  { halign: "center", cellWidth: 12 },
+        9:  { halign: "right",  cellWidth: 22 },
+        10: { halign: "left",   cellWidth: "auto" as any },
+      },
+      didParseCell: (hookData) => {
+        if (hookData.section === "body" && hookData.row.raw && (hookData.row.raw as any).__skipped) {
+          hookData.cell.styles.fillColor = [255, 224, 224];
+          hookData.cell.styles.textColor = [153, 27, 27];
+        }
+      },
+      margin: { left: ML, right: MR },
+    });
+
+    doc.save(`visit_report_${repName.replace(/\s+/g, "_")}_${dateFrom}.pdf`);
+    toast.success("PDF report exported");
+  };
+
   return (
     <Card>
       <CardHeader><CardTitle className="flex items-center gap-2"><Download className="h-5 w-5 text-accent" /> Export Data</CardTitle></CardHeader>
@@ -367,6 +572,7 @@ export default function AdminExports() {
           <Button onClick={exportVisits}><Download className="h-4 w-4 mr-2" /> Export Visits CSV</Button>
           <Button variant="outline" onClick={exportAverages}><Download className="h-4 w-4 mr-2" /> Export Averages CSV</Button>
           <Button onClick={exportReportExcel} className="bg-accent hover:bg-accent/90 text-accent-foreground"><FileSpreadsheet className="h-4 w-4 mr-2" /> Export Report (Excel)</Button>
+          <Button onClick={exportReportPDF} variant="secondary"><FileSpreadsheet className="h-4 w-4 mr-2" /> Export Report (PDF)</Button>
         </div>
       </CardContent>
     </Card>
