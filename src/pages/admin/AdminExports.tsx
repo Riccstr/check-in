@@ -221,7 +221,7 @@ export default function AdminExports() {
       ? `${fmtDate(dateFrom)} – ${fmtDate(dateTo)}`
       : fmtDate(dateFrom);
 
-    const leftLabels = ["Rep Name", "Report Date", "Period", "Total Visits"];
+   const leftLabels = ["Name", "Date", "Period", "Visits"];
     const leftValues = [repName, fmtDate(dateFrom), period, String(data.length)];
     const rightLabels = ["Total Productive Time", "Total Order Qty", "Total Order Amount", "Skipped Visits"];
     const rightValues = [
@@ -346,17 +346,21 @@ export default function AdminExports() {
     // Update sheet range
     ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: totalsRow, c: COL_COUNT - 1 } });
 // Page setup: A4 landscape, fit all columns to one page width
+    // Force landscape A4 fit-to-page
     ws['!pageSetup'] = {
-      paperSize: 9,          // A4
+      paperSize: 9,
       orientation: 'landscape',
       fitToWidth: 1,
-      fitToHeight: 0,        // 0 = as many pages tall as needed
-      fitToPage: true,
+      fitToHeight: 0,
+      scale: 85,
     };
-    ws['!margins'] = {
-      left: 0.4, right: 0.4,
-      top: 0.5, bottom: 0.5,
-      header: 0.3, footer: 0.3,
+    // Page setup via sheet-level XML properties
+    if (!ws['!sheetViews']) ws['!sheetViews'] = [{}];
+    ws['!print'] = {
+      paperSize: 9,
+      orientation: 'landscape',
+      fitToWidth: 1,
+      fitToHeight: 0,
     };
     XLSX.utils.book_append_sheet(wb, ws, "Visit Report");
     XLSX.writeFile(wb, `visit_report_${repName.replace(/\s+/g, "_")}_${dateFrom}.xlsx`);
