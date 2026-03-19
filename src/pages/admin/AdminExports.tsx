@@ -182,19 +182,19 @@ export default function AdminExports() {
     const ws: XLSX.WorkSheet = {};
     ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 100, c: COL_COUNT - 1 } });
 
-    // Column widths
+    // Column widths (total ≈ 123 wch — fits A4 landscape at 85% scale)
     ws["!cols"] = [
       { wch: 4 },   // #
-      { wch: 11 },  // Account #
-      { wch: 22 },  // Customer
-      { wch: 14 },  // Area
-      { wch: 11 },  // Arrival
-      { wch: 11 },  // Departure
-      { wch: 9 },   // Duration
-      { wch: 11 },  // Order No.
-      { wch: 7 },   // Qty
-      { wch: 12 },  // Amount
-      { wch: 25 },  // Notes
+      { wch: 10 },  // Account #
+      { wch: 20 },  // Customer
+      { wch: 12 },  // Area
+      { wch: 10 },  // Arrival
+      { wch: 10 },  // Departure
+      { wch: 8 },   // Duration
+      { wch: 10 },  // Order No.
+      { wch: 6 },   // Qty
+      { wch: 11 },  // Amount
+      { wch: 22 },  // Notes
     ];
 
     // Row heights
@@ -343,27 +343,58 @@ export default function AdminExports() {
     // Notes (empty)
     ss(ws, totalsRow, 10, tStyle);
 
-    // Update sheet range
+    // Update sheet range to exact data bounds
     ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: totalsRow, c: COL_COUNT - 1 } });
-// Page setup: A4 landscape, fit all columns to one page width
-    // Force landscape A4 fit-to-page
-    ws['!pageSetup'] = {
-      paperSize: 9,
-      orientation: 'landscape',
-      fitToWidth: 1,
-      fitToHeight: 0,
-      scale: 85,
-    };
-    // Page setup via sheet-level XML properties
-    if (!ws['!sheetViews']) ws['!sheetViews'] = [{}];
-    ws['!print'] = {
-      paperSize: 9,
-      orientation: 'landscape',
-      fitToWidth: 1,
-      fitToHeight: 0,
-    };
+
     XLSX.utils.book_append_sheet(wb, ws, "Visit Report");
-    XLSX.writeFile(wb, `visit_report_${repName.replace(/\s+/g, "_")}_${dateFrom}.xlsx`);
+
+    // ── Patch landscape A4 fit-to-page via JSZip XML surgery ─────────────────
+    // xlsx-js-style does not write pageSetup XML, so we write the workbook to
+    // an ArrayBuffer, open the zip, and inject the correct XML tags directly.
+    const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const JSZip = (await import("jszip")).default;
+    const zip   = await JSZip.loadAsync(wbout);
+
+    const sheetPath = "xl/worksheets/sheet1.xml";
+    let sheetXml    = await zip.file(sheetPath)!.async("string");
+
+    // Remove any stale pageSetup tag the library may have written
+    sheetXml = sheetXml.replace(/<pageSetup[^>]*\/>/g, "");
+    sheetXml = sheetXml.replace(/<pageSetup[^>]*>.*?<\/pageSetup>/g, "");
+
+    // Ensure sheetFormatPr carries fitToPage="1"
+    if (sheetXml.includes("<sheetFormatPr")) {
+      sheetXml = sheetXml.replace(
+        /<sheetFormatPr([^/]*)\/>/,
+        '<sheetFormatPr$1 fitToPage="1"/>',
+      );
+    } else {
+      sheetXml = sheetXml.replace("<sheetData", '<sheetFormatPr fitToPage="1"/><sheetData');
+    }
+
+    // Inject pageMargins if absent
+    if (!sheetXml.includes("<pageMargins")) {
+      sheetXml = sheetXml.replace(
+        "</worksheet>",
+        '<pageMargins left="0.35" right="0.35" top="0.4" bottom="0.4" header="0.2" footer="0.2"/></worksheet>',
+      );
+    }
+
+    // Inject landscape A4 fit-to-page pageSetup before </worksheet>
+    sheetXml = sheetXml.replace(
+      "</worksheet>",
+      '<pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0" scale="80"/></worksheet>',
+    );
+
+    zip.file(sheetPath, sheetXml);
+
+    const blob     = await zip.generateAsync({ type: "blob" });
+    const filename = `visit_report_${repName.replace(/\s+/g, "_")}_${dateFrom}.xlsx`;
+    const url      = URL.createObjectURL(blob);
+    const a        = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+
     toast.success("Excel report exported");
   };
 
