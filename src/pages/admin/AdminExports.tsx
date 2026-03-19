@@ -184,17 +184,17 @@ export default function AdminExports() {
 
     // Column widths
     ws["!cols"] = [
-      { wch: 5 },   // #
-      { wch: 14 },  // Account #
-      { wch: 28 },  // Customer
-      { wch: 18 },  // Area
-      { wch: 13 },  // Arrival
-      { wch: 13 },  // Departure
-      { wch: 12 },  // Duration
-      { wch: 14 },  // Order No.
-      { wch: 8 },   // Qty
-      { wch: 14 },  // Amount
-      { wch: 35 },  // Notes
+      { wch: 4 },   // #
+      { wch: 11 },  // Account #
+      { wch: 22 },  // Customer
+      { wch: 14 },  // Area
+      { wch: 11 },  // Arrival
+      { wch: 11 },  // Departure
+      { wch: 9 },   // Duration
+      { wch: 11 },  // Order No.
+      { wch: 7 },   // Qty
+      { wch: 12 },  // Amount
+      { wch: 25 },  // Notes
     ];
 
     // Row heights
@@ -345,7 +345,19 @@ export default function AdminExports() {
 
     // Update sheet range
     ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: totalsRow, c: COL_COUNT - 1 } });
-
+// Page setup: A4 landscape, fit all columns to one page width
+    ws['!pageSetup'] = {
+      paperSize: 9,          // A4
+      orientation: 'landscape',
+      fitToWidth: 1,
+      fitToHeight: 0,        // 0 = as many pages tall as needed
+      fitToPage: true,
+    };
+    ws['!margins'] = {
+      left: 0.4, right: 0.4,
+      top: 0.5, bottom: 0.5,
+      header: 0.3, footer: 0.3,
+    };
     XLSX.utils.book_append_sheet(wb, ws, "Visit Report");
     XLSX.writeFile(wb, `visit_report_${repName.replace(/\s+/g, "_")}_${dateFrom}.xlsx`);
     toast.success("Excel report exported");
