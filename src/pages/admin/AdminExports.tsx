@@ -347,54 +347,7 @@ export default function AdminExports() {
     ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: totalsRow, c: COL_COUNT - 1 } });
 
     XLSX.utils.book_append_sheet(wb, ws, "Visit Report");
-
-    // ── Patch landscape A4 fit-to-page via JSZip XML surgery ─────────────────
-    // xlsx-js-style does not write pageSetup XML, so we write the workbook to
-    // an ArrayBuffer, open the zip, and inject the correct XML tags directly.
-    const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    const JSZip = (await import("jszip")).default;
-    const zip   = await JSZip.loadAsync(wbout);
-
-    const sheetPath = "xl/worksheets/sheet1.xml";
-    let sheetXml    = await zip.file(sheetPath)!.async("string");
-
-    // Remove any stale pageSetup tag the library may have written
-    sheetXml = sheetXml.replace(/<pageSetup[^>]*\/>/g, "");
-    sheetXml = sheetXml.replace(/<pageSetup[^>]*>.*?<\/pageSetup>/g, "");
-
-    // Ensure sheetFormatPr carries fitToPage="1"
-    if (sheetXml.includes("<sheetFormatPr")) {
-      sheetXml = sheetXml.replace(
-        /<sheetFormatPr([^/]*)\/>/,
-        '<sheetFormatPr$1 fitToPage="1"/>',
-      );
-    } else {
-      sheetXml = sheetXml.replace("<sheetData", '<sheetFormatPr fitToPage="1"/><sheetData');
-    }
-
-    // Inject pageMargins if absent
-    if (!sheetXml.includes("<pageMargins")) {
-      sheetXml = sheetXml.replace(
-        "</worksheet>",
-        '<pageMargins left="0.35" right="0.35" top="0.4" bottom="0.4" header="0.2" footer="0.2"/></worksheet>',
-      );
-    }
-
-    // Inject landscape A4 fit-to-page pageSetup before </worksheet>
-    sheetXml = sheetXml.replace(
-      "</worksheet>",
-      '<pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0" scale="80"/></worksheet>',
-    );
-
-    zip.file(sheetPath, sheetXml);
-
-    const blob     = await zip.generateAsync({ type: "blob" });
-    const filename = `visit_report_${repName.replace(/\s+/g, "_")}_${dateFrom}.xlsx`;
-    const url      = URL.createObjectURL(blob);
-    const a        = document.createElement("a");
-    a.href = url; a.download = filename; a.click();
-    URL.revokeObjectURL(url);
-
+    XLSX.writeFile(wb, `visit_report_${repName.replace(/\s+/g, "_")}_${dateFrom}.xlsx`);
     toast.success("Excel report exported");
   };
 
