@@ -148,6 +148,101 @@ function OfflineBanner() {
   );
 }
 
+// ─── VisitSummary ─────────────────────────────────────────────────────────────
+// Read-only display of a completed visit, fetching order fields + photo from
+// the visits table (order data is not stored on schedule_items).
+
+function VisitSummary({ item, visitId }: { item: any; visitId: string }) {
+  const [visitData, setVisitData] = useState<{
+    order_number: string | null;
+    order_quantity: number | null;
+    order_amount: number | null;
+    photo_url: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (supabase
+      .from("visits")
+      .select("order_number, order_quantity, order_amount, photo_url")
+      .eq("id", visitId)
+      .maybeSingle() as any)
+      .then(({ data }: { data: any }) => { if (!cancelled && data) setVisitData(data); });
+    return () => { cancelled = true; };
+  }, [visitId]);
+
+  const hasOrderData = visitData && (
+    visitData.order_number || visitData.order_quantity != null || visitData.order_amount != null
+  );
+
+  return (
+    <div className="flex gap-3">
+      {/* Left: times, order details, notes */}
+      <div className="flex-1 space-y-2">
+        {item.arrival_time && item.leaving_time && (
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>In:</span>
+              <span className="text-sm font-medium" style={{ color: C.text }}>{item.arrival_time}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Out:</span>
+              <span className="text-sm font-medium" style={{ color: C.text }}>{item.leaving_time}</span>
+            </div>
+            {item.duration_minutes > 0 && (
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Dur:</span>
+                <span className="text-sm font-medium" style={{ color: C.text }}>{item.duration_minutes}m</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {hasOrderData && (
+          <div className="flex items-center gap-3 flex-wrap">
+            {visitData!.order_number && (
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Order:</span>
+                <span className="text-sm" style={{ color: C.text }}>{visitData!.order_number}</span>
+              </div>
+            )}
+            {visitData!.order_quantity != null && (
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Qty:</span>
+                <span className="text-sm" style={{ color: C.text }}>{visitData!.order_quantity}</span>
+              </div>
+            )}
+            {visitData!.order_amount != null && (
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Amt:</span>
+                <span className="text-sm" style={{ color: C.text }}>
+                  R {Number(visitData!.order_amount).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {item.notes && (
+          <p className="text-xs italic" style={{ color: C.textMuted }}>"{item.notes}"</p>
+        )}
+      </div>
+
+      {/* Right: photo thumbnail */}
+      {visitData?.photo_url && (
+        <div className="shrink-0">
+          <img
+            src={visitData.photo_url}
+            alt="Visit photo"
+            className="w-16 h-16 object-cover rounded-xl"
+            style={{ border: `1px solid ${C.border}` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── ScheduleCard ─────────────────────────────────────────────────────────────
 
 function ScheduleCard({
@@ -487,15 +582,32 @@ function ScheduleCard({
       <div className="px-4 pb-4 space-y-3" style={{ borderTop: `1px solid ${C.border}` }}>
         {/* visited / skipped summary */}
         {item.status === "visited" && (
-          <div className="pt-3 space-y-1">
-            {item.arrival_time && item.leaving_time && (
-              <p className="text-sm" style={{ color: C.textMuted }}>
-                <Clock size={12} className="inline mr-1" />
-                {item.arrival_time} → {item.leaving_time}
-                {item.duration_minutes > 0 && ` · ${item.duration_minutes} min`}
-              </p>
+          <div className="pt-3">
+            {item.visit_id ? (
+              <VisitSummary item={item} visitId={item.visit_id} />
+            ) : (
+              <div className="space-y-1">
+                {item.arrival_time && item.leaving_time && (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>In:</span>
+                      <span className="text-sm font-medium" style={{ color: C.text }}>{item.arrival_time}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Out:</span>
+                      <span className="text-sm font-medium" style={{ color: C.text }}>{item.leaving_time}</span>
+                    </div>
+                    {item.duration_minutes > 0 && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Dur:</span>
+                        <span className="text-sm font-medium" style={{ color: C.text }}>{item.duration_minutes}m</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {item.notes && <p className="text-xs italic" style={{ color: C.textMuted }}>"{item.notes}"</p>}
+              </div>
             )}
-            {item.notes && <p className="text-sm italic" style={{ color: C.textMuted }}>"{item.notes}"</p>}
           </div>
         )}
 
