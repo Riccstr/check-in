@@ -157,8 +157,8 @@ export default function AdminSchedules() {
   };
 
   // --- Template CRUD ---
-  const openNewTemplate = () => {
-    setTemplateDay("1");
+  const openNewTemplate = (day?: string) => {
+    setTemplateDay(day || "1");
     setTemplateCustomers([]);
     setCustomerSearch("");
     setAreaFilter("all");
@@ -384,39 +384,48 @@ export default function AdminSchedules() {
 
                 <Button size="sm" onClick={openNewTemplate}><Plus className="h-4 w-4 mr-1" /> Add Day Template</Button>
 
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Day</TableHead>
-                      <TableHead>Customers</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {templates.map(t => (
-                      <TableRow key={t.id} className="border-b-4 border-muted/50">
-                        <TableCell className="font-medium">{WEEKDAYS.find(d => d.value === t.day_of_week)?.label || `Day ${t.day_of_week}`}</TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            {t.schedule_template_items?.sort((a: any, b: any) => a.sort_order - b.sort_order).map((i: any, idx: number) => (
-                              <div key={i.id} className="flex items-center gap-2 text-sm">
-                                <span className="shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground">{idx + 1}</span>
-                                <span className="text-xs">{i.customers?.account_number ? `(${i.customers.account_number}) ` : ""}{i.customers?.customer_name}</span>
-                              </div>
-                            ))}
+                <div className="grid grid-cols-5 gap-4">
+                  {WEEKDAYS.map((day) => {
+                    const dayTemplate = templates.find((t) => t.day_of_week === day.value);
+                    const items = dayTemplate?.schedule_template_items?.sort((a: any, b: any) => a.sort_order - b.sort_order) || [];
+                    return (
+                      <div key={day.value} className="space-y-2">
+                        {/* Day header */}
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-semibold">{day.label}</h3>
+                          <div className="flex gap-1">
+                            {dayTemplate ? (
+                              <>
+                                <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => editTemplate(dayTemplate)}>Edit</Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteTemplate(dayTemplate.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                              </>
+                            ) : (
+                              <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => openNewTemplate(String(day.value))}>
+                                <Plus className="h-3 w-3 mr-1" /> Add
+                              </Button>
+                            )}
                           </div>
-                        </TableCell>
-                        <TableCell className="text-right space-x-1">
-                          <Button variant="ghost" size="sm" onClick={() => editTemplate(t)}>Edit</Button>
-                          <Button variant="ghost" size="icon" onClick={() => deleteTemplate(t.id)}><Trash2 className="h-4 w-4" /></Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {templates.length === 0 && (
-                      <TableRow><TableCell colSpan={3} className="text-muted-foreground text-center py-4">No templates for this week yet</TableCell></TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                        </div>
+
+                        {/* Customer list */}
+                        <div className="border rounded-lg p-2 min-h-[120px] bg-muted/30">
+                          {items.length > 0 ? (
+                            <div className="space-y-1">
+                              {items.map((i: any, idx: number) => (
+                                <div key={i.id} className="flex items-start gap-1.5 text-xs">
+                                  <span className="shrink-0 w-4 h-4 rounded-full bg-muted flex items-center justify-center text-[9px] font-bold text-muted-foreground mt-0.5">{idx + 1}</span>
+                                  <span className="leading-tight">{i.customers?.account_number ? `(${i.customers.account_number}) ` : ""}{i.customers?.customer_name}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground text-center py-4">No schedule</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </TabsContent>
 
               <TabsContent value="daily" className="space-y-3">
