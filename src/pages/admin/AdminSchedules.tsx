@@ -394,12 +394,15 @@ export default function AdminSchedules() {
                   </TableHeader>
                   <TableBody>
                     {templates.map(t => (
-                      <TableRow key={t.id}>
+                      <TableRow key={t.id} className="border-b-4 border-muted/50">
                         <TableCell className="font-medium">{WEEKDAYS.find(d => d.value === t.day_of_week)?.label || `Day ${t.day_of_week}`}</TableCell>
                         <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {t.schedule_template_items?.map((i: any) => (
-                              <Badge key={i.id} variant="secondary" className="text-xs">{i.customers?.account_number ? `(${i.customers.account_number}) ` : ""}{i.customers?.customer_name}</Badge>
+                          <div className="space-y-1">
+                            {t.schedule_template_items?.sort((a: any, b: any) => a.sort_order - b.sort_order).map((i: any, idx: number) => (
+                              <div key={i.id} className="flex items-center gap-2 text-sm">
+                                <span className="shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground">{idx + 1}</span>
+                                <span className="text-xs">{i.customers?.account_number ? `(${i.customers.account_number}) ` : ""}{i.customers?.customer_name}</span>
+                              </div>
                             ))}
                           </div>
                         </TableCell>
@@ -436,11 +439,12 @@ export default function AdminSchedules() {
                           <TableCell className="font-medium">{ds.schedule_date}</TableCell>
                           <TableCell>{DAYS[new Date(ds.schedule_date + "T12:00:00").getDay()]}</TableCell>
                           <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {items.map((i: any) => (
-                                <Badge key={i.id} variant={i.status === "visited" ? "default" : "secondary"} className="text-xs">
-                                  {i.customers?.account_number ? `(${i.customers.account_number}) ` : ""}{i.customers?.customer_name}
-                                </Badge>
+                            <div className="space-y-1">
+                              {items.sort((a: any, b: any) => a.sort_order - b.sort_order).map((i: any, idx: number) => (
+                                <div key={i.id} className="flex items-center gap-2 text-sm">
+                                  <span className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${i.status === "visited" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{idx + 1}</span>
+                                  <span className="text-xs">{i.customers?.account_number ? `(${i.customers.account_number}) ` : ""}{i.customers?.customer_name}</span>
+                                </div>
                               ))}
                             </div>
                           </TableCell>
