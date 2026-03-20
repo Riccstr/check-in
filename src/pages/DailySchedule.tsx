@@ -426,7 +426,11 @@ function ScheduleCard({
           }
         }
       }
-      onRefresh();
+      // Only refresh the full schedule when the visit status changes to visited/skipped
+      // For intermediate edits (arrival, notes, etc.), the local update is sufficient
+      if (newItem.status === "visited" || newItem.status === "skipped") {
+        onRefresh();
+      }
     } catch (err: any) {
       console.warn("[Schedule] Network error on update:", err?.message);
       await queueScheduleItemUpdate(newItem);
@@ -787,6 +791,7 @@ export default function DailySchedule() {
 
   // accordion state
   const [expandedActiveId,    setExpandedActiveId]    = useState<string | null>(null);
+  const expandedActiveIdRef = useRef<string | null>(null);
   const [openCompletedId,     setOpenCompletedId]     = useState<string | null>(null);
   const [activeTab,           setActiveTab]           = useState<"active" | "done">("active");
 
@@ -827,6 +832,11 @@ export default function DailySchedule() {
     const target = inProgressItem ?? upNextItem ?? null;
     setExpandedActiveId(target?.id ?? null);
   }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // keep ref in sync so realtime callbacks can read current value without stale closure
+  useEffect(() => {
+    expandedActiveIdRef.current = expandedActiveId;
+  }, [expandedActiveId]);
 
   // ─── data (preserved verbatim) ─────────────────────────────────────────────
 
@@ -879,7 +889,14 @@ export default function DailySchedule() {
     if (!schedule?.id) return;
     const channel = supabase
       .channel(`schedule-items-${schedule.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "schedule_items", filter: `schedule_id=eq.${schedule.id}` }, () => { fetchSchedule(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "schedule_items", filter: `schedule_id=eq.${schedule.id}` }, () => {
+        // Don't refresh if the user is actively editing a card (has one expanded in Active tab)
+        // This prevents losing local state like captured photos
+        // The schedule will refresh when they complete/skip the visit
+        if (!expandedActiveIdRef.current) {
+          fetchSchedule();
+        }
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [schedule?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -888,7 +905,11 @@ export default function DailySchedule() {
     if (!repId) return;
     const channel = supabase
       .channel(`daily-schedules-${repId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "daily_schedules", filter: `rep_id=eq.${repId}` }, () => { fetchSchedule(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "daily_schedules", filter: `rep_id=eq.${repId}` }, () => {
+        if (!expandedActiveIdRef.current) {
+          fetchSchedule();
+        }
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [repId, scheduleDate]); // eslint-disable-line react-hooks/exhaustive-deps
