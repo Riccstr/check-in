@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
-  CalendarDays, Clock, Check, SkipForward, Plus, Loader2, X,
+  CalendarDays, Clock, Check, SkipForward, Plus, Loader2, X, Pencil,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   Home, ClipboardList, User, Wifi, WifiOff,
 } from "lucide-react";
@@ -260,6 +260,11 @@ function ScheduleCard({
   const [localOrderAmount, setLocalOrderAmount] = useState("");
   const [actionInProgress, setActionInProgress] = useState(false);
 
+  const [editingDone, setEditingDone]         = useState(false);
+  const [doneOrderNumber, setDoneOrderNumber] = useState("");
+  const [doneOrderQty, setDoneOrderQty]       = useState("");
+  const [doneOrderAmount, setDoneOrderAmount] = useState("");
+
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBlob, setPhotoBlob]       = useState<Blob | null>(null);
 
@@ -460,6 +465,47 @@ function ScheduleCard({
     }
   };
 
+  const saveDoneOrder = async () => {
+    if (actionInProgress) return;
+    setActionInProgress(true);
+    try {
+      let visitId = item.visit_id;
+      if (!visitId) {
+        const { data } = await supabase
+          .from("visits")
+          .select("id")
+          .eq("rep_id", repId)
+          .eq("customer_id", item.customer_id)
+          .eq("visit_date", scheduleDate)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        visitId = data?.id;
+      }
+      if (!visitId) {
+        toast.error("Visit record not found");
+        setActionInProgress(false);
+        return;
+      }
+      const { error } = await supabase.from("visits").update({
+        order_number: doneOrderNumber || null,
+        order_quantity: doneOrderQty !== "" ? Number(doneOrderQty) : null,
+        order_amount: doneOrderAmount !== "" ? Number(doneOrderAmount) : null,
+      } as any).eq("id", visitId);
+      if (error) {
+        toast.error(error.message);
+      } else {
+        toast.success("Order updated");
+        setEditingDone(false);
+        onRefresh();
+      }
+    } catch {
+      toast.error("Failed to update");
+    } finally {
+      setActionInProgress(false);
+    }
+  };
+
   const commitNotes   = () => { if (localNotes   !== (item.notes        || "")) updateItem({ notes:        localNotes   }); };
   const commitArrival = () => { if (localArrival !== (item.arrival_time || "")) updateItem({ arrival_time: localArrival }); };
   const commitLeaving = () => { if (localLeaving !== (item.leaving_time || "")) updateItem({ leaving_time: localLeaving }); };
@@ -604,6 +650,79 @@ function ScheduleCard({
                 {/* Notes */}
                 {item.notes && (
                   <p className="text-xs italic" style={{ color: C.textMuted }}>"{item.notes}"</p>
+                )}
+
+                {/* Edit Order section */}
+                {!editingDone && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      let visitId = item.visit_id;
+                      let visitData: any = null;
+                      if (visitId) {
+                        const res = await supabase.from("visits").select("order_number, order_quantity, order_amount").eq("id", visitId).maybeSingle();
+                        visitData = res.data;
+                      }
+                      if (!visitData) {
+                        const res = await (supabase.from("visits").select("order_number, order_quantity, order_amount")
+                          .eq("rep_id", repId).eq("customer_id", item.customer_id).eq("visit_date", scheduleDate)
+                          .order("created_at", { ascending: false }).limit(1).maybeSingle() as any);
+                        visitData = res.data;
+                      }
+                      setDoneOrderNumber(visitData?.order_number || "");
+                      setDoneOrderQty(visitData?.order_quantity != null ? String(visitData.order_quantity) : "");
+                      setDoneOrderAmount(visitData?.order_amount != null ? String(visitData.order_amount) : "");
+                      setEditingDone(true);
+                    }}
+                    className="text-xs font-medium mt-2 px-3 py-1.5 rounded-lg"
+                    style={{ color: C.green, border: `1px solid ${C.border}`, background: C.bg }}
+                  >
+                    <Pencil size={11} className="inline mr-1" /> Edit Order
+                  </button>
+                )}
+
+                {editingDone && (
+                  <div className="mt-2 space-y-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[10px] font-medium" style={{ color: C.textMuted }}>Order No.</label>
+                        <Input value={doneOrderNumber} onChange={(e) => setDoneOrderNumber(e.target.value)}
+                          onBlur={resetMobileZoom}
+                          className="h-8 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="Order #" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-medium" style={{ color: C.textMuted }}>Qty</label>
+                        <Input type="number" min="0" step="1" value={doneOrderQty} onChange={(e) => setDoneOrderQty(e.target.value)}
+                          onBlur={resetMobileZoom}
+                          className="h-8 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-medium" style={{ color: C.textMuted }}>Amount</label>
+                        <Input type="number" min="0" step="0.01" value={doneOrderAmount} onChange={(e) => setDoneOrderAmount(e.target.value)}
+                          onBlur={resetMobileZoom}
+                          className="h-8 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0.00" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingDone(false)}
+                        className="text-xs px-3 py-1.5 rounded-lg"
+                        style={{ color: C.textMuted, border: `1px solid ${C.border}` }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={saveDoneOrder}
+                        disabled={actionInProgress}
+                        className="text-xs px-3 py-1.5 rounded-lg font-medium"
+                        style={{ background: C.green, color: "#fff" }}
+                      >
+                        {actionInProgress ? "Saving..." : "Update"}
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
 
