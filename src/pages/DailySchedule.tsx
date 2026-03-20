@@ -579,11 +579,11 @@ function ScheduleCard({
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-1">
                       <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>In:</span>
-                      <span className="text-sm font-medium" style={{ color: C.text }}>{item.arrival_time}</span>
+                      <span className="text-sm font-medium" style={{ color: C.text }}>{item.arrival_time?.slice(0, 5)}</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Out:</span>
-                      <span className="text-sm font-medium" style={{ color: C.text }}>{item.leaving_time}</span>
+                      <span className="text-sm font-medium" style={{ color: C.text }}>{item.leaving_time?.slice(0, 5)}</span>
                     </div>
                     {item.duration_minutes > 0 && (
                       <div className="flex items-center gap-1">
