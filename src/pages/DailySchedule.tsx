@@ -148,92 +148,85 @@ function OfflineBanner() {
   );
 }
 
-// ─── VisitDetails ─────────────────────────────────────────────────────────────
-// Read-only display of order fields + photo for a completed visit.
-// Uses two lookup strategies to handle offline-synced visits where visit_id
-// may not yet be populated on the schedule_items row.
+// ─── VisitDetailsText / VisitPhotoOnly ────────────────────────────────────────
+// Split components for completed visit data. Both use two lookup strategies to
+// handle offline-synced visits where visit_id may not yet be on schedule_items.
 
-function VisitDetails({ visitId, repId, customerId, scheduleDate }: { visitId: string | null; repId: string; customerId: string; scheduleDate: string }) {
-  const [visitData, setVisitData] = useState<{ photo_url: string | null; order_number: string | null; order_quantity: number | null; order_amount: number | null } | null>(null);
+function VisitDetailsText({ visitId, repId, customerId, scheduleDate }: { visitId: string | null; repId: string; customerId: string; scheduleDate: string }) {
+  const [visitData, setVisitData] = useState<any>(null);
 
   useEffect(() => {
     let cancelled = false;
-
     const fetchVisit = async () => {
       let data: any = null;
-
-      // Strategy 1: lookup by visit_id
       if (visitId) {
-        const res = await (supabase
-          .from("visits")
-          .select("photo_url, order_number, order_quantity, order_amount")
-          .eq("id", visitId)
-          .maybeSingle() as any);
+        const res = await supabase.from("visits").select("order_number, order_quantity, order_amount").eq("id", visitId).maybeSingle();
         data = res.data;
       }
-
-      // Strategy 2: fallback lookup by rep + customer + date
       if (!data) {
-        const res = await (supabase
-          .from("visits")
-          .select("photo_url, order_number, order_quantity, order_amount")
-          .eq("rep_id", repId)
-          .eq("customer_id", customerId)
-          .eq("visit_date", scheduleDate)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle() as any);
+        const res = await supabase.from("visits").select("order_number, order_quantity, order_amount").eq("rep_id", repId).eq("customer_id", customerId).eq("visit_date", scheduleDate).order("created_at", { ascending: false }).limit(1).maybeSingle();
         data = res.data;
       }
-
-      if (!cancelled && data) {
-        setVisitData(data);
-      }
+      if (!cancelled && data) setVisitData(data);
     };
-
     fetchVisit();
     return () => { cancelled = true; };
   }, [visitId, repId, customerId, scheduleDate]);
 
   if (!visitData) return null;
+  const hasAny = visitData.order_number || visitData.order_quantity != null || visitData.order_amount != null;
+  if (!hasAny) return null;
 
   return (
-    <div className="flex gap-3 items-start">
-      <div className="flex-1 space-y-1">
-        {/* Order details row */}
-        <div className="flex items-center gap-3 flex-wrap">
-          {visitData.order_number && (
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Order:</span>
-              <span className="text-sm" style={{ color: C.text }}>{visitData.order_number}</span>
-            </div>
-          )}
-          {visitData.order_quantity != null && (
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Qty:</span>
-              <span className="text-sm" style={{ color: C.text }}>{visitData.order_quantity}</span>
-            </div>
-          )}
-          {visitData.order_amount != null && (
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Amt:</span>
-              <span className="text-sm" style={{ color: C.text }}>R {Number(visitData.order_amount).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Photo thumbnail */}
-      {visitData.photo_url && (
-        <div className="shrink-0">
-          <img
-            src={visitData.photo_url}
-            alt="Visit photo"
-            className="w-16 h-16 object-cover rounded-xl"
-            style={{ border: `1px solid ${C.border}` }}
-          />
+    <div className="flex items-center gap-3 flex-wrap">
+      {visitData.order_number && (
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Order:</span>
+          <span className="text-sm" style={{ color: C.text }}>{visitData.order_number}</span>
         </div>
       )}
+      {visitData.order_quantity != null && (
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Qty:</span>
+          <span className="text-sm" style={{ color: C.text }}>{visitData.order_quantity}</span>
+        </div>
+      )}
+      {visitData.order_amount != null && (
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Amt:</span>
+          <span className="text-sm" style={{ color: C.text }}>R {Number(visitData.order_amount).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VisitPhotoOnly({ visitId, repId, customerId, scheduleDate }: { visitId: string | null; repId: string; customerId: string; scheduleDate: string }) {
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchPhoto = async () => {
+      let data: any = null;
+      if (visitId) {
+        const res = await supabase.from("visits").select("photo_url").eq("id", visitId).maybeSingle();
+        data = res.data;
+      }
+      if (!data) {
+        const res = await supabase.from("visits").select("photo_url").eq("rep_id", repId).eq("customer_id", customerId).eq("visit_date", scheduleDate).order("created_at", { ascending: false }).limit(1).maybeSingle();
+        data = res.data;
+      }
+      if (!cancelled && data?.photo_url) setPhotoUrl(data.photo_url);
+    };
+    fetchPhoto();
+    return () => { cancelled = true; };
+  }, [visitId, repId, customerId, scheduleDate]);
+
+  if (!photoUrl) return null;
+
+  return (
+    <div className="shrink-0">
+      <img src={photoUrl} alt="Visit photo" className="w-16 h-16 object-cover rounded-xl" style={{ border: `1px solid ${C.border}` }} />
     </div>
   );
 }
@@ -577,34 +570,42 @@ function ScheduleCard({
       <div className="px-4 pb-4 space-y-3" style={{ borderTop: `1px solid ${C.border}` }}>
         {/* visited / skipped summary */}
         {item.status === "visited" && (
-          <div className="pt-3 space-y-2">
-            {/* Times and duration */}
-            {item.arrival_time && item.leaving_time && (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>In:</span>
-                  <span className="text-sm font-medium" style={{ color: C.text }}>{item.arrival_time}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Out:</span>
-                  <span className="text-sm font-medium" style={{ color: C.text }}>{item.leaving_time}</span>
-                </div>
-                {item.duration_minutes > 0 && (
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Dur:</span>
-                    <span className="text-sm font-medium" style={{ color: C.text }}>{item.duration_minutes}m</span>
+          <div className="pt-3">
+            <div className="flex gap-3 items-start">
+              {/* Left side: all text details */}
+              <div className="flex-1 space-y-1.5">
+                {/* Times and duration */}
+                {item.arrival_time && item.leaving_time && (
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>In:</span>
+                      <span className="text-sm font-medium" style={{ color: C.text }}>{item.arrival_time}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Out:</span>
+                      <span className="text-sm font-medium" style={{ color: C.text }}>{item.leaving_time}</span>
+                    </div>
+                    {item.duration_minutes > 0 && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Dur:</span>
+                        <span className="text-sm font-medium" style={{ color: C.text }}>{item.duration_minutes}m</span>
+                      </div>
+                    )}
                   </div>
                 )}
+
+                {/* Order details — rendered inline from VisitDetailsText */}
+                <VisitDetailsText visitId={item.visit_id} repId={repId} customerId={item.customer_id} scheduleDate={scheduleDate} />
+
+                {/* Notes */}
+                {item.notes && (
+                  <p className="text-xs italic" style={{ color: C.textMuted }}>"{item.notes}"</p>
+                )}
               </div>
-            )}
 
-            {/* Order details + photo from visits table */}
-            <VisitDetails visitId={item.visit_id} repId={repId} customerId={item.customer_id} scheduleDate={scheduleDate} />
-
-            {/* Notes */}
-            {item.notes && (
-              <p className="text-xs italic" style={{ color: C.textMuted }}>"{item.notes}"</p>
-            )}
+              {/* Right side: photo thumbnail */}
+              <VisitPhotoOnly visitId={item.visit_id} repId={repId} customerId={item.customer_id} scheduleDate={scheduleDate} />
+            </div>
           </div>
         )}
 
