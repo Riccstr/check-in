@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { Users, Plus, Pencil, ArrowUpDown, Filter, Trash2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 type SortKey = "customer_name" | "area" | "rep";
 
@@ -33,8 +34,8 @@ export default function AdminCustomers() {
   
   const [sortKey, setSortKey] = useState<SortKey>("customer_name");
   const [sortAsc, setSortAsc] = useState(true);
-  const [filterRep, setFilterRep] = useState("all");
-  const [filterArea, setFilterArea] = useState("all");
+  const [filterReps, setFilterReps] = useState<string[]>([]);
+  const [filterAreas, setFilterAreas] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState("all");
 
   const fetchAll = async () => {
@@ -70,15 +71,18 @@ export default function AdminCustomers() {
 
   const areas = useMemo(() => {
     const set = new Set<string>();
-    customers.forEach((c) => { if (c.area) set.add(c.area); });
+    customers.forEach((c) => { if (c.area && c.area.trim()) set.add(c.area.trim()); });
     return Array.from(set).sort();
   }, [customers]);
 
-  const repNames = useMemo(() => {
+  const repNamesForFilter = useMemo(() => {
     const set = new Set<string>();
-    Object.values(customerRepMap).forEach((n) => { if (n !== "—") set.add(n); });
+    for (const a of assignments) {
+      const name = repMap[a.rep_id];
+      if (name) set.add(name);
+    }
     return Array.from(set).sort();
-  }, [customerRepMap]);
+  }, [assignments, repMap]);
 
   // Real-time account number uniqueness check
   useEffect(() => {
@@ -172,7 +176,7 @@ export default function AdminCustomers() {
     else { setSortKey(key); setSortAsc(true); }
   };
 
-  const activeFilterCount = [filterRep, filterArea, filterStatus].filter((f) => f !== "all").length;
+  const activeFilterCount = (filterReps.length > 0 ? 1 : 0) + (filterAreas.length > 0 ? 1 : 0) + (filterStatus !== "all" ? 1 : 0);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -182,8 +186,8 @@ export default function AdminCustomers() {
       (customerRepMap[c.id] || "").toLowerCase().includes(q)
     );
 
-    if (filterRep !== "all") list = list.filter((c) => customerRepMap[c.id] === filterRep);
-    if (filterArea !== "all") list = list.filter((c) => c.area === filterArea);
+    if (filterReps.length > 0) list = list.filter((c) => filterReps.includes(customerRepMap[c.id] || ""));
+    if (filterAreas.length > 0) list = list.filter((c) => filterAreas.includes(c.area || ""));
     if (filterStatus !== "all") list = list.filter((c) => filterStatus === "active" ? c.is_active : !c.is_active);
 
     list.sort((a, b) => {
@@ -196,7 +200,7 @@ export default function AdminCustomers() {
     });
 
     return list;
-  }, [customers, search, sortKey, sortAsc, customerRepMap, filterRep, filterArea, filterStatus]);
+  }, [customers, search, sortKey, sortAsc, customerRepMap, filterReps, filterAreas, filterStatus]);
 
   const SortButton = ({ label, sortId }: { label: string; sortId: SortKey }) => (
     <Button variant="ghost" size="sm" className="-ml-3 h-8 font-medium" onClick={() => handleSort(sortId)}>
@@ -205,7 +209,7 @@ export default function AdminCustomers() {
     </Button>
   );
 
-  const clearFilters = () => { setFilterRep("all"); setFilterArea("all"); setFilterStatus("all"); };
+  const clearFilters = () => { setFilterReps([]); setFilterAreas([]); setFilterStatus("all"); };
 
   return (
     <Card>
@@ -223,29 +227,74 @@ export default function AdminCustomers() {
                 {activeFilterCount > 0 && <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">{activeFilterCount}</Badge>}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-64 space-y-3" align="start">
+            <PopoverContent className="w-72 space-y-3" align="start">
+              {/* Active filter badges */}
+              {(filterReps.length > 0 || filterAreas.length > 0 || filterStatus !== "all") && (
+                <div className="flex flex-wrap gap-1">
+                  {filterReps.map((r) => (
+                    <Badge key={r} variant="secondary" className="text-xs gap-1">
+                      {r}
+                      <button onClick={() => setFilterReps(filterReps.filter((x) => x !== r))} className="ml-0.5 hover:text-destructive">×</button>
+                    </Badge>
+                  ))}
+                  {filterAreas.map((a) => (
+                    <Badge key={a} variant="secondary" className="text-xs gap-1">
+                      {a}
+                      <button onClick={() => setFilterAreas(filterAreas.filter((x) => x !== a))} className="ml-0.5 hover:text-destructive">×</button>
+                    </Badge>
+                  ))}
+                  {filterStatus !== "all" && (
+                    <Badge variant="secondary" className="text-xs gap-1">
+                      {filterStatus === "active" ? "Active" : "Inactive"}
+                      <button onClick={() => setFilterStatus("all")} className="ml-0.5 hover:text-destructive">×</button>
+                    </Badge>
+                  )}
+                </div>
+              )}
+
+              {/* Rep multi-select */}
               <div className="space-y-1">
-                <Label className="text-xs">Rep</Label>
-                <Select value={filterRep} onValueChange={setFilterRep}>
-                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Reps</SelectItem>
-                    {repNames.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Label className="text-xs font-medium">Rep</Label>
+                <div className="max-h-32 overflow-y-auto space-y-1 border rounded-md p-2">
+                  {repNamesForFilter.map((name) => (
+                    <label key={name} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted rounded px-1 py-0.5">
+                      <Checkbox
+                        checked={filterReps.includes(name)}
+                        onCheckedChange={(checked) => {
+                          if (checked) setFilterReps([...filterReps, name]);
+                          else setFilterReps(filterReps.filter((r) => r !== name));
+                        }}
+                      />
+                      {name}
+                    </label>
+                  ))}
+                  {repNamesForFilter.length === 0 && <p className="text-xs text-muted-foreground">No assigned reps</p>}
+                </div>
               </div>
+
+              {/* Area multi-select */}
               <div className="space-y-1">
-                <Label className="text-xs">Area</Label>
-                <Select value={filterArea} onValueChange={setFilterArea}>
-                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Areas</SelectItem>
-                    {areas.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Label className="text-xs font-medium">Area</Label>
+                <div className="max-h-32 overflow-y-auto space-y-1 border rounded-md p-2">
+                  {areas.map((area) => (
+                    <label key={area} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted rounded px-1 py-0.5">
+                      <Checkbox
+                        checked={filterAreas.includes(area)}
+                        onCheckedChange={(checked) => {
+                          if (checked) setFilterAreas([...filterAreas, area]);
+                          else setFilterAreas(filterAreas.filter((a) => a !== area));
+                        }}
+                      />
+                      {area}
+                    </label>
+                  ))}
+                  {areas.length === 0 && <p className="text-xs text-muted-foreground">No areas</p>}
+                </div>
               </div>
+
+              {/* Status single-select */}
               <div className="space-y-1">
-                <Label className="text-xs">Status</Label>
+                <Label className="text-xs font-medium">Status</Label>
                 <Select value={filterStatus} onValueChange={setFilterStatus}>
                   <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -255,6 +304,7 @@ export default function AdminCustomers() {
                   </SelectContent>
                 </Select>
               </div>
+
               {activeFilterCount > 0 && (
                 <Button variant="ghost" size="sm" className="w-full" onClick={clearFilters}>Clear filters</Button>
               )}
