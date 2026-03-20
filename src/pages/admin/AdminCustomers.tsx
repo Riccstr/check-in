@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 type SortKey = "customer_name" | "area" | "rep";
 
 export default function AdminCustomers() {
+  const navigate = useNavigate();
   const [customers, setCustomers] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [reps, setReps] = useState<any[]>([]);
@@ -326,7 +328,14 @@ export default function AdminCustomers() {
             <TableBody>
               {filtered.map((c) => (
                 <TableRow key={c.id}>
-                  <TableCell className="font-medium">{c.customer_name}</TableCell>
+                  <TableCell className="font-medium">
+                    <button
+                      onClick={() => navigate(`/admin/customer/${c.id}`)}
+                      className="text-left hover:underline hover:text-primary transition-colors"
+                    >
+                      {c.customer_name}
+                    </button>
+                  </TableCell>
                   <TableCell className="text-muted-foreground">{c.account_number || "—"}</TableCell>
                   <TableCell>{c.area || "—"}</TableCell>
                   <TableCell className="text-muted-foreground">{customerRepMap[c.id] || "Unassigned"}</TableCell>

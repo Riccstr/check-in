@@ -12,6 +12,7 @@ import LogVisit from "@/pages/LogVisit";
 import DailySchedule from "@/pages/DailySchedule";
 import MyVisits from "@/pages/MyVisits";
 import AdminCustomers from "@/pages/admin/AdminCustomers";
+import CustomerDashboard from "@/pages/admin/CustomerDashboard";
 import AdminReps from "@/pages/admin/AdminReps";
 import AdminAssignments from "@/pages/admin/AdminAssignments";
 import AdminSchedules from "@/pages/admin/AdminSchedules";
@@ -97,6 +98,7 @@ const App = () => (
                 <Route path="/my-visits" element={<MyVisits />} />
 
                 <Route path="/admin/customers" element={<AdminCustomers />} />
+                <Route path="/admin/customer/:customerId" element={<CustomerDashboard />} />
                 <Route path="/admin/reps" element={<AdminReps />} />
                 <Route path="/admin/assignments" element={<AdminAssignments />} />
                 <Route path="/admin/schedules" element={<AdminSchedules />} />
