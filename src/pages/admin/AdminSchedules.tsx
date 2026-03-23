@@ -132,6 +132,20 @@ export default function AdminSchedules() {
   };
 
 
+  // --- Current Week ---
+  const setCurrentWeek = async (sortOrder: number) => {
+    const { error } = await supabase
+      .from("app_settings")
+      .update({ setting_value: String(sortOrder), updated_at: new Date().toISOString(), updated_by: user?.id })
+      .eq("setting_key", "current_week_order");
+    if (error) toast.error(error.message);
+    else {
+      setCurrentWeekOrder(sortOrder);
+      const wk = weeklyTemplates.find(w => w.sort_order === sortOrder);
+      toast.success(`Current week set to ${wk?.name || sortOrder}`);
+    }
+  };
+
   // --- Reorder weeks ---
   const moveWeek = async (weekId: string, direction: "up" | "down") => {
     const idx = weeklyTemplates.findIndex(w => w.id === weekId);
@@ -295,7 +309,17 @@ export default function AdminSchedules() {
           <CardTitle className="flex items-center gap-2"><Settings className="h-5 w-5 text-accent" /> Week Rotation Settings</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-xs text-muted-foreground">The current week is calculated automatically based on the week cycle start date. It advances each Monday.</p>
+          <div className="mb-4">
+            <Label className="text-sm font-medium">Current Week</Label>
+            <Select value={String(currentWeekOrder)} onValueChange={(v) => setCurrentWeek(parseInt(v))}>
+              <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {weeklyTemplates.map(w => (
+                  <SelectItem key={w.id} value={String(w.sort_order)}>{w.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           <div>
             <Label className="text-sm font-medium mb-2 block">Week Order & Names</Label>
