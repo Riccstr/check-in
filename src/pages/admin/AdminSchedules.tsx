@@ -91,7 +91,7 @@ export default function AdminSchedules() {
     if (!selectedRep || !selectedWeeklyTemplate) return;
     const { data } = await supabase
       .from("schedule_templates")
-      .select("*, schedule_template_items(*, customers(customer_name, account_number))")
+      .select("*, schedule_template_items(*, customers(customer_name, account_number, area))")
       .eq("rep_id", selectedRep)
       .eq("weekly_template_id", selectedWeeklyTemplate)
       .order("day_of_week");
@@ -406,6 +406,25 @@ export default function AdminSchedules() {
                             )}
                           </div>
                         </div>
+
+                        {/* Area tags */}
+                        {(() => {
+                          const dayAreas = new Set<string>();
+                          items.forEach((i: any) => {
+                            const area = i.customers?.area?.trim();
+                            if (area) dayAreas.add(area);
+                          });
+                          const areaList = Array.from(dayAreas).sort();
+                          return areaList.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {areaList.map((area) => (
+                                <span key={area} className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent-foreground border border-accent/20">
+                                  {area}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null;
+                        })()}
 
                         {/* Customer list */}
                         <div className="border rounded-lg p-2 min-h-[120px] bg-muted/30">
