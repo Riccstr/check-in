@@ -82,8 +82,31 @@ export default function AdminSchedules() {
     if (weeks.length > 0 && !selectedWeeklyTemplate) {
       setSelectedWeeklyTemplate(weeks[0].id);
     }
-    if (settingRes.data) {
-      setCurrentWeekOrder(parseInt(settingRes.data.setting_value) || 1);
+    // Auto-calculate current week based on today's date
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const { data: weekOrder } = await supabase.rpc("get_week_order_for_date", { p_date: today });
+      if (weekOrder && typeof weekOrder === "number") {
+        const storedOrder = settingRes.data ? parseInt(settingRes.data.setting_value) || 1 : 1;
+        if (weekOrder !== storedOrder) {
+          await supabase
+            .from("app_settings")
+            .upsert({
+              setting_key: "current_week_order",
+              setting_value: String(weekOrder),
+              updated_at: new Date().toISOString(),
+              updated_by: user?.id || null,
+            }, { onConflict: "setting_key" });
+        }
+        setCurrentWeekOrder(weekOrder);
+      } else if (settingRes.data) {
+        setCurrentWeekOrder(parseInt(settingRes.data.setting_value) || 1);
+      }
+    } catch (err) {
+      console.warn("[Schedules] Failed to auto-calculate current week:", err);
+      if (settingRes.data) {
+        setCurrentWeekOrder(parseInt(settingRes.data.setting_value) || 1);
+      }
     }
   };
 
@@ -108,19 +131,6 @@ export default function AdminSchedules() {
     setDailySchedules(data || []);
   };
 
-  // --- Current Week ---
-  const setCurrentWeek = async (sortOrder: number) => {
-    const { error } = await supabase
-      .from("app_settings")
-      .update({ setting_value: String(sortOrder), updated_at: new Date().toISOString(), updated_by: user?.id })
-      .eq("setting_key", "current_week_order");
-    if (error) toast.error(error.message);
-    else {
-      setCurrentWeekOrder(sortOrder);
-      const wk = weeklyTemplates.find(w => w.sort_order === sortOrder);
-      toast.success(`Current week set to ${wk?.name || sortOrder}`);
-    }
-  };
 
   // --- Reorder weeks ---
   const moveWeek = async (weekId: string, direction: "up" | "down") => {
@@ -285,56 +295,48 @@ export default function AdminSchedules() {
           <CardTitle className="flex items-center gap-2"><Settings className="h-5 w-5 text-accent" /> Week Rotation Settings</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <Label className="text-sm font-medium">Current Week</Label>
-            <Select value={String(currentWeekOrder)} onValueChange={(v) => setCurrentWeek(parseInt(v))}>
-              <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {weeklyTemplates.map(w => (
-                  <SelectItem key={w.id} value={String(w.sort_order)}>{w.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <p className="text-xs text-muted-foreground">The current week is calculated automatically based on the week cycle start date. It advances each Monday.</p>
 
           <div>
             <Label className="text-sm font-medium mb-2 block">Week Order & Names</Label>
-            <div className="space-y-2">
+            <div className="flex items-center gap-1 flex-wrap">
               {weeklyTemplates.map((wk, idx) => (
-                <div key={wk.id} className="flex items-center gap-2 p-2 border rounded-md">
-                  <span className="font-mono text-sm text-muted-foreground w-6">{wk.sort_order}.</span>
-                  {editingWeekId === wk.id ? (
-                    <Input
-                      autoFocus
-                      className="h-7 text-sm font-medium flex-1 py-0"
-                      value={editingWeekName}
-                      onChange={e => setEditingWeekName(e.target.value)}
-                      onBlur={() => saveWeekName(wk.id, editingWeekName)}
-                      onKeyDown={e => {
-                        if (e.key === "Enter") e.currentTarget.blur();
-                        if (e.key === "Escape") setEditingWeekId(null);
-                      }}
-                    />
-                  ) : (
-                    <span
-                      className="font-medium flex-1 cursor-pointer hover:text-primary"
-                      onClick={() => startEditWeek(wk)}
-                    >
-                      {wk.name}
-                    </span>
+                <div key={wk.id} className="flex items-center gap-1">
+                  {/* Week card */}
+                  <div className={`flex items-center gap-2 px-3 py-2 border rounded-lg ${wk.sort_order === currentWeekOrder ? "border-primary bg-primary/5 ring-1 ring-primary" : ""}`}>
+                    <span className="font-mono text-xs text-muted-foreground">{wk.sort_order}.</span>
+                    {editingWeekId === wk.id ? (
+                      <Input
+                        autoFocus
+                        className="h-6 text-sm font-medium py-0 w-28"
+                        value={editingWeekName}
+                        onChange={e => setEditingWeekName(e.target.value)}
+                        onBlur={() => saveWeekName(wk.id, editingWeekName)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") e.currentTarget.blur();
+                          if (e.key === "Escape") setEditingWeekId(null);
+                        }}
+                      />
+                    ) : (
+                      <span className="font-medium text-sm">{wk.name}</span>
+                    )}
+                    {wk.sort_order === currentWeekOrder && (
+                      <Badge variant="default" className="text-[10px] px-1.5 py-0">Current</Badge>
+                    )}
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => startEditWeek(wk)}>
+                      <Settings className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0} onClick={() => moveWeek(wk.id, "up")}>
+                      <ArrowUp className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === weeklyTemplates.length - 1} onClick={() => moveWeek(wk.id, "down")}>
+                      <ArrowDown className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  {/* Arrow between weeks */}
+                  {idx < weeklyTemplates.length - 1 && (
+                    <span className="text-muted-foreground text-lg">→</span>
                   )}
-                  {wk.sort_order === currentWeekOrder && (
-                    <Badge variant="default" className="text-xs">Current</Badge>
-                  )}
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => startEditWeek(wk)}>
-                    <Settings className="h-3 w-3" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" disabled={idx === 0} onClick={() => moveWeek(wk.id, "up")}>
-                    <ArrowUp className="h-3 w-3" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" disabled={idx === weeklyTemplates.length - 1} onClick={() => moveWeek(wk.id, "down")}>
-                    <ArrowDown className="h-3 w-3" />
-                  </Button>
                 </div>
               ))}
             </div>
