@@ -382,7 +382,7 @@ export default function AdminSchedules() {
                   ))}
                 </div>
 
-                <Button size="sm" onClick={openNewTemplate}><Plus className="h-4 w-4 mr-1" /> Add Day Template</Button>
+                <Button size="sm" onClick={() => openNewTemplate()}><Plus className="h-4 w-4 mr-1" /> Add Day Template</Button>
 
                 <div className="grid grid-cols-5 gap-4">
                   {WEEKDAYS.map((day) => {
@@ -414,7 +414,7 @@ export default function AdminSchedules() {
                               {items.map((i: any, idx: number) => (
                                 <div key={i.id} className="flex items-start gap-1.5 text-xs">
                                   <span className="shrink-0 w-4 h-4 rounded-full bg-muted flex items-center justify-center text-[9px] font-bold text-muted-foreground mt-0.5">{idx + 1}</span>
-                                  <span className="leading-tight">{i.customers?.account_number ? `(${i.customers.account_number}) ` : ""}{i.customers?.customer_name}</span>
+                                  <span className="leading-tight">{i.customers?.customer_name}</span>
                                 </div>
                               ))}
                             </div>
@@ -452,7 +452,7 @@ export default function AdminSchedules() {
                               {items.sort((a: any, b: any) => a.sort_order - b.sort_order).map((i: any, idx: number) => (
                                 <div key={i.id} className="flex items-center gap-2 text-sm">
                                   <span className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${i.status === "visited" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{idx + 1}</span>
-                                  <span className="text-xs">{i.customers?.account_number ? `(${i.customers.account_number}) ` : ""}{i.customers?.customer_name}</span>
+                                  <span className="text-xs">{i.customers?.customer_name}</span>
                                 </div>
                               ))}
                             </div>
