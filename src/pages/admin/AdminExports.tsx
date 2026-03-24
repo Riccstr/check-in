@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { toast } from "sonner";
 import { Download, FileSpreadsheet } from "lucide-react";
 import XLSX from "xlsx-js-style";
@@ -561,10 +562,28 @@ export default function AdminExports() {
       <CardHeader><CardTitle className="flex items-center gap-2"><Download className="h-5 w-5 text-accent" /> Export Data</CardTitle></CardHeader>
       <CardContent className="space-y-6">
         <div className="flex flex-wrap gap-3">
-          <div className="space-y-1"><Label className="text-xs">Rep</Label>
-            <Select value={repFilter} onValueChange={setRepFilter}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Reps</SelectItem>{reps.map((r) => <SelectItem key={r.id} value={r.id}>{r.rep_name}</SelectItem>)}</SelectContent></Select></div>
-          <div className="space-y-1"><Label className="text-xs">Customer</Label>
-            <Select value={custFilter} onValueChange={setCustFilter}><SelectTrigger className="w-44"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Customers</SelectItem>{customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.customer_name}</SelectItem>)}</SelectContent></Select></div>
+          <div className="flex flex-col gap-1"><Label className="text-xs">Rep</Label>
+            <SearchableSelect
+              value={repFilter}
+              onValueChange={setRepFilter}
+              options={reps.map((r) => ({ value: r.id, label: r.rep_name }))}
+              placeholder="All Reps"
+              searchPlaceholder="Search reps..."
+              includeAll
+              allLabel="All Reps"
+              className="w-40"
+            /></div>
+          <div className="flex flex-col gap-1"><Label className="text-xs">Customer</Label>
+            <SearchableSelect
+              value={custFilter}
+              onValueChange={setCustFilter}
+              options={customers.map((c) => ({ value: c.id, label: c.customer_name }))}
+              placeholder="All Customers"
+              searchPlaceholder="Search customers..."
+              includeAll
+              allLabel="All Customers"
+              className="w-44"
+            /></div>
           <div className="space-y-1"><Label className="text-xs">From</Label><Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-40" /></div>
           <div className="space-y-1"><Label className="text-xs">To</Label><Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-40" /></div>
         </div>

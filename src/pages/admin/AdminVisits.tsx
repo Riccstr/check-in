@@ -116,7 +116,7 @@ export default function AdminVisits() {
       <CardHeader><CardTitle className="flex items-center gap-2"><Eye className="h-5 w-5 text-accent" /> All Visits</CardTitle></CardHeader>
       <CardContent>
         <div className="flex flex-wrap gap-3 mb-4">
-          <div className="space-y-1"><Label className="text-xs">Rep</Label>
+          <div className="flex flex-col gap-1"><Label className="text-xs">Rep</Label>
             <SearchableSelect
               value={repFilter}
               onValueChange={setRepFilter}
@@ -127,7 +127,7 @@ export default function AdminVisits() {
               allLabel="All Reps"
               className="w-40"
             /></div>
-          <div className="space-y-1"><Label className="text-xs">Customer</Label>
+          <div className="flex flex-col gap-1"><Label className="text-xs">Customer</Label>
             <SearchableSelect
               value={custFilter}
               onValueChange={setCustFilter}
