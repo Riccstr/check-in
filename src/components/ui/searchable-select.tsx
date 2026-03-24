@@ -57,8 +57,7 @@ export function SearchableSelect({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="p-0"
-        style={{ width: "var(--radix-popover-trigger-width)", minWidth: 200 }}
+        className="p-0 min-w-[400px] max-w-[calc(100vw-2rem)]"
         align="start"
       >
         <Command>

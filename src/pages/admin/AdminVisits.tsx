@@ -115,7 +115,7 @@ export default function AdminVisits() {
     <Card>
       <CardHeader><CardTitle className="flex items-center gap-2"><Eye className="h-5 w-5 text-accent" /> All Visits</CardTitle></CardHeader>
       <CardContent>
-        <div className="flex flex-wrap gap-3 mb-4">
+        <div className="flex flex-wrap items-end gap-3 mb-4">
           <div className="flex flex-col gap-1"><Label className="text-xs">Rep</Label>
             <SearchableSelect
               value={repFilter}
@@ -138,8 +138,8 @@ export default function AdminVisits() {
               allLabel="All Customers"
               className="w-44"
             /></div>
-          <div className="space-y-1"><Label className="text-xs">From</Label><Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-40" /></div>
-          <div className="space-y-1"><Label className="text-xs">To</Label><Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-40" /></div>
+          <div className="flex flex-col gap-1"><Label className="text-xs">From</Label><Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-40" /></div>
+          <div className="flex flex-col gap-1"><Label className="text-xs">To</Label><Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-40" /></div>
         </div>
         {loading ? <p className="text-muted-foreground py-8 text-center">Loading...</p> : (
           <div className="overflow-x-auto">
