@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -376,14 +377,14 @@ export default function AdminSchedules() {
         <CardContent>
           <div className="mb-4">
             <Label>Select Rep</Label>
-            <Select value={selectedRep} onValueChange={setSelectedRep}>
-              <SelectTrigger className="max-w-xs"><SelectValue placeholder="Choose a rep" /></SelectTrigger>
-              <SelectContent>
-                {reps.map(r => (
-                  <SelectItem key={r.id} value={r.id}>{r.rep_name} {r.surname || ""}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={selectedRep}
+              onValueChange={setSelectedRep}
+              options={reps.map((r) => ({ value: r.id, label: `${r.rep_name}${r.surname ? " " + r.surname : ""}` }))}
+              placeholder="Choose a rep"
+              searchPlaceholder="Search reps..."
+              className="max-w-xs"
+            />
           </div>
 
           {selectedRep && (

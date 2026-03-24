@@ -405,6 +405,8 @@ Main rep interface. Shows the day's customer visit schedule as expandable cards.
 - Photo capture inline within each schedule card
 - Order fields: `order_number` (string), `order_quantity` (integer), `order_amount` (numeric)
 - "Log Unscheduled Visit" section at bottom for ad-hoc visits
+- Completed visit cards use `VisitDetails` component with dual lookup: primary by `visit_id`, fallback by `rep_id + customer_id + visit_date` (handles offline-synced visits where `schedule_items.visit_id` may not be populated yet)
+- Times displayed as HH:MM (seconds stripped via `.slice(0, 5)`)
 
 #### `/log-visit` — [LogVisit.tsx](src/pages/LogVisit.tsx)
 Manual visit logging form. Intended for ad-hoc visits outside the daily schedule.
@@ -496,10 +498,14 @@ Manage weekly rotation templates and view daily schedules.
 
 **Tables written:** `weekly_templates` (UPDATE sort_order), `schedule_templates` (INSERT, DELETE, UPDATE), `schedule_template_items` (INSERT, DELETE, UPDATE sort_order), `daily_schedules` (DELETE — future unstarted schedules), `app_settings` (UPDATE `current_week_order`, `week_cycle_start_date`)
 
+**RPCs called:** `get_week_order_for_date(p_date)` — called on page load to auto-calculate and sync the current week order
+
 **Notable logic:**
 - Saving a template deletes future daily schedules for that rep/day that have no started items (forces regeneration)
 - Week cycle start date drives the `get_week_order_for_date()` calculation
 - Drag-to-reorder visit sequence within a day's template
+- Weekly Templates tab displays a horizontal Mon–Fri grid; each column shows area badges (derived from assigned customers) and a numbered customer list — days without a template show an "Add" button pre-seeded with that day
+- Current week auto-calculated on page load via `get_week_order_for_date` RPC; `app_settings.current_week_order` is updated automatically if the week has rolled over
 
 #### `/admin/reports` — [AdminExports.tsx](src/pages/admin/AdminExports.tsx)
 Export visit data as CSV or formatted Excel.

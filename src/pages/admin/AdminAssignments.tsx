@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -73,21 +74,25 @@ export default function AdminAssignments() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Rep</Label>
-              <Select value={selectedRep} onValueChange={setSelectedRep}>
-                <SelectTrigger><SelectValue placeholder="Select rep" /></SelectTrigger>
-                <SelectContent>{reps.map((r) => <SelectItem key={r.id} value={r.id}>{r.rep_name}</SelectItem>)}</SelectContent>
-              </Select>
+              <SearchableSelect
+                value={selectedRep}
+                onValueChange={setSelectedRep}
+                options={reps.map((r) => ({ value: r.id, label: r.rep_name }))}
+                placeholder="Select rep"
+                searchPlaceholder="Search reps..."
+                className="w-full"
+              />
             </div>
             <div className="space-y-2">
               <Label>Customer</Label>
-              <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
-                <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
-                <SelectContent>
-                  {customers.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.customer_name}{c.area ? ` (${c.area})` : ""}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={selectedCustomer}
+                onValueChange={setSelectedCustomer}
+                options={customers.map((c) => ({ value: c.id, label: `${c.customer_name}${c.area ? ` (${c.area})` : ""}` }))}
+                placeholder="Select customer"
+                searchPlaceholder="Search customers..."
+                className="w-full"
+              />
             </div>
           </div>
           <Button onClick={assign} disabled={!selectedRep || !selectedCustomer}>
@@ -102,13 +107,16 @@ export default function AdminAssignments() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3 mb-4">
-            <Select value={filterRep} onValueChange={setFilterRep}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Filter by rep" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Reps</SelectItem>
-                {reps.map((r) => <SelectItem key={r.id} value={r.rep_name}>{r.rep_name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={filterRep}
+              onValueChange={setFilterRep}
+              options={reps.map((r) => ({ value: r.rep_name, label: r.rep_name }))}
+              placeholder="All Reps"
+              searchPlaceholder="Search reps..."
+              includeAll
+              allLabel="All Reps"
+              className="w-[180px]"
+            />
             <Select value={filterArea} onValueChange={setFilterArea}>
               <SelectTrigger className="w-[180px]"><SelectValue placeholder="Filter by area" /></SelectTrigger>
               <SelectContent>

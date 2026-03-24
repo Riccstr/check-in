@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -210,13 +211,16 @@ export default function MyVisits() {
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Customer</Label>
-              <Select value={customerFilter} onValueChange={setCustomerFilter}>
-                <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Customers</SelectItem>
-                  {customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.customer_name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={customerFilter}
+                onValueChange={setCustomerFilter}
+                options={customers.map((c) => ({ value: c.id, label: c.customer_name }))}
+                placeholder="All Customers"
+                searchPlaceholder="Search customers..."
+                includeAll
+                allLabel="All Customers"
+                className="w-44"
+              />
             </div>
           </div>
 
