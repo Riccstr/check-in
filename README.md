@@ -54,7 +54,7 @@ Check-In Tracker enables field sales operations to:
 | Offline Storage | IndexedDB via `idb` library |
 | PWA | vite-plugin-pwa (injectManifest strategy) |
 | Service Worker | Custom SW: `src/sw-custom.ts` |
-| Excel Export | SheetJS (`xlsx`) |
+| Excel Export | `xlsx-js-style` |
 | Hosting | Vercel (SPA rewrites via `vercel.json`) |
 
 ---
@@ -560,6 +560,13 @@ Consumed by: [AppLayout.tsx](src/components/AppLayout.tsx)
 Styled navigation anchor with active/inactive variants using `.nav-link-active` / `.nav-link-inactive` CSS classes.
 Consumed by: [AppLayout.tsx](src/components/AppLayout.tsx)
 
+### [SearchableSelect.tsx](src/components/ui/searchable-select.tsx)
+Reusable searchable combobox used for all customer and rep dropdowns across admin and rep pages. Wraps Radix `Popover` + `cmdk` `Command` pattern.
+- **Props:** `options`, `value`, `onValueChange`, `placeholder`, `searchPlaceholder`, `emptyMessage`, `className`, `includeAll` (prepends an "All" option), `allLabel`
+- Trigger button stays compact (caller-specified width); popover expands to `min-w-[400px]`, capped at `100vw - 2rem` on mobile
+- Search input has `font-size: 16px` to prevent iOS auto-zoom
+- **Used on:** All Visits, Export Data, My Visits, Log Visit, Assignments (rep + customer selectors), Schedules (rep selector)
+
 ### `src/components/ui/` — shadcn/ui Component Library
 50+ components built on Radix primitives: `Button`, `Input`, `Select`, `Dialog`, `AlertDialog`, `Sheet`, `Popover`, `Table`, `Tabs`, `Badge`, `Checkbox`, `Label`, `Textarea`, `Toast` (Radix + Sonner implementations), `Card`, etc. Used throughout all pages.
 
@@ -743,7 +750,10 @@ src/
 │   ├── AppLayout.tsx          # Main layout, auth guard, auto-sync setup
 │   ├── CameraCapture.tsx      # Full-screen camera overlay
 │   ├── NavLink.tsx            # Styled nav link
-│   └── OfflineStatusBar.tsx   # Offline indicator banner
+│   ├── OfflineStatusBar.tsx   # Offline indicator banner
+│   └── ui/
+│       ├── searchable-select.tsx  # Searchable combobox (Popover + cmdk) for all customer/rep dropdowns
+│       └── ...                    # 50+ shadcn/ui components
 ├── hooks/
 │   ├── useAuth.tsx            # Auth context provider — role, repId, profile, permissions
 │   ├── useOnlineStatus.ts     # navigator.onLine + event listeners
@@ -810,7 +820,7 @@ vite.config.ts                 # Vite + PWA plugin config (injectManifest, sw-cu
 | `react-router-dom` | ^6.30.1 | Client-side routing |
 | `idb` | ^8.0.3 | IndexedDB wrapper (offline storage) |
 | `uuid` | ^13.0.0 | Client-generated UUIDs for offline deduplication |
-| `xlsx` | ^0.18.5 | Excel file generation |
+| `xlsx-js-style` | ^1.2.0 | Excel export with cell styling (replaces `xlsx` — do not revert) |
 | `date-fns` | ^3.6.0 | Date formatting |
 | `sonner` | ^1.7.4 | Toast notifications |
 | `lucide-react` | ^0.462.0 | Icons |

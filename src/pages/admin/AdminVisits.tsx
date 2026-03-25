@@ -48,7 +48,7 @@ export default function AdminVisits() {
   useEffect(() => {
     Promise.all([
       supabase.from("reps").select("id, rep_name").order("rep_name"),
-      supabase.from("customers").select("id, customer_name").order("customer_name"),
+      supabase.from("customers").select("id, customer_name, area").order("customer_name"),
     ]).then(([r, c]) => { setReps(r.data || []); setCustomers(c.data || []); });
   }, []);
 
@@ -131,7 +131,7 @@ export default function AdminVisits() {
             <SearchableSelect
               value={custFilter}
               onValueChange={setCustFilter}
-              options={customers.map((c) => ({ value: c.id, label: c.customer_name }))}
+              options={customers.map((c) => ({ value: c.id, label: c.customer_name + (c.area ? ` (${c.area})` : "") }))}
               placeholder="All Customers"
               searchPlaceholder="Search customers..."
               includeAll
