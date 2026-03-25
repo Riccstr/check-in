@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -35,6 +35,13 @@ export function SearchableSelect({
   allLabel = "All",
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Scroll list back to top whenever the search query changes
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [search]);
 
   const allOptions: SearchableSelectOption[] = includeAll
     ? [{ value: "all", label: allLabel }, ...options]
@@ -65,8 +72,10 @@ export function SearchableSelect({
           <CommandInput
             placeholder={searchPlaceholder}
             style={{ fontSize: 16 }}
+            value={search}
+            onValueChange={setSearch}
           />
-          <CommandList>
+          <CommandList ref={listRef}>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
               {allOptions.map((option) => (
