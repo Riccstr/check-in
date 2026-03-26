@@ -148,6 +148,99 @@ function OfflineBanner() {
   );
 }
 
+// ─── EodSummaryModal ──────────────────────────────────────────────────────────
+
+interface SummaryStats {
+  total: number;
+  visited: number;
+  skipped: number;
+  orders: number;
+  totalOrderValue: number;
+  avgDuration: number; // minutes
+}
+
+function fmtDuration(mins: number): string {
+  if (mins <= 0) return "—";
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function EodSummaryModal({ stats, onClose }: { stats: SummaryStats; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.5)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl px-5 pt-6 pb-8 space-y-5"
+        style={{ background: C.card, border: `1px solid ${C.border}` }}
+      >
+        {/* checkmark header */}
+        <div className="flex flex-col items-center gap-2 pb-1">
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center"
+            style={{ background: C.greenBg, border: `2px solid ${C.greenLight}` }}
+          >
+            <Check size={30} style={{ color: C.green }} strokeWidth={2.5} />
+          </div>
+          <h2 className="font-syne font-bold text-xl" style={{ color: C.text }}>Day Complete</h2>
+          <p className="text-sm" style={{ color: C.textMuted }}>Here's how today went</p>
+        </div>
+
+        {/* stats grid — 2 columns */}
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            { label: "Scheduled", value: String(stats.total),   accent: false },
+            { label: "Visited",   value: String(stats.visited), accent: true  },
+            { label: "Skipped",   value: String(stats.skipped), accent: false },
+            { label: "Orders",    value: String(stats.orders),  accent: true  },
+          ] as const).map(({ label, value, accent }) => (
+            <div
+              key={label}
+              className="rounded-xl px-4 py-3"
+              style={{ background: C.bg, border: `1px solid ${C.border}` }}
+            >
+              <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: C.textMuted }}>{label}</p>
+              <p className="text-2xl font-bold font-syne leading-tight mt-0.5" style={{ color: accent ? C.green : C.text }}>
+                {value}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* wide stats row */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-xl px-4 py-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
+            <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: C.textMuted }}>Order Value</p>
+            <p className="text-lg font-bold font-syne leading-tight mt-0.5" style={{ color: C.green }}>
+              R {stats.totalOrderValue.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+            </p>
+          </div>
+          <div className="rounded-xl px-4 py-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
+            <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: C.textMuted }}>Avg Time</p>
+            <p className="text-2xl font-bold font-syne leading-tight mt-0.5" style={{ color: C.text }}>
+              {fmtDuration(stats.avgDuration)}
+            </p>
+          </div>
+        </div>
+
+        {/* done button */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full h-11 rounded-xl font-syne font-semibold text-sm"
+          style={{ background: C.green, color: "#fff" }}
+        >
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── VisitDetailsText / VisitPhotoOnly ────────────────────────────────────────
 // Split components for completed visit data. Both use two lookup strategies to
 // handle offline-synced visits where visit_id may not yet be on schedule_items.
@@ -908,6 +1001,11 @@ export default function DailySchedule() {
   const [currentWeekName, setCurrentWeekName] = useState<string>("");
   const [isOnline,     setIsOnline]     = useState(navigator.onLine);
 
+  // end-of-day summary
+  const [showSummary,     setShowSummary]     = useState(false);
+  const [summaryStats,    setSummaryStats]    = useState<SummaryStats | null>(null);
+  const [summaryDismissed, setSummaryDismissed] = useState(false);
+
   // accordion state
   const [expandedActiveId,    setExpandedActiveId]    = useState<string | null>(null);
   const expandedActiveIdRef = useRef<string | null>(null);
@@ -1179,6 +1277,68 @@ export default function DailySchedule() {
     setAdHocOrderNumber(""); setAdHocOrderQty(""); setAdHocOrderAmount("");
   };
 
+  // ─── end-of-day summary logic ───────────────────────────────────────────────
+
+  const isToday = scheduleDate === new Date().toISOString().split("T")[0];
+  const allDone = items.length > 0 && items.every((i) => i.status === "visited" || i.status === "skipped");
+  const dismissedKey = repId && scheduleDate ? `summary_dismissed_${repId}_${scheduleDate}` : null;
+
+  // Read dismissed flag from localStorage whenever date or rep changes
+  useEffect(() => {
+    setSummaryDismissed(dismissedKey ? localStorage.getItem(dismissedKey) === "1" : false);
+  }, [dismissedKey]);
+
+  const openSummary = useCallback(async () => {
+    const visitedItems = items.filter((i) => i.status === "visited");
+    const skippedItems = items.filter((i) => i.status === "skipped");
+
+    let orders = 0;
+    let totalOrderValue = 0;
+
+    if (repId && navigator.onLine) {
+      try {
+        const { data } = await supabase
+          .from("visits")
+          .select("order_number, order_amount")
+          .eq("rep_id", repId)
+          .eq("visit_date", scheduleDate)
+          .eq("status", "visited");
+        if (data) {
+          orders = data.filter((v) => v.order_number != null && v.order_number !== "").length;
+          totalOrderValue = data.reduce((sum, v) => sum + (Number(v.order_amount) || 0), 0);
+        }
+      } catch { /* offline — show zeros */ }
+    }
+
+    const durationsWithValue = visitedItems.filter((i) => i.duration_minutes > 0);
+    const avgDuration =
+      durationsWithValue.length > 0
+        ? Math.round(durationsWithValue.reduce((s, i) => s + i.duration_minutes, 0) / durationsWithValue.length)
+        : 0;
+
+    setSummaryStats({
+      total: items.length,
+      visited: visitedItems.length,
+      skipped: skippedItems.length,
+      orders,
+      totalOrderValue,
+      avgDuration,
+    });
+    setShowSummary(true);
+  }, [items, repId, scheduleDate]);
+
+  const closeSummary = useCallback(() => {
+    if (dismissedKey) localStorage.setItem(dismissedKey, "1");
+    setSummaryDismissed(true);
+    setShowSummary(false);
+  }, [dismissedKey]);
+
+  // Auto-show for today only, once all items are done and not yet dismissed
+  useEffect(() => {
+    if (!allDone || !isToday || summaryDismissed || items.length === 0) return;
+    openSummary();
+  }, [allDone]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── date navigation ────────────────────────────────────────────────────────
 
   const changeDay = (delta: number) => {
@@ -1194,7 +1354,6 @@ export default function DailySchedule() {
   };
 
   const displayDate = new Date(scheduleDate + "T00:00:00");
-  const isToday = scheduleDate === new Date().toISOString().split("T")[0];
   const dateLabel = isToday
     ? "Today"
     : displayDate.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
@@ -1305,10 +1464,33 @@ export default function DailySchedule() {
           </div>
         ) : activeTab === "active" ? (
           activeItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-2" style={{ color: C.textMuted }}>
-              <Check size={40} style={{ color: C.greenLight, opacity: 0.7 }} />
-              <p className="text-sm font-semibold font-syne">All visits done!</p>
-            </div>
+            allDone ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: C.textMuted }}>
+                <div
+                  className="w-14 h-14 rounded-full flex items-center justify-center"
+                  style={{ background: C.greenBg, border: `2px solid ${C.greenLight}` }}
+                >
+                  <Check size={26} style={{ color: C.green }} strokeWidth={2.5} />
+                </div>
+                <div className="text-center space-y-1">
+                  <p className="text-sm font-bold font-syne" style={{ color: C.text }}>Day complete</p>
+                  <p className="text-xs" style={{ color: C.textMuted }}>All visits accounted for</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={openSummary}
+                  className="text-xs font-medium px-4 py-2 rounded-xl mt-1"
+                  style={{ color: C.green, border: `1px solid ${C.border}`, background: C.card }}
+                >
+                  View {isToday ? "today's" : "day's"} summary
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-16 gap-2" style={{ color: C.textMuted }}>
+                <Check size={40} style={{ color: C.greenLight, opacity: 0.7 }} />
+                <p className="text-sm font-semibold font-syne">All visits done!</p>
+              </div>
+            )
           ) : (
             activeItems.map((item, i) => (
               <ScheduleCard
@@ -1344,6 +1526,11 @@ export default function DailySchedule() {
               />
             ))
           )
+        )}
+
+        {/* end-of-day summary modal */}
+        {showSummary && summaryStats && (
+          <EodSummaryModal stats={summaryStats} onClose={closeSummary} />
         )}
 
         {/* ad-hoc visit section */}
