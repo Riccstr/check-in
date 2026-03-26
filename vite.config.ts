@@ -46,6 +46,7 @@ export default defineConfig(({ mode }) => ({
         // must NOT be added here — they are handled by the navigation fallback
         // in the SW fetch handler instead.
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,ttf,eot,webmanifest}"],
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MiB
       },
     }),
   ].filter(Boolean),

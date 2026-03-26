@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,8 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeft, TrendingUp, TrendingDown } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { format, parseISO } from "date-fns";
+import type { ChartEntry } from "./CustomerChart";
+
+const CustomerChart = React.lazy(() => import("./CustomerChart"));
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -41,20 +43,6 @@ function daysAgo(n: number): string {
 function startOfMonth(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-}
-
-// ─── ChartTooltip ─────────────────────────────────────────────────────────────
-
-function ChartTooltip({ active, payload }: any) {
-  if (!active || !payload?.length) return null;
-  const d = payload[0].payload;
-  return (
-    <div className="bg-background border rounded-lg shadow-sm px-3 py-2 text-sm space-y-0.5">
-      <p className="font-medium">{format(parseISO(d.date), "dd MMM yyyy")}</p>
-      <p className="text-muted-foreground capitalize">{d.status}</p>
-      <p>{d.displayAmount > 0 ? fmtCurrency(d.displayAmount) : "No order"}</p>
-    </div>
-  );
 }
 
 // ─── MetricCard ───────────────────────────────────────────────────────────────
@@ -217,7 +205,7 @@ export default function CustomerDashboard() {
   // ── row highlight ─────────────────────────────────────────────────────────
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
-  const handleBarClick = useCallback((barData: any) => {
+  const handleBarClick = useCallback((barData: ChartEntry) => {
     const id = barData?.id;
     if (!id) return;
     setHighlightedId(id);
@@ -289,27 +277,9 @@ export default function CustomerDashboard() {
         <CardContent className="pt-5 pb-4 px-5">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Order Value by Visit</p>
           {showChart ? (
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={chartData} onClick={(e) => e?.activePayload?.[0] && handleBarClick(e.activePayload[0].payload)}>
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                <YAxis tickFormatter={(v) => `R ${v.toLocaleString("en-ZA")}`} tick={{ fontSize: 11 }} width={72} />
-                <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="amount" minPointSize={2} cursor="pointer">
-                  {chartData.map((entry) => (
-                    <Cell
-                      key={entry.id}
-                      fill={
-                        entry.status === "skipped"
-                          ? "#ef4444"
-                          : entry.displayAmount > 0
-                          ? "#22c55e"
-                          : "#f59e0b"
-                      }
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <Suspense fallback={<div className="h-[250px] animate-pulse bg-muted rounded" />}>
+              <CustomerChart data={chartData as ChartEntry[]} onBarClick={handleBarClick} />
+            </Suspense>
           ) : (
             <p className="text-sm text-muted-foreground py-6 text-center">Not enough visit data to display a chart.</p>
           )}
