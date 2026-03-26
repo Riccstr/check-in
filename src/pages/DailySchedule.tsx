@@ -157,6 +157,8 @@ interface SummaryStats {
   orders: number;
   totalOrderValue: number;
   avgDuration: number; // minutes
+  histAvgOrders: number | null;     // null = fewer than 2 historical days, don't show
+  histAvgOrderValue: number | null; // null = fewer than 2 historical days, don't show
 }
 
 function fmtDuration(mins: number): string {
@@ -192,33 +194,56 @@ function EodSummaryModal({ stats, onClose }: { stats: SummaryStats; onClose: () 
 
         {/* stats grid — 2 columns */}
         <div className="grid grid-cols-2 gap-2">
-          {([
-            { label: "Scheduled", value: String(stats.total),   accent: false },
-            { label: "Visited",   value: String(stats.visited), accent: true  },
-            { label: "Skipped",   value: String(stats.skipped), accent: false },
-            { label: "Orders",    value: String(stats.orders),  accent: true  },
-          ] as const).map(({ label, value, accent }) => (
-            <div
-              key={label}
-              className="rounded-xl px-4 py-3"
-              style={{ background: C.bg, border: `1px solid ${C.border}` }}
-            >
-              <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: C.textMuted }}>{label}</p>
-              <p className="text-2xl font-bold font-syne leading-tight mt-0.5" style={{ color: accent ? C.green : C.text }}>
-                {value}
+          {/* Scheduled */}
+          <div className="rounded-xl px-4 py-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
+            <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: C.textMuted }}>Scheduled</p>
+            <p className="text-2xl font-bold font-syne leading-tight mt-0.5" style={{ color: C.text }}>{stats.total}</p>
+          </div>
+          {/* Visited */}
+          <div className="rounded-xl px-4 py-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
+            <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: C.textMuted }}>Visited</p>
+            <p className="text-2xl font-bold font-syne leading-tight mt-0.5" style={{ color: C.green }}>{stats.visited}</p>
+          </div>
+          {/* Skipped */}
+          <div className="rounded-xl px-4 py-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
+            <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: C.textMuted }}>Skipped</p>
+            <p className="text-2xl font-bold font-syne leading-tight mt-0.5" style={{ color: C.text }}>{stats.skipped}</p>
+          </div>
+          {/* Orders — with historical comparison */}
+          <div className="rounded-xl px-4 py-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
+            <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: C.textMuted }}>Orders</p>
+            <p className="text-2xl font-bold font-syne leading-tight mt-0.5" style={{ color: C.green }}>{stats.orders}</p>
+            {stats.histAvgOrders !== null && (
+              <p className="text-xs mt-1" style={{
+                color: stats.orders > stats.histAvgOrders ? C.green
+                     : stats.orders < stats.histAvgOrders ? C.orange
+                     : C.textMuted,
+              }}>
+                Avg for this day: {stats.histAvgOrders.toFixed(1)}
               </p>
-            </div>
-          ))}
+            )}
+          </div>
         </div>
 
         {/* wide stats row */}
         <div className="grid grid-cols-2 gap-2">
+          {/* Order Value — with historical comparison */}
           <div className="rounded-xl px-4 py-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
             <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: C.textMuted }}>Order Value</p>
             <p className="text-lg font-bold font-syne leading-tight mt-0.5" style={{ color: C.green }}>
               R {stats.totalOrderValue.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
             </p>
+            {stats.histAvgOrderValue !== null && (
+              <p className="text-xs mt-1" style={{
+                color: stats.totalOrderValue > stats.histAvgOrderValue ? C.green
+                     : stats.totalOrderValue < stats.histAvgOrderValue ? C.orange
+                     : C.textMuted,
+              }}>
+                Avg for this day: R {stats.histAvgOrderValue.toLocaleString("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </p>
+            )}
           </div>
+          {/* Avg Time */}
           <div className="rounded-xl px-4 py-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
             <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: C.textMuted }}>Avg Time</p>
             <p className="text-2xl font-bold font-syne leading-tight mt-0.5" style={{ color: C.text }}>
@@ -1294,20 +1319,67 @@ export default function DailySchedule() {
 
     let orders = 0;
     let totalOrderValue = 0;
+    let histAvgOrders: number | null = null;
+    let histAvgOrderValue: number | null = null;
 
     if (repId && navigator.onLine) {
       try {
-        const { data } = await supabase
+        // Today's visit order data
+        const { data: todayVisits } = await supabase
           .from("visits")
           .select("order_number, order_amount")
           .eq("rep_id", repId)
           .eq("visit_date", scheduleDate)
           .eq("status", "visited");
-        if (data) {
-          orders = data.filter((v) => v.order_number != null && v.order_number !== "").length;
-          totalOrderValue = data.reduce((sum, v) => sum + (Number(v.order_amount) || 0), 0);
+        if (todayVisits) {
+          orders = todayVisits.filter((v) => v.order_number != null && v.order_number !== "").length;
+          totalOrderValue = todayVisits.reduce((sum, v) => sum + (Number(v.order_amount) || 0), 0);
         }
-      } catch { /* offline — show zeros */ }
+
+        // Historical averages — same rep, same weekly template, same DOW, before today
+        const weeklyTemplateId = schedule?.weekly_template_id;
+        if (weeklyTemplateId) {
+          const targetDow = new Date(scheduleDate + "T12:00:00").getDay();
+
+          const { data: histSchedules } = await supabase
+            .from("daily_schedules")
+            .select("schedule_date")
+            .eq("rep_id", repId)
+            .eq("weekly_template_id", weeklyTemplateId)
+            .lt("schedule_date", scheduleDate);
+
+          if (histSchedules) {
+            // Filter to same day-of-week client-side (PostgREST has no EXTRACT filter)
+            const sameDowDates = histSchedules
+              .filter((ds) => new Date(ds.schedule_date + "T12:00:00").getDay() === targetDow)
+              .map((ds) => ds.schedule_date);
+
+            if (sameDowDates.length >= 2) {
+              const { data: histVisits } = await supabase
+                .from("visits")
+                .select("visit_date, order_number, order_amount")
+                .eq("rep_id", repId)
+                .eq("status", "visited")
+                .in("visit_date", sameDowDates);
+
+              if (histVisits) {
+                // Per-day totals
+                const perDay: Record<string, { orders: number; value: number }> = {};
+                for (const d of sameDowDates) perDay[d] = { orders: 0, value: 0 };
+                for (const v of histVisits) {
+                  if (perDay[v.visit_date] !== undefined) {
+                    if (v.order_number != null && v.order_number !== "") perDay[v.visit_date].orders++;
+                    perDay[v.visit_date].value += Number(v.order_amount) || 0;
+                  }
+                }
+                const days = Object.values(perDay);
+                histAvgOrders = days.reduce((s, d) => s + d.orders, 0) / days.length;
+                histAvgOrderValue = days.reduce((s, d) => s + d.value, 0) / days.length;
+              }
+            }
+          }
+        }
+      } catch { /* offline or query error — omit historical comparison */ }
     }
 
     const durationsWithValue = visitedItems.filter((i) => i.duration_minutes > 0);
@@ -1323,9 +1395,11 @@ export default function DailySchedule() {
       orders,
       totalOrderValue,
       avgDuration,
+      histAvgOrders,
+      histAvgOrderValue,
     });
     setShowSummary(true);
-  }, [items, repId, scheduleDate]);
+  }, [items, repId, scheduleDate, schedule]);
 
   const closeSummary = useCallback(() => {
     if (dismissedKey) localStorage.setItem(dismissedKey, "1");
