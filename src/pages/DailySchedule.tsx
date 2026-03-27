@@ -998,9 +998,17 @@ function ScheduleCard({
                   onClick={markVisited}
                   disabled={actionInProgress}
                   className="text-xs h-8 flex-1"
-                  style={{ background: C.green, color: "#fff" }}
+                  style={actionInProgress ? {
+                    background: `linear-gradient(90deg, ${C.green} 25%, ${C.greenMid} 50%, ${C.green} 75%)`,
+                    backgroundSize: "200% 100%",
+                    animationName: "btn-shimmer",
+                    animationDuration: "1.2s",
+                    animationIterationCount: "infinite",
+                    animationTimingFunction: "linear",
+                    color: "#fff",
+                  } : { background: C.green, color: "#fff" }}
                 >
-                  {actionInProgress ? <Loader2 size={12} className="animate-spin" /> : <><Check size={12} className="mr-1" /> Mark Visited</>}
+                  <Check size={12} className="mr-1" /> Mark Visited
                 </Button>
               )}
             </div>
@@ -1699,9 +1707,16 @@ export default function DailySchedule() {
                   onClick={submitAdHoc}
                   disabled={adHocSubmitting || !adHocCustomerId || !adHocArrival || !adHocLeaving}
                   className="w-full h-10 font-syne font-semibold"
-                  style={{ background: C.green, color: "#fff" }}
+                  style={adHocSubmitting ? {
+                    background: `linear-gradient(90deg, ${C.green} 25%, ${C.greenMid} 50%, ${C.green} 75%)`,
+                    backgroundSize: "200% 100%",
+                    animationName: "btn-shimmer",
+                    animationDuration: "1.2s",
+                    animationIterationCount: "infinite",
+                    animationTimingFunction: "linear",
+                    color: "#fff",
+                  } : { background: C.green, color: "#fff" }}
                 >
-                  {adHocSubmitting ? <Loader2 size={14} className="animate-spin mr-1" /> : null}
                   Log Visit
                 </Button>
               </div>
