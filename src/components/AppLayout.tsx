@@ -154,7 +154,8 @@ export default function AppLayout() {
             <span className="hidden sm:inline text-xs font-medium uppercase tracking-wide px-2 py-1 rounded-full bg-secondary text-secondary-foreground">
               {role === "rep" && repName ? repName : role}
             </span>
-            <Button variant="ghost" size="icon" onClick={signOut} title="Sign out">
+            {/* Logout button visible on desktop, or on mobile for admins (who have no hamburger on desktop) */}
+            <Button variant="ghost" size="icon" onClick={signOut} title="Sign out" className={role === "rep" ? "hidden md:inline-flex" : ""}>
               <LogOut className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMenuOpen(!menuOpen)}>
@@ -177,6 +178,16 @@ export default function AppLayout() {
                 {l.label}
               </Link>
             ))}
+            {role === "rep" && (
+              <button
+                type="button"
+                onClick={() => { setMenuOpen(false); signOut(); }}
+                className="nav-link block w-full text-left text-red-500 mt-1 pt-2 border-t border-border"
+              >
+                <LogOut className="inline-block h-4 w-4 mr-2" />
+                Logout
+              </button>
+            )}
           </nav>
         )}
       </header>
