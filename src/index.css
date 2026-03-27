@@ -7,6 +7,21 @@
   100% { background-position:  200% center; }
 }
 
+.btn-shimmer {
+  background: linear-gradient(
+    90deg,
+    #1D5C3F 0%,
+    #2D7A50 35%,
+    #4CAF78 50%,
+    #2D7A50 65%,
+    #1D5C3F 100%
+  ) !important;
+  background-size: 200% auto !important;
+  animation: btn-shimmer 1.2s linear infinite !important;
+  color: #fff !important;
+  border-color: transparent !important;
+}
+
 @layer base {
   :root {
     --background: 140 15% 97%;

@@ -1035,9 +1035,10 @@ export default function DailySchedule() {
   const [isOnline,     setIsOnline]     = useState(navigator.onLine);
 
   // end-of-day summary
-  const [showSummary,     setShowSummary]     = useState(false);
-  const [summaryStats,    setSummaryStats]    = useState<SummaryStats | null>(null);
+  const [showSummary,      setShowSummary]      = useState(false);
+  const [summaryStats,     setSummaryStats]     = useState<SummaryStats | null>(null);
   const [summaryDismissed, setSummaryDismissed] = useState(false);
+  const [isLoadingSummary, setIsLoadingSummary] = useState(false);
 
   // accordion state
   const [expandedActiveId,    setExpandedActiveId]    = useState<string | null>(null);
@@ -1415,6 +1416,13 @@ export default function DailySchedule() {
     setShowSummary(false);
   }, [dismissedKey]);
 
+  // Button handler — shows shimmer on the button while data fetches
+  const handleViewSummary = useCallback(async () => {
+    setIsLoadingSummary(true);
+    await openSummary();
+    setIsLoadingSummary(false);
+  }, [openSummary]);
+
   // Auto-show for today only, once all items are done and not yet dismissed
   useEffect(() => {
     if (!allDone || !isToday || summaryDismissed || items.length === 0) return;
@@ -1560,9 +1568,10 @@ export default function DailySchedule() {
                 </div>
                 <button
                   type="button"
-                  onClick={openSummary}
-                  className="text-xs font-medium px-4 py-2 rounded-xl mt-1"
-                  style={{ color: C.green, border: `1px solid ${C.border}`, background: C.card }}
+                  onClick={handleViewSummary}
+                  disabled={isLoadingSummary}
+                  className={`text-xs font-medium px-4 py-2 rounded-xl mt-1${isLoadingSummary ? " btn-shimmer" : ""}`}
+                  style={isLoadingSummary ? undefined : { color: C.green, border: `1px solid ${C.border}`, background: C.card }}
                 >
                   View {isToday ? "today's" : "day's"} summary
                 </button>
