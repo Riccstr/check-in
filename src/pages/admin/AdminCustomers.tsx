@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandList, CommandItem, CommandEmpty } from "@/components/ui/command";
 import { toast } from "sonner";
 import { Users, Plus, Pencil, ArrowUpDown, Filter, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -28,6 +29,9 @@ export default function AdminCustomers() {
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [area, setArea] = useState("");
+  const [areaOptions, setAreaOptions] = useState<string[]>([]);
+  const [areaDropdownOpen, setAreaDropdownOpen] = useState(false);
+  const areaInputRef = useRef<HTMLInputElement>(null);
   const [accountNumber, setAccountNumber] = useState("");
   const [selectedRepId, setSelectedRepId] = useState<string>("none");
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
@@ -105,12 +109,35 @@ export default function AdminCustomers() {
     return () => { clearTimeout(timeout); setCheckingAccount(false); };
   }, [accountNumber, editId]);
 
-  const openNew = () => { setEditId(null); setName(""); setArea(""); setAccountNumber(""); setSelectedRepId("none"); setAccountNumberError(""); setDialogOpen(true); };
+  const filteredAreas = useMemo(() => {
+    const q = area.trim().toLowerCase();
+    if (!q) return areaOptions;
+    return areaOptions.filter((a) => a.toLowerCase().includes(q));
+  }, [areaOptions, area]);
+
+  const fetchAreaOptions = async () => {
+    try {
+      const { data } = await supabase.from("customers").select("area").not("area", "is", null).neq("area", "");
+      if (data) {
+        const unique = [...new Set(data.map((r: any) => r.area).filter(Boolean))].sort() as string[];
+        setAreaOptions(unique);
+      }
+    } catch { /* ignore */ }
+  };
+
+  const openNew = () => {
+    setEditId(null); setName(""); setArea(""); setAccountNumber(""); setSelectedRepId("none"); setAccountNumberError("");
+    setAreaDropdownOpen(false);
+    fetchAreaOptions();
+    setDialogOpen(true);
+  };
   const openEdit = (c: any) => {
     setEditId(c.id); setName(c.customer_name); setArea(c.area || ""); setAccountNumber(c.account_number || "");
     setAccountNumberError("");
     const assignedRep = assignments.find((a) => a.customer_id === c.id);
     setSelectedRepId(assignedRep?.rep_id || "none");
+    setAreaDropdownOpen(false);
+    fetchAreaOptions();
     setDialogOpen(true);
   };
 
@@ -364,7 +391,37 @@ export default function AdminCustomers() {
               <Input value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder="e.g. ACC-001" className={accountNumberError ? "border-destructive" : ""} />
               {accountNumberError && <p className="text-destructive text-xs mt-1">{accountNumberError}</p>}
             </div>
-            <div><Label>Area</Label><Input value={area} onChange={(e) => setArea(e.target.value)} placeholder="e.g. Johannesburg North" /></div>
+            <div>
+              <Label>Area</Label>
+              <div className="relative mt-1">
+                <Input
+                  ref={areaInputRef}
+                  value={area}
+                  onChange={(e) => { setArea(e.target.value); setAreaDropdownOpen(true); }}
+                  onFocus={() => setAreaDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setAreaDropdownOpen(false), 150)}
+                  placeholder="e.g. Johannesburg North"
+                  autoComplete="off"
+                />
+                {areaDropdownOpen && filteredAreas.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-md border bg-popover text-popover-foreground shadow-md overflow-hidden">
+                    <Command shouldFilter={false}>
+                      <CommandList className="max-h-40">
+                        {filteredAreas.map((opt) => (
+                          <CommandItem
+                            key={opt}
+                            value={opt}
+                            onSelect={() => { setArea(opt); setAreaDropdownOpen(false); areaInputRef.current?.blur(); }}
+                          >
+                            {opt}
+                          </CommandItem>
+                        ))}
+                      </CommandList>
+                    </Command>
+                  </div>
+                )}
+              </div>
+            </div>
             <div>
               <Label>Assign to Rep</Label>
               <Select value={selectedRepId} onValueChange={setSelectedRepId}>
