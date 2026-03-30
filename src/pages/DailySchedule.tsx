@@ -1119,6 +1119,7 @@ export default function DailySchedule() {
   }, [repId, scheduleDate]);
 
   const fetchWeekName = async () => {
+    setCurrentWeekName(""); // clear stale label immediately before the async lookup
     try {
       const { data: weekOrder } = await (supabase.rpc as any)("get_week_order_for_date", { p_date: scheduleDate });
       if (weekOrder) {
