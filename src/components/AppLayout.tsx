@@ -4,7 +4,6 @@ import {
   LogOut,
   Users,
   UserCog,
-  Link2,
   Eye,
   Download,
   Menu,
@@ -118,7 +117,6 @@ export default function AppLayout() {
   const adminLinks = [
     { to: "/admin/customers", label: "Customers", icon: Users },
     { to: "/admin/reps", label: "Reps", icon: UserCog },
-    { to: "/admin/assignments", label: "Assignments", icon: Link2 },
     { to: "/admin/schedules", label: "Schedules", icon: CalendarDays },
     { to: "/admin/visits", label: "Visits", icon: Eye },
     { to: "/admin/reports", label: "Reports", icon: Download },
