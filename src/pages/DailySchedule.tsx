@@ -386,18 +386,9 @@ function ScheduleCard({
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBlob, setPhotoBlob]       = useState<Blob | null>(null);
 
-  const notesRef = useRef<HTMLTextAreaElement>(null);
-
   useEffect(() => { setLocalNotes(item.notes || "");     }, [item.notes]);
   useEffect(() => { setLocalArrival(item.arrival_time || ""); }, [item.arrival_time]);
   useEffect(() => { setLocalLeaving(item.leaving_time || ""); }, [item.leaving_time]);
-
-  // Auto-focus notes when card expands
-  useEffect(() => {
-    if (isExpanded && notesRef.current) {
-      setTimeout(() => notesRef.current?.focus(), 200);
-    }
-  }, [isExpanded]);
 
   const nowTime = () => {
     const now = new Date();
@@ -969,7 +960,6 @@ function ScheduleCard({
             <div>
               <Label className="text-xs" style={{ color: C.textMuted }}>Notes</Label>
               <Textarea
-                ref={notesRef}
                 placeholder="Notes (required to skip)..."
                 value={localNotes}
                 onChange={(e) => setLocalNotes(e.target.value)}
