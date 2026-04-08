@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { startOfWeek, subWeeks, format } from "date-fns";
 import { CalendarDays, Plus, Trash2, ArrowUp, ArrowDown, Settings, Search, GripVertical } from "lucide-react";
 
 const WEEKDAYS = [
@@ -135,10 +136,14 @@ export default function AdminSchedules() {
 
   // --- Current Week ---
   const setCurrentWeek = async (sortOrder: number) => {
-    const { error } = await supabase
-      .from("app_settings")
-      .update({ setting_value: String(sortOrder), updated_at: new Date().toISOString(), updated_by: user?.id })
-      .eq("setting_key", "current_week_order");
+    const thisMonday = startOfWeek(new Date(), { weekStartsOn: 1 });
+    const newWeekCycleStart = subWeeks(thisMonday, sortOrder - 1);
+    const anchorDateString = format(newWeekCycleStart, "yyyy-MM-dd");
+
+    const { error } = await supabase.from("app_settings").upsert([
+      { setting_key: "current_week_order", setting_value: String(sortOrder), updated_at: new Date().toISOString(), updated_by: user?.id },
+      { setting_key: "week_cycle_start_date", setting_value: anchorDateString, updated_at: new Date().toISOString(), updated_by: user?.id },
+    ], { onConflict: "setting_key" });
     if (error) toast.error(error.message);
     else {
       setCurrentWeekOrder(sortOrder);
