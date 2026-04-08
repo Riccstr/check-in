@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
@@ -1636,16 +1637,16 @@ export default function DailySchedule() {
 
                 <div>
                   <Label className="text-xs" style={{ color: C.textMuted }}>Customer</Label>
-                  <Select value={adHocCustomerId} onValueChange={setAdHocCustomerId}>
-                    <SelectTrigger style={{ borderColor: C.border, background: C.bg }}>
-                      <SelectValue placeholder="Select customer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {adHocCustomers.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.customer_name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    options={[...adHocCustomers]
+                      .sort((a, b) => a.customer_name.localeCompare(b.customer_name))
+                      .map((c) => ({ value: c.id, label: c.customer_name }))}
+                    value={adHocCustomerId}
+                    onValueChange={setAdHocCustomerId}
+                    placeholder="Search customers..."
+                    searchPlaceholder="Search customers..."
+                    emptyMessage="No customers found"
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
