@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { toast } from "sonner";
+import { format } from "date-fns";
 import { Download, FileSpreadsheet } from "lucide-react";
 import XLSX from "xlsx-js-style";
 import jsPDF from "jspdf";
@@ -397,6 +398,7 @@ export default function AdminExports() {
       totalOrderAmount    += Number(v.order_amount) || 0;
     }
 
+    const generatedAt = format(new Date(), "dd MMM yyyy HH:mm");
     const period = dateTo && dateTo !== dateFrom
       ? `${fmtDate(dateFrom)} – ${fmtDate(dateTo)}`
       : fmtDate(dateFrom);
@@ -438,8 +440,8 @@ export default function AdminExports() {
     const RX  = 168,     RW  = 40; // right label
     const RVX = 208,     RVW = PW - MR - 208; // right value (fills to right margin)
 
-    const leftLabels  = ["Name",  "Date",          "Period",  "Visits"];
-    const leftValues  = [repName, fmtDate(dateFrom), period,   String(data.length)];
+    const leftLabels  = ["Name",  "Date",        "Period",  "Visits"];
+    const leftValues  = [repName, generatedAt,   period,    String(data.length)];
     const rightLabels = ["Productive Time",   "Order Qty",       "Order Amount (R)",                                                    "Skipped"];
     const rightValues = [
       formatDuration(totalProductiveMins),
@@ -505,7 +507,7 @@ export default function AdminExports() {
         v.order_number || "",
         v.order_quantity != null ? String(v.order_quantity) : "",
         v.order_amount   != null ? Number(v.order_amount).toFixed(2) : "",
-        v.photo_url ? "✓" : "✗",
+        v.photo_url ? "\u2714" : "\u2718",
         isSkipped ? `[SKIPPED] ${v.notes || ""}` : (v.notes || ""),
       ];
       (row as any).__skipped = isSkipped;
@@ -560,9 +562,9 @@ export default function AdminExports() {
       didParseCell: (hookData) => {
         if (hookData.section === "body") {
           if (hookData.column.index === 10) {
-            if (hookData.cell.raw === "✓") {
+            if (hookData.cell.raw === "\u2714") {
               hookData.cell.styles.textColor = [34, 197, 94];
-            } else if (hookData.cell.raw === "✗") {
+            } else if (hookData.cell.raw === "\u2718") {
               hookData.cell.styles.textColor = [239, 68, 68];
             }
             if (hookData.row.raw && (hookData.row.raw as any).__skipped) {
