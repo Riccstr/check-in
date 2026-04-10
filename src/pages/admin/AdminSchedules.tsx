@@ -41,6 +41,7 @@ export default function AdminSchedules() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [templateDay, setTemplateDay] = useState("1");
+  const [templateTravelTime, setTemplateTravelTime] = useState<string>("");
   const [templateCustomers, setTemplateCustomers] = useState<string[]>([]);
 
   // Daily schedules
@@ -189,6 +190,7 @@ export default function AdminSchedules() {
   // --- Template CRUD ---
   const openNewTemplate = (day?: string) => {
     setTemplateDay(day || "1");
+    setTemplateTravelTime("");
     setTemplateCustomers([]);
     setCustomerSearch("");
     setAreaFilter("all");
@@ -217,6 +219,7 @@ export default function AdminSchedules() {
       return;
     }
     const day = parseInt(templateDay);
+    const travelMins = templateTravelTime !== "" ? parseInt(templateTravelTime) : null;
 
     // Check if template exists for this rep/day/week
     const existing = templates.find(t => t.day_of_week === day);
@@ -224,10 +227,14 @@ export default function AdminSchedules() {
 
     if (existing) {
       templateId = existing.id;
+      await supabase
+        .from("schedule_templates")
+        .update({ travel_time_minutes: travelMins })
+        .eq("id", templateId);
     } else {
       const { data: tmpl, error } = await supabase
         .from("schedule_templates")
-        .insert({ rep_id: selectedRep, day_of_week: day, weekly_template_id: selectedWeeklyTemplate })
+        .insert({ rep_id: selectedRep, day_of_week: day, weekly_template_id: selectedWeeklyTemplate, travel_time_minutes: travelMins })
         .select("id")
         .single();
       if (error) { toast.error(error.message); return; }
@@ -284,6 +291,7 @@ export default function AdminSchedules() {
 
   const editTemplate = (t: any) => {
     setTemplateDay(String(t.day_of_week));
+    setTemplateTravelTime(t.travel_time_minutes != null ? String(t.travel_time_minutes) : "");
     setTemplateCustomers(t.schedule_template_items?.sort((a: any, b: any) => a.sort_order - b.sort_order).map((i: any) => i.customer_id) || []);
     setCustomerSearch("");
     setAreaFilter("all");
@@ -536,6 +544,18 @@ export default function AdminSchedules() {
                   {WEEKDAYS.map(d => (<SelectItem key={d.value} value={String(d.value)}>{d.label}</SelectItem>))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div>
+              <Label>Travel Time (minutes)</Label>
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                placeholder="e.g. 120"
+                value={templateTravelTime}
+                onChange={(e) => setTemplateTravelTime(e.target.value)}
+              />
             </div>
 
             {/* Selected customers with reorder */}
