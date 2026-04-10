@@ -437,10 +437,10 @@ export default function AdminExports() {
     // ── Document setup ───────────────────────────────────────────────────────
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     const PW = 297; // page width
-    const ML = 12;  // margin left
-    const MR = 12;  // margin right
+    const ML = 10;  // margin left
+    const MR = 11;  // margin right
     const MT = 12;  // margin top
-    const CW = PW - ML - MR; // content width = 273mm
+    const CW = PW - ML - MR; // content width = 276mm
 
     // ── Section 1: Title banner ──────────────────────────────────────────────
     const BANNER_H = 16;
@@ -466,12 +466,13 @@ export default function AdminExports() {
     const DARK_TXT: [number, number, number]  = [51, 51, 51];
 
     // Column x-positions and widths
-    const LX  = ML,      LW  = 28; // left label
-    const LVX = ML + LW, LVW = 48; // left value
-    const CX  = 90,      CLW = 28; // centre label width  (gap: 88–168, centre block 90–166)
-    const CVX = 90 + 28, CVW = 48; // centre value
-    const RX  = 168,     RW  = 40; // right label
-    const RVX = 208,     RVW = PW - MR - 208; // right value (fills to right margin)
+    // Three equal blocks: each 92mm (52 label + 40 value), fills 276mm content width
+    const LX  = ML,           LLW = 52; // left label
+    const LVX = ML + LLW,     LVW = 40; // left value
+    const CX  = ML + 92,      CLW = 52; // centre label
+    const CVX = CX + CLW,     CVW = 40; // centre value
+    const RX  = ML + 184,     RLW = 52; // right label
+    const RVX = RX + RLW,     RVW = 40; // right value
 
     const leftLabels  = ["Name",  "Date",        "Period",  "Visits"];
     const leftValues  = [repName, generatedAt,   period,    String(data.length)];
@@ -495,9 +496,9 @@ export default function AdminExports() {
 
       // Left label cell
       doc.setFillColor(...LBL_CLR);
-      doc.rect(LX, y, LW, ROW_H, "F");
+      doc.rect(LX, y, LLW, ROW_H, "F");
       doc.setDrawColor(...BDR_CLR);
-      doc.rect(LX, y, LW, ROW_H, "S");
+      doc.rect(LX, y, LLW, ROW_H, "S");
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
       doc.setTextColor(...NAVY_TXT);
@@ -531,8 +532,8 @@ export default function AdminExports() {
 
       // Right label cell
       doc.setFillColor(...LBL_CLR);
-      doc.rect(RX, y, RW, ROW_H, "F");
-      doc.rect(RX, y, RW, ROW_H, "S");
+      doc.rect(RX, y, RLW, ROW_H, "F");
+      doc.rect(RX, y, RLW, ROW_H, "S");
       doc.setFont("helvetica", "bold");
       doc.setTextColor(...NAVY_TXT);
       doc.text(rightLabels[i], RX + 2, y + ROW_H / 2 + 1.5);
