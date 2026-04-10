@@ -398,6 +398,37 @@ export default function AdminExports() {
       totalOrderAmount    += Number(v.order_amount) || 0;
     }
 
+    // ── Fetch schedule template travel time + item count (keyed on dateFrom) ──
+    let travelTimeMins: number | null = null;
+    let scheduleItemCount = 0;
+    {
+      const { data: dsData } = await supabase
+        .from("daily_schedules")
+        .select("weekly_template_id, schedule_date, schedule_items(id)")
+        .eq("rep_id", repFilter)
+        .eq("schedule_date", dateFrom)
+        .maybeSingle();
+      if (dsData) {
+        scheduleItemCount = (dsData.schedule_items as any[])?.length ?? 0;
+        if (dsData.weekly_template_id) {
+          const jsDay = new Date(dsData.schedule_date + "T12:00:00").getDay();
+          const isoDow = jsDay === 0 ? 7 : jsDay;
+          const { data: tmplData } = await supabase
+            .from("schedule_templates")
+            .select("travel_time_minutes")
+            .eq("rep_id", repFilter)
+            .eq("day_of_week", isoDow)
+            .eq("weekly_template_id", dsData.weekly_template_id)
+            .maybeSingle();
+          if (tmplData) travelTimeMins = tmplData.travel_time_minutes;
+        }
+      }
+    }
+    const WORKING_DAY_MINS = 540;
+    const travelTimeForCalc = travelTimeMins ?? 0;
+    const expectedProductiveMins = WORKING_DAY_MINS - travelTimeForCalc;
+    const timePerCustomer = scheduleItemCount > 0 ? Math.round(expectedProductiveMins / scheduleItemCount) : 0;
+
     const generatedAt = format(new Date(), "dd MMM yyyy HH:mm");
     const period = dateTo && dateTo !== dateFrom
       ? `${fmtDate(dateFrom)} – ${fmtDate(dateTo)}`
@@ -437,11 +468,20 @@ export default function AdminExports() {
     // Column x-positions and widths
     const LX  = ML,      LW  = 28; // left label
     const LVX = ML + LW, LVW = 48; // left value
+    const CX  = 90,      CW  = 28; // centre label  (gap: 88–168, centre block 90–166)
+    const CVX = 90 + 28, CVW = 48; // centre value
     const RX  = 168,     RW  = 40; // right label
     const RVX = 208,     RVW = PW - MR - 208; // right value (fills to right margin)
 
     const leftLabels  = ["Name",  "Date",        "Period",  "Visits"];
     const leftValues  = [repName, generatedAt,   period,    String(data.length)];
+    const centreLabels = ["Travel Time", "Expected Productive Time", "Total Customers on Route", "Time / Customer"];
+    const centreValues = [
+      travelTimeMins !== null ? formatDuration(travelTimeMins)        : "—",
+      travelTimeMins !== null ? formatDuration(expectedProductiveMins) : "—",
+      String(scheduleItemCount),
+      scheduleItemCount > 0   ? formatDuration(timePerCustomer)        : "—",
+    ];
     const rightLabels = ["Productive Time",   "Order Qty",       "Order Amount (R)",                                                    "Skipped"];
     const rightValues = [
       formatDuration(totalProductiveMins),
@@ -470,6 +510,24 @@ export default function AdminExports() {
       doc.setFont("helvetica", "normal");
       doc.setTextColor(...DARK_TXT);
       doc.text(leftValues[i], LVX + 2, y + ROW_H / 2 + 1.5);
+
+      // Centre label cell
+      doc.setFillColor(...LBL_CLR);
+      doc.rect(CX, y, CW, ROW_H, "F");
+      doc.setDrawColor(...BDR_CLR);
+      doc.rect(CX, y, CW, ROW_H, "S");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(...NAVY_TXT);
+      doc.text(centreLabels[i], CX + 2, y + ROW_H / 2 + 1.5);
+
+      // Centre value cell
+      doc.setFillColor(...VAL_CLR);
+      doc.rect(CVX, y, CVW, ROW_H, "F");
+      doc.rect(CVX, y, CVW, ROW_H, "S");
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...DARK_TXT);
+      doc.text(centreValues[i], CVX + 2, y + ROW_H / 2 + 1.5);
 
       // Right label cell
       doc.setFillColor(...LBL_CLR);
