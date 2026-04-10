@@ -178,7 +178,7 @@ export default function AdminExports() {
       totalOrderAmount += v.order_amount || 0;
     }
 
-    const COL_COUNT = 11; // A=# B=Acc C=Cust D=Area E=Arr F=Dep G=Dur H=OrdNo I=Qty J=Amt K=Notes
+    const COL_COUNT = 12; // A=# B=Acc C=Cust D=Area E=Arr F=Dep G=Dur H=OrdNo I=Qty J=Amt K=Photo L=Notes
 
     // Create workbook + sheet
     const wb = XLSX.utils.book_new();
@@ -197,6 +197,7 @@ export default function AdminExports() {
       { wch: 10 },  // Order No.
       { wch: 6 },   // Qty
       { wch: 11 },  // Amount
+      { wch: 6 },   // Photo
       { wch: 22 },  // Notes
     ];
 
@@ -267,7 +268,7 @@ export default function AdminExports() {
     // ════════════════════════════════════════════════════════════════
     // ROW 7 — Column headers
     // ════════════════════════════════════════════════════════════════
-    const headers = ["#", "Account #", "Customer", "Area", "Arrival", "Departure", "Duration", "Order No.", "Qty", "Amount (R)", "Notes"];
+    const headers = ["#", "Account #", "Customer", "Area", "Arrival", "Departure", "Duration", "Order No.", "Qty", "Amount (R)", "Photo", "Notes"];
     ws["!rows"][7] = { hpt: 28 };
     const hdrStyle = { font: colHdrFont, fill: navyFill, alignment: cCenter, border: thinBorder };
     for (let c = 0; c < headers.length; c++) {
@@ -278,7 +279,7 @@ export default function AdminExports() {
     // DATA ROWS (row 8+)
     // ════════════════════════════════════════════════════════════════
     // Column alignments: #=center, Acc=left, Cust=left, Area=left, Arr=center, Dep=center, Dur=center, OrdNo=left, Qty=center, Amt=right, Notes=wrapLeft
-    const colAligns = [cCenter, cLeft, cLeft, cLeft, cCenter, cCenter, cCenter, cLeft, cCenter, cRight, cWrap];
+    const colAligns = [cCenter, cLeft, cLeft, cLeft, cCenter, cCenter, cCenter, cLeft, cCenter, cRight, cCenter, cWrap];
 
     for (let idx = 0; idx < (data as any[]).length; idx++) {
       const v = data[idx] as any;
@@ -304,6 +305,7 @@ export default function AdminExports() {
         v.order_number || "",
         v.order_quantity != null ? v.order_quantity : "",
         v.order_amount != null ? v.order_amount : "",
+        v.photo_url ? "✓" : "✗",
         notesText,
       ];
 
@@ -317,6 +319,13 @@ export default function AdminExports() {
           ws[ref].z = "#,##0.00";
         }
       }
+
+      // Photo cell colour override (green ✓ / red ✗)
+      const photoRef = XLSX.utils.encode_cell({ r: row, c: 10 });
+      ws[photoRef].s = {
+        ...ws[photoRef].s,
+        font: { ...fnt, color: { rgb: v.photo_url ? "22C55E" : "EF4444" } },
+      };
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -343,8 +352,10 @@ export default function AdminExports() {
     sc(ws, totalsRow, 9, totalOrderAmount, tRightStyle);
     const amtRef = XLSX.utils.encode_cell({ r: totalsRow, c: 9 });
     ws[amtRef].z = "#,##0.00";
-    // Notes (empty)
+    // Photo (empty)
     ss(ws, totalsRow, 10, tStyle);
+    // Notes (empty)
+    ss(ws, totalsRow, 11, tStyle);
 
     // Update sheet range to exact data bounds
     ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: totalsRow, c: COL_COUNT - 1 } });
@@ -494,6 +505,7 @@ export default function AdminExports() {
         v.order_number || "",
         v.order_quantity != null ? String(v.order_quantity) : "",
         v.order_amount   != null ? Number(v.order_amount).toFixed(2) : "",
+        v.photo_url ? "✓" : "✗",
         isSkipped ? `[SKIPPED] ${v.notes || ""}` : (v.notes || ""),
       ];
       (row as any).__skipped = isSkipped;
@@ -502,9 +514,9 @@ export default function AdminExports() {
 
     autoTable(doc, {
       startY: tableStartY,
-      head: [["#", "Account #", "Customer", "Area", "Arrival", "Departure", "Duration", "Order No.", "Qty", "Amount (R)", "Notes"]],
+      head: [["#", "Account #", "Customer", "Area", "Arrival", "Departure", "Duration", "Order No.", "Qty", "Amount (R)", "Photo", "Notes"]],
       body: bodyRows,
-      foot: [["Tot", "", "", "", "", "", formatDuration(totalProductiveMins), "", String(totalOrderQty), totalOrderAmount.toFixed(2), ""]],
+      foot: [["Tot", "", "", "", "", "", formatDuration(totalProductiveMins), "", String(totalOrderQty), totalOrderAmount.toFixed(2), "", ""]],
       theme: "grid",
       styles: {
         font: "helvetica",
@@ -542,12 +554,24 @@ export default function AdminExports() {
         7:  { halign: "left",   cellWidth: 20 },
         8:  { halign: "center", cellWidth: 12 },
         9:  { halign: "right",  cellWidth: 22 },
-        10: { halign: "left",   cellWidth: "auto" as any },
+        10: { halign: "center", cellWidth: 12 },
+        11: { halign: "left",   cellWidth: "auto" as any },
       },
       didParseCell: (hookData) => {
-        if (hookData.section === "body" && hookData.row.raw && (hookData.row.raw as any).__skipped) {
-          hookData.cell.styles.fillColor = [255, 224, 224];
-          hookData.cell.styles.textColor = [153, 27, 27];
+        if (hookData.section === "body") {
+          if (hookData.column.index === 10) {
+            if (hookData.cell.raw === "✓") {
+              hookData.cell.styles.textColor = [34, 197, 94];
+            } else if (hookData.cell.raw === "✗") {
+              hookData.cell.styles.textColor = [239, 68, 68];
+            }
+            if (hookData.row.raw && (hookData.row.raw as any).__skipped) {
+              hookData.cell.styles.fillColor = [255, 224, 224];
+            }
+          } else if (hookData.row.raw && (hookData.row.raw as any).__skipped) {
+            hookData.cell.styles.fillColor = [255, 224, 224];
+            hookData.cell.styles.textColor = [153, 27, 27];
+          }
         }
       },
       margin: { left: ML, right: MR },
