@@ -387,9 +387,10 @@ export default function AdminExports() {
       totalOrderAmount    += Number(v.order_amount) || 0;
     }
 
-    // ── Fetch schedule template travel time + item count (keyed on dateFrom) ──
+    // ── Fetch schedule template travel time + item count + week name (keyed on dateFrom) ──
     let travelTimeMins: number | null = null;
     let scheduleItemCount = 0;
+    let weekTemplateName = "";
     {
       const { data: dsData } = await supabase
         .from("daily_schedules")
@@ -400,6 +401,13 @@ export default function AdminExports() {
       if (dsData) {
         scheduleItemCount = (dsData.schedule_items as any[])?.length ?? 0;
         if (dsData.weekly_template_id) {
+          const { data: weekTmpl } = await supabase
+            .from("weekly_templates")
+            .select("name")
+            .eq("id", dsData.weekly_template_id)
+            .maybeSingle();
+          if (weekTmpl) weekTemplateName = weekTmpl.name;
+
           const jsDay = new Date(dsData.schedule_date + "T12:00:00").getDay();
           const isoDow = jsDay === 0 ? 7 : jsDay;
           const { data: tmplData } = await supabase
@@ -423,6 +431,13 @@ export default function AdminExports() {
       ? `${fmtDate(dateFrom)} – ${fmtDate(dateTo)}`
       : fmtDate(dateFrom);
 
+    // ── Banner subtitle strings ───────────────────────────────────────────────
+    const scheduleDayName = format(new Date(dateFrom + "T12:00:00"), "EEEE");
+    const scheduleDayStr  = weekTemplateName ? `${scheduleDayName} · ${weekTemplateName}` : scheduleDayName;
+    const distinctAreas   = [...new Set((data as any[]).map((v: any) => v.customers?.area).filter(Boolean))] as string[];
+    const areasStr        = distinctAreas.join(" · ");
+    const bannerLine2     = [areasStr, scheduleDayStr].filter(Boolean).join("   |   ");
+
     // ── Document setup ───────────────────────────────────────────────────────
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     const PW = 297; // page width
@@ -432,13 +447,23 @@ export default function AdminExports() {
     const CW = PW - ML - MR; // content width = 276mm
 
     // ── Section 1: Title banner ──────────────────────────────────────────────
-    const BANNER_H = 16;
+    const BANNER_H = 22;
     doc.setFillColor(27, 42, 74);          // #1B2A4A
     doc.rect(ML, MT, CW, BANNER_H, "F");
+
+    // Line 1 — rep name (bold, white)
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
+    doc.setFontSize(13);
     doc.setTextColor(255, 255, 255);
-    doc.text("Daily Visit Report", ML + 6, MT + BANNER_H / 2 + 2.8); // vertically centered
+    doc.text(repName, ML + 6, MT + 10);
+
+    // Line 2 — areas | schedule day (normal, muted white)
+    if (bannerLine2) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.setTextColor(180, 205, 225);
+      doc.text(bannerLine2, ML + 6, MT + 17);
+    }
 
     // Accent bar below banner
     const ACCENT_Y = MT + BANNER_H;
