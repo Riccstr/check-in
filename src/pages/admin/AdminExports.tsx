@@ -468,7 +468,7 @@ export default function AdminExports() {
     // Column x-positions and widths
     const LX  = ML,      LW  = 28; // left label
     const LVX = ML + LW, LVW = 48; // left value
-    const CX  = 90,      CW  = 28; // centre label  (gap: 88–168, centre block 90–166)
+    const CX  = 90,      CLW = 28; // centre label width  (gap: 88–168, centre block 90–166)
     const CVX = 90 + 28, CVW = 48; // centre value
     const RX  = 168,     RW  = 40; // right label
     const RVX = 208,     RVW = PW - MR - 208; // right value (fills to right margin)
@@ -513,9 +513,9 @@ export default function AdminExports() {
 
       // Centre label cell
       doc.setFillColor(...LBL_CLR);
-      doc.rect(CX, y, CW, ROW_H, "F");
+      doc.rect(CX, y, CLW, ROW_H, "F");
       doc.setDrawColor(...BDR_CLR);
-      doc.rect(CX, y, CW, ROW_H, "S");
+      doc.rect(CX, y, CLW, ROW_H, "S");
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
       doc.setTextColor(...NAVY_TXT);
