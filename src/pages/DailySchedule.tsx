@@ -25,6 +25,12 @@ import {
   getCachedSchedule,
   upsertOfflineScheduleItemUpdate,
   updateCachedScheduleItem,
+  savePendingPhoto,
+  getPendingPhoto,
+  clearPendingPhoto,
+  saveActiveCard,
+  getActiveCard,
+  clearActiveCard,
 } from "@/lib/offlineDb";
 
 // ─── mobile zoom reset ────────────────────────────────────────────────────────
@@ -391,6 +397,39 @@ function ScheduleCard({
   useEffect(() => { setLocalArrival(item.arrival_time || ""); }, [item.arrival_time]);
   useEffect(() => { setLocalLeaving(item.leaving_time || ""); }, [item.leaving_time]);
 
+  // Restore captured photo from IndexedDB on mount (survives app background/resume)
+  useEffect(() => {
+    if (!item.arrival_time || item.leaving_time) return;
+    getPendingPhoto(item.id).then((base64) => {
+      if (!base64) return;
+      try {
+        const raw = base64.includes(",") ? base64.split(",")[1] : base64;
+        const byteStr = atob(raw);
+        const arr = new Uint8Array(byteStr.length);
+        for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+        const blob = new Blob([arr], { type: "image/jpeg" });
+        setPhotoBlob(blob);
+        setPhotoPreview(URL.createObjectURL(blob));
+      } catch { /* corrupt base64 — ignore */ }
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Restore unsaved notes from IndexedDB on mount (runs after the item.notes sync above)
+  useEffect(() => {
+    if (!item.arrival_time || item.leaving_time) return;
+    getActiveCard().then((card) => {
+      if (card?.scheduleItemId === item.id && card.notes) {
+        setLocalNotes(card.notes);
+      }
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-persist notes to IndexedDB while a visit is in-progress
+  useEffect(() => {
+    if (!item.arrival_time || item.leaving_time) return;
+    saveActiveCard({ scheduleItemId: item.id, arrivalTime: item.arrival_time, notes: localNotes }).catch(() => {});
+  }, [localNotes]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const nowTime = () => {
     const now = new Date();
     return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -428,6 +467,8 @@ function ScheduleCard({
       const compressed = await compressImage(blob);
       setPhotoBlob(compressed);
       setPhotoPreview(URL.createObjectURL(compressed));
+      // Persist immediately so a background/resume cycle cannot lose the photo
+      blobToBase64(compressed).then((b64) => savePendingPhoto(item.id, b64)).catch(() => {});
     } catch {
       toast.error("Failed to process photo");
     }
@@ -437,6 +478,7 @@ function ScheduleCard({
     setPhotoBlob(null);
     if (photoPreview) URL.revokeObjectURL(photoPreview);
     setPhotoPreview(null);
+    clearPendingPhoto(item.id).catch(() => {});
   };
 
   const uploadPhotoOnline = async (visitId: string): Promise<string | null> => {
@@ -552,6 +594,10 @@ function ScheduleCard({
       await handleOfflineVisitSave(newItem);
     } finally {
       setActionInProgress(false);
+      if (newItem.status === "visited" || newItem.status === "skipped") {
+        clearPendingPhoto(item.id).catch(() => {});
+        clearActiveCard().catch(() => {});
+      }
     }
   };
 
@@ -620,7 +666,12 @@ function ScheduleCard({
   const commitArrival = () => { if (localArrival !== (item.arrival_time || "")) updateItem({ arrival_time: localArrival }); };
   const commitLeaving = () => { if (localLeaving !== (item.leaving_time || "")) updateItem({ leaving_time: localLeaving }); };
 
-  const markArrived = () => { const t = nowTime(); setLocalArrival(t); updateItem({ arrival_time: t }); };
+  const markArrived = () => {
+    const t = nowTime();
+    setLocalArrival(t);
+    updateItem({ arrival_time: t });
+    saveActiveCard({ scheduleItemId: item.id, arrivalTime: t, notes: localNotes }).catch(() => {});
+  };
   const markLeft    = () => { const t = nowTime(); setLocalLeaving(t); updateItem({ leaving_time: t, status: "visited", order_number: localOrderNumber || null, order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null, order_amount: localOrderAmount !== "" ? Number(localOrderAmount) : null }); };
 
   const skipItem = async () => {
@@ -711,6 +762,7 @@ function ScheduleCard({
   if (!isExpanded) {
     return (
       <div
+        id={`card-${item.id}`}
         className="rounded-2xl overflow-hidden"
         style={{ background: C.card, border: `1px solid ${C.border}` }}
       >
@@ -722,6 +774,7 @@ function ScheduleCard({
   // ── expanded body ──
   return (
     <div
+      id={`card-${item.id}`}
       className="rounded-2xl overflow-hidden"
       style={{ background: C.card, border: `1.5px solid ${isInProgress ? C.orange : item.status === "visited" ? C.greenLight : C.border}` }}
     >
@@ -1037,6 +1090,10 @@ export default function DailySchedule() {
   const [openCompletedId,     setOpenCompletedId]     = useState<string | null>(null);
   const [activeTab,           setActiveTab]           = useState<"active" | "done">("active");
 
+  // in-progress visit recovery banner
+  const [recoveryItemId,       setRecoveryItemId]       = useState<string | null>(null);
+  const [recoveryCustomerName, setRecoveryCustomerName] = useState<string | null>(null);
+
   // ad-hoc visit state
   const [adHocOpen,        setAdHocOpen]        = useState(false);
   const [adHocCustomers,   setAdHocCustomers]   = useState<any[]>([]);
@@ -1309,6 +1366,21 @@ export default function DailySchedule() {
   const allDone = items.length > 0 && items.every((i) => i.status === "visited" || i.status === "skipped");
   const dismissedKey = repId && scheduleDate ? `summary_dismissed_${repId}_${scheduleDate}` : null;
 
+  // Detect in-progress visit with a saved photo (Fix 4 — recovery banner)
+  useEffect(() => {
+    if (!isToday || !items.length) { setRecoveryItemId(null); return; }
+    const inProgress = items.find((i) => i.arrival_time && !i.leaving_time);
+    if (!inProgress) { setRecoveryItemId(null); return; }
+    getPendingPhoto(inProgress.id).then((photo) => {
+      if (photo) {
+        setRecoveryItemId(inProgress.id);
+        setRecoveryCustomerName(inProgress.customers?.customer_name ?? null);
+      } else {
+        setRecoveryItemId(null);
+      }
+    }).catch(() => setRecoveryItemId(null));
+  }, [items, isToday]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Read dismissed flag from localStorage whenever date or rep changes
   useEffect(() => {
     setSummaryDismissed(dismissedKey ? localStorage.getItem(dismissedKey) === "1" : false);
@@ -1530,6 +1602,25 @@ export default function DailySchedule() {
             </button>
           ))}
         </div>
+      )}
+
+      {/* in-progress visit recovery banner */}
+      {recoveryItemId && !loading && activeTab === "active" && (
+        <button
+          type="button"
+          onClick={() => {
+            setExpandedActiveId(recoveryItemId);
+            setActiveTab("active");
+            setTimeout(() => {
+              document.getElementById(`card-${recoveryItemId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 100);
+          }}
+          className="mx-4 mt-2 w-[calc(100%-2rem)] flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium font-syne text-left"
+          style={{ background: "#FFF8E1", border: "1px solid #F59E0B", color: "#78350F" }}
+        >
+          <ChevronRight size={16} className="shrink-0" style={{ color: "#F59E0B" }} />
+          <span>You have an active visit at <strong>{recoveryCustomerName}</strong> — tap to resume</span>
+        </button>
       )}
 
       {/* main scrollable area */}

@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from "idb";
 
 const DB_NAME = "checkin-tracker-offline";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 export interface OfflineVisit {
   client_generated_id: string;
@@ -81,6 +81,12 @@ function getDb() {
         }
         if (!db.objectStoreNames.contains("cached_user_auth")) {
           db.createObjectStore("cached_user_auth", { keyPath: "user_id" });
+        }
+        if (!db.objectStoreNames.contains("pending_photos")) {
+          db.createObjectStore("pending_photos", { keyPath: "scheduleItemId" });
+        }
+        if (!db.objectStoreNames.contains("active_card_state")) {
+          db.createObjectStore("active_card_state", { keyPath: "key" });
         }
       },
     });
@@ -277,4 +283,47 @@ export async function updateCachedScheduleItem(
   cached.cached_at = new Date().toISOString();
 
   await db.put("cached_schedules", cached);
+}
+
+// === Pending Photos ===
+
+export async function savePendingPhoto(scheduleItemId: string, base64: string): Promise<void> {
+  const db = await getDb();
+  await db.put("pending_photos", { scheduleItemId, base64 });
+}
+
+export async function getPendingPhoto(scheduleItemId: string): Promise<string | null> {
+  const db = await getDb();
+  const entry = await db.get("pending_photos", scheduleItemId);
+  return entry?.base64 ?? null;
+}
+
+export async function clearPendingPhoto(scheduleItemId: string): Promise<void> {
+  const db = await getDb();
+  await db.delete("pending_photos", scheduleItemId);
+}
+
+// === Active Card State ===
+
+export interface ActiveCardState {
+  scheduleItemId: string;
+  arrivalTime: string;
+  notes: string;
+}
+
+export async function saveActiveCard(data: ActiveCardState): Promise<void> {
+  const db = await getDb();
+  await db.put("active_card_state", { key: "current", ...data });
+}
+
+export async function getActiveCard(): Promise<ActiveCardState | null> {
+  const db = await getDb();
+  const entry = await db.get("active_card_state", "current");
+  if (!entry) return null;
+  return { scheduleItemId: entry.scheduleItemId, arrivalTime: entry.arrivalTime, notes: entry.notes };
+}
+
+export async function clearActiveCard(): Promise<void> {
+  const db = await getDb();
+  await db.delete("active_card_state", "current");
 }
