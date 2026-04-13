@@ -1378,14 +1378,39 @@ export default function DailySchedule() {
     if (!isToday || !items.length) { setRecoveryItemId(null); return; }
     const inProgress = items.find((i) => i.arrival_time && !i.leaving_time);
     if (!inProgress) { setRecoveryItemId(null); return; }
-    getPendingPhoto(inProgress.id).then((photo) => {
-      if (photo) {
-        setRecoveryItemId(inProgress.id);
-        setRecoveryCustomerName(inProgress.customers?.customer_name ?? null);
-      } else {
+
+    (async () => {
+      // Validate active_card_state against current schedule items before showing the banner.
+      // If the stored ID belongs to a stale/deleted schedule or is already resolved, clear it.
+      try {
+        const card = await getActiveCard();
+        if (card) {
+          const storedItem = items.find((i) => i.id === card.scheduleItemId);
+          const isStale = !storedItem
+            || storedItem.status === "visited"
+            || storedItem.status === "skipped"
+            || !!storedItem.leaving_time;
+          if (isStale) {
+            clearActiveCard().catch(() => {});
+            setRecoveryItemId(null);
+            return;
+          }
+        }
+      } catch { /* IDB unavailable — proceed to photo check */ }
+
+      // Show banner only if there is a pending photo for the in-progress item
+      try {
+        const photo = await getPendingPhoto(inProgress.id);
+        if (photo) {
+          setRecoveryItemId(inProgress.id);
+          setRecoveryCustomerName(inProgress.customers?.customer_name ?? null);
+        } else {
+          setRecoveryItemId(null);
+        }
+      } catch {
         setRecoveryItemId(null);
       }
-    }).catch(() => setRecoveryItemId(null));
+    })();
   }, [items, isToday]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Read dismissed flag from localStorage whenever date or rep changes
