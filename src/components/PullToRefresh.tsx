@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 
-const THRESHOLD   = 80;   // px of pull required to trigger reload
-const CAP         = 100;  // maximum visual travel in px
+const THRESHOLD   = 120;  // px of pull required to trigger reload
+const CAP         = 140;  // maximum visual travel in px
 const INDICATOR_H = 44;   // pill height in px — indicator slides down from -INDICATOR_H
 
 export function PullToRefresh() {
