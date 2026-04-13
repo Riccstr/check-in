@@ -1249,19 +1249,26 @@ export default function DailySchedule() {
         setItems((data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
         await setCachedSchedule(repId, scheduleDate, data);
       } else {
-        setGenerating(true);
-        const newId = await autoGenerateSchedule();
-        setGenerating(false);
-        if (newId) {
-          const { data: newData } = await supabase
-            .from("daily_schedules")
-            .select("*, schedule_items(*, customers(customer_name, account_number))")
-            .eq("id", newId)
-            .maybeSingle();
-          setSchedule(newData);
-          setItems((newData?.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
-          if (newData) await setCachedSchedule(repId, scheduleDate, newData);
+        // Only auto-generate for today or past dates — never pre-generate future schedules
+        const todayStr = new Date().toISOString().split("T")[0];
+        if (scheduleDate <= todayStr) {
+          setGenerating(true);
+          const newId = await autoGenerateSchedule();
+          setGenerating(false);
+          if (newId) {
+            const { data: newData } = await supabase
+              .from("daily_schedules")
+              .select("*, schedule_items(*, customers(customer_name, account_number))")
+              .eq("id", newId)
+              .maybeSingle();
+            setSchedule(newData);
+            setItems((newData?.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
+            if (newData) await setCachedSchedule(repId, scheduleDate, newData);
+          } else {
+            setSchedule(null); setItems([]);
+          }
         } else {
+          // Future date with no existing schedule — leave it ungenerated
           setSchedule(null); setItems([]);
         }
       }
@@ -1633,7 +1640,11 @@ export default function DailySchedule() {
         ) : !schedule ? (
           <div className="flex flex-col items-center justify-center py-16 gap-2" style={{ color: C.textMuted }}>
             <CalendarDays size={40} style={{ opacity: 0.3 }} />
-            <p className="text-sm">No schedule for this date</p>
+            <p className="text-sm">
+              {scheduleDate > new Date().toISOString().split("T")[0]
+                ? "Schedule not yet available"
+                : "No schedule for this date"}
+            </p>
           </div>
         ) : activeTab === "active" ? (
           activeItems.length === 0 ? (
