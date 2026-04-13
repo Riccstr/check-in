@@ -1094,6 +1094,9 @@ export default function DailySchedule() {
   const [recoveryItemId,       setRecoveryItemId]       = useState<string | null>(null);
   const [recoveryCustomerName, setRecoveryCustomerName] = useState<string | null>(null);
 
+  // stale-template self-heal — tracks the last schedule.id that was validated so it only runs once per schedule
+  const validationRanRef = useRef<string | null>(null);
+
   // ad-hoc visit state
   const [adHocOpen,        setAdHocOpen]        = useState(false);
   const [adHocCustomers,   setAdHocCustomers]   = useState<any[]>([]);
@@ -1279,6 +1282,68 @@ export default function DailySchedule() {
       setLoading(false);
     }
   };
+
+  // ─── stale template self-heal ──────────────────────────────────────────────
+  // Runs once per schedule row after the initial fetch. Detects a weekly_template_id
+  // mismatch (possible after a rotation anchor change) and silently regenerates the
+  // daily schedule — but only when no visits have been started yet.
+  useEffect(() => {
+    if (!schedule?.id || !repId || !isToday) return;
+    if (validationRanRef.current === schedule.id) return;
+    validationRanRef.current = schedule.id;
+
+    (async () => {
+      try {
+        // Step 1: correct week order for today
+        const { data: weekOrder, error: weekOrderErr } = await (supabase.rpc as any)(
+          "get_week_order_for_date",
+          { p_date: scheduleDate }
+        );
+        if (weekOrderErr || weekOrder == null) return;
+
+        // Step 2: canonical weekly_template id for that week order
+        const { data: tpl, error: tplErr } = await supabase
+          .from("weekly_templates")
+          .select("id")
+          .eq("sort_order", weekOrder)
+          .maybeSingle();
+        if (tplErr || !tpl) return;
+
+        // Step 3: compare — if already correct, nothing to do
+        if (schedule.weekly_template_id === tpl.id) return;
+
+        // Step 4: check whether any items have started
+        const { count, error: countErr } = await supabase
+          .from("schedule_items")
+          .select("id", { count: "exact", head: true })
+          .eq("schedule_id", schedule.id)
+          .or("arrival_time.not.is.null,status.in.(visited,skipped)");
+        if (countErr) return;
+        if ((count ?? 0) > 0) return; // visits in progress — leave it alone
+
+        // Step 5: delete the stale row (cascade removes its schedule_items)
+        const { error: delErr } = await supabase
+          .from("daily_schedules")
+          .delete()
+          .eq("id", schedule.id);
+        if (delErr) return;
+
+        // Step 6: regenerate from the correct template
+        const { error: genErr } = await supabase.rpc("auto_generate_daily_schedule", {
+          p_rep_id: repId,
+          p_schedule_date: scheduleDate,
+        });
+        if (genErr) return;
+
+        console.log(`[ScheduleValidation] Stale template detected and corrected for ${scheduleDate}`);
+
+        // Step 7: refresh so the UI shows the new items
+        fetchSchedule();
+      } catch {
+        // Offline or unexpected error — fail silently, never surface to the rep
+      }
+    })();
+  }, [schedule?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchAdHocCustomers = async () => {
     if (!repId) return;
