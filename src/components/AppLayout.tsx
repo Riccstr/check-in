@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import OfflineStatusBar from "@/components/OfflineStatusBar";
+import { PullToRefresh } from "@/components/PullToRefresh";
 import { setupAutoSync } from "@/lib/syncEngine";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { toast } from "sonner";
@@ -130,6 +131,7 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen bg-background">
+      <PullToRefresh />
       <header className="sticky top-0 z-50 border-b bg-card">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
           <Link to="/" className="flex items-center gap-2 font-bold text-foreground">
