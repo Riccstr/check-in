@@ -6,6 +6,6 @@ export default function Index() {
 
   if (loading) return null;
 
-  if (role === "admin") return <Navigate to="/admin/visits" replace />;
+  if (role === "admin") return <Navigate to="/admin/dashboard" replace />;
   return <Navigate to="/schedule" replace />;
 }

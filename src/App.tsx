@@ -11,6 +11,7 @@ import Index from "@/pages/Index";
 import LogVisit from "@/pages/LogVisit";
 import DailySchedule from "@/pages/DailySchedule";
 import MyVisits from "@/pages/MyVisits";
+import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminCustomers from "@/pages/admin/AdminCustomers";
 import CustomerDashboard from "@/pages/admin/CustomerDashboard";
 import AdminReps from "@/pages/admin/AdminReps";
@@ -96,6 +97,7 @@ const App = () => (
                 <Route path="/schedule" element={<DailySchedule />} />
                 <Route path="/my-visits" element={<MyVisits />} />
 
+                <Route path="/admin/dashboard" element={<AdminDashboard />} />
                 <Route path="/admin/customers" element={<AdminCustomers />} />
                 <Route path="/admin/customer/:customerId" element={<CustomerDashboard />} />
                 <Route path="/admin/reps" element={<AdminReps />} />

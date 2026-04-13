@@ -9,6 +9,7 @@ import {
   Menu,
   X,
   CalendarDays,
+  LayoutDashboard,
   Settings,
   ShieldCheck,
   WifiOff,
@@ -116,6 +117,7 @@ export default function AppLayout() {
   ];
 
   const adminLinks = [
+    { to: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { to: "/admin/customers", label: "Customers", icon: Users },
     { to: "/admin/reps", label: "Reps", icon: UserCog },
     { to: "/admin/schedules", label: "Schedules", icon: CalendarDays },
