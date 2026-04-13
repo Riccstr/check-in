@@ -226,13 +226,83 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     try {
-      const [repsRes, schedulesRes, visitsRes] = await Promise.all([
-        supabase
-          .from("reps")
-          .select("id, rep_name")
-          .eq("is_active", true)
-          .order("rep_name"),
+      // Step 1 — fetch active reps first so we can drive pre-generation per rep
+      const repsRes = await supabase
+        .from("reps")
+        .select("id, rep_name")
+        .eq("is_active", true)
+        .order("rep_name");
 
+      if (repsRes.error) throw repsRes.error;
+      const activeReps = repsRes.data ?? [];
+
+      // Step 2 — pre-generate (and self-heal) today's schedule for every active rep.
+      // Runs in parallel; errors per rep are swallowed — a rep with no template is valid.
+      try {
+        // Determine the correct weekly template id for today once, shared by all reps.
+        const { data: weekOrder } = await (supabase.rpc as any)(
+          "get_week_order_for_date",
+          { p_date: todayStr }
+        );
+
+        let correctWeeklyTemplateId: string | null = null;
+        if (weekOrder != null) {
+          const { data: tpl } = await supabase
+            .from("weekly_templates")
+            .select("id")
+            .eq("sort_order", weekOrder)
+            .maybeSingle();
+          correctWeeklyTemplateId = tpl?.id ?? null;
+        }
+
+        await Promise.all(
+          activeReps.map(async (rep) => {
+            try {
+              // Check for an existing schedule row for this rep today.
+              // Cast to any: weekly_template_id is not yet in the generated types.ts snapshot.
+              const { data: existing } = await (supabase
+                .from("daily_schedules")
+                .select("id, weekly_template_id")
+                .eq("rep_id", rep.id)
+                .eq("schedule_date", todayStr)
+                .maybeSingle() as any) as { data: { id: string; weekly_template_id: string | null } | null };
+
+              // Self-heal: if the row uses the wrong template and no visits have started, delete it
+              if (
+                existing &&
+                correctWeeklyTemplateId &&
+                existing.weekly_template_id !== correctWeeklyTemplateId
+              ) {
+                const { count } = await supabase
+                  .from("schedule_items")
+                  .select("id", { count: "exact", head: true })
+                  .eq("schedule_id", existing.id)
+                  .or("arrival_time.not.is.null,status.in.(visited,skipped)");
+
+                if ((count ?? 0) === 0) {
+                  await supabase
+                    .from("daily_schedules")
+                    .delete()
+                    .eq("id", existing.id);
+                }
+              }
+
+              // Idempotent — creates the row if absent, no-ops if it already exists
+              await supabase.rpc("auto_generate_daily_schedule", {
+                p_rep_id:        rep.id,
+                p_schedule_date: todayStr,
+              });
+            } catch {
+              // Per-rep failure is non-fatal — card will show "No Schedule"
+            }
+          })
+        );
+      } catch {
+        // Week-order or template lookup failed (e.g. offline) — skip pre-generation entirely
+      }
+
+      // Step 3 — fetch schedules and visits now that rows are guaranteed to exist
+      const [schedulesRes, visitsRes] = await Promise.all([
         supabase
           .from("daily_schedules")
           .select(
@@ -246,13 +316,12 @@ export default function AdminDashboard() {
           .eq("visit_date", todayStr),
       ]);
 
-      if (repsRes.error)      throw repsRes.error;
       if (schedulesRes.error) throw schedulesRes.error;
       if (visitsRes.error)    throw visitsRes.error;
 
-      setReps(repsRes.data ?? []);
+      setReps(activeReps);
       setSchedules((schedulesRes.data ?? []) as unknown as DailyScheduleRow[]);
-      setVisits(visitsRes.data ?? []);
+      setVisits((visitsRes.data ?? []) as unknown as VisitRow[]);
       setError(null);
     } catch (err: any) {
       setError(err?.message ?? "Failed to load dashboard data");
