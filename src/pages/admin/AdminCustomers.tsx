@@ -42,7 +42,6 @@ export default function AdminCustomers() {
   const [sortAsc, setSortAsc] = useState(true);
   const [filterReps, setFilterReps] = useState<string[]>([]);
   const [filterAreas, setFilterAreas] = useState<string[]>([]);
-  const [filterStatus, setFilterStatus] = useState("all");
 
   const fetchAll = async () => {
     setLoading(true);
@@ -170,11 +169,6 @@ export default function AdminCustomers() {
     setDialogOpen(false); fetchAll();
   };
 
-  const toggleActive = async (c: any) => {
-    await supabase.from("customers").update({ is_active: !c.is_active }).eq("id", c.id);
-    toast.success(c.is_active ? "Deactivated" : "Reactivated"); fetchAll();
-  };
-
   const deleteCustomer = async () => {
     if (!deleteTarget) return;
     const id = deleteTarget.id;
@@ -205,7 +199,7 @@ export default function AdminCustomers() {
     else { setSortKey(key); setSortAsc(true); }
   };
 
-  const activeFilterCount = (filterReps.length > 0 ? 1 : 0) + (filterAreas.length > 0 ? 1 : 0) + (filterStatus !== "all" ? 1 : 0);
+  const activeFilterCount = (filterReps.length > 0 ? 1 : 0) + (filterAreas.length > 0 ? 1 : 0);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -217,7 +211,6 @@ export default function AdminCustomers() {
 
     if (filterReps.length > 0) list = list.filter((c) => filterReps.includes(customerRepMap[c.id] || ""));
     if (filterAreas.length > 0) list = list.filter((c) => filterAreas.includes(c.area || ""));
-    if (filterStatus !== "all") list = list.filter((c) => filterStatus === "active" ? c.is_active : !c.is_active);
 
     list.sort((a, b) => {
       let va: string, vb: string;
@@ -229,7 +222,7 @@ export default function AdminCustomers() {
     });
 
     return list;
-  }, [customers, search, sortKey, sortAsc, customerRepMap, filterReps, filterAreas, filterStatus]);
+  }, [customers, search, sortKey, sortAsc, customerRepMap, filterReps, filterAreas]);
 
   const SortButton = ({ label, sortId }: { label: string; sortId: SortKey }) => (
     <Button variant="ghost" size="sm" className="-ml-3 h-8 font-medium" onClick={() => handleSort(sortId)}>
@@ -238,7 +231,7 @@ export default function AdminCustomers() {
     </Button>
   );
 
-  const clearFilters = () => { setFilterReps([]); setFilterAreas([]); setFilterStatus("all"); };
+  const clearFilters = () => { setFilterReps([]); setFilterAreas([]); };
 
   return (
     <Card>
@@ -258,7 +251,7 @@ export default function AdminCustomers() {
             </PopoverTrigger>
             <PopoverContent className="w-72 space-y-3" align="start">
               {/* Active filter badges */}
-              {(filterReps.length > 0 || filterAreas.length > 0 || filterStatus !== "all") && (
+              {(filterReps.length > 0 || filterAreas.length > 0) && (
                 <div className="flex flex-wrap gap-1">
                   {filterReps.map((r) => (
                     <Badge key={r} variant="secondary" className="text-xs gap-1">
@@ -272,12 +265,6 @@ export default function AdminCustomers() {
                       <button onClick={() => setFilterAreas(filterAreas.filter((x) => x !== a))} className="ml-0.5 hover:text-destructive">×</button>
                     </Badge>
                   ))}
-                  {filterStatus !== "all" && (
-                    <Badge variant="secondary" className="text-xs gap-1">
-                      {filterStatus === "active" ? "Active" : "Inactive"}
-                      <button onClick={() => setFilterStatus("all")} className="ml-0.5 hover:text-destructive">×</button>
-                    </Badge>
-                  )}
                 </div>
               )}
 
@@ -321,19 +308,6 @@ export default function AdminCustomers() {
                 </div>
               </div>
 
-              {/* Status single-select */}
-              <div className="space-y-1">
-                <Label className="text-xs font-medium">Status</Label>
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
-                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
               {activeFilterCount > 0 && (
                 <Button variant="ghost" size="sm" className="w-full" onClick={clearFilters}>Clear filters</Button>
               )}
@@ -348,7 +322,6 @@ export default function AdminCustomers() {
                 <TableHead>Acc #</TableHead>
                 <TableHead><SortButton label="Area" sortId="area" /></TableHead>
                 <TableHead><SortButton label="Rep" sortId="rep" /></TableHead>
-                <TableHead>Status</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -366,11 +339,8 @@ export default function AdminCustomers() {
                   <TableCell className="text-muted-foreground">{c.account_number || "—"}</TableCell>
                   <TableCell>{c.area || "—"}</TableCell>
                   <TableCell className="text-muted-foreground">{customerRepMap[c.id] || "Unassigned"}</TableCell>
-                  
-                  <TableCell><Badge variant={c.is_active ? "default" : "secondary"}>{c.is_active ? "Active" : "Inactive"}</Badge></TableCell>
                   <TableCell className="text-right space-x-1">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="sm" onClick={() => toggleActive(c)}>{c.is_active ? "Deactivate" : "Reactivate"}</Button>
                     <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(c)} className="text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
                   </TableCell>
                 </TableRow>
