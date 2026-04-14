@@ -16,6 +16,11 @@ const LOGO_BASE64 = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAIBAQEBAQIBAQECAgICAgQDAgI
 
 // ── Formatting helpers ───────────────────────────────────────────────────────
 
+const formatAmount = (value: number | null | undefined): string => {
+  if (value == null) return '';
+  return value.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 function formatTime12h(time: string | null) {
   if (!time) return "";
   const [h, m] = time.split(":").map(Number);
@@ -580,7 +585,7 @@ export default function AdminExports() {
     const rightValues = [
       formatDuration(totalProductiveMins),
       String(totalOrderQty),
-      totalOrderAmount.toFixed(2),
+      formatAmount(totalOrderAmount),
       String(skippedCount),
     ];
 
@@ -658,7 +663,7 @@ export default function AdminExports() {
         dur > 0 ? formatDuration(dur) : "",
         v.order_number || "",
         v.order_quantity != null ? String(v.order_quantity) : "",
-        v.order_amount   != null ? Number(v.order_amount).toFixed(2) : "",
+        v.order_amount   != null ? formatAmount(Number(v.order_amount)) : "",
         isSkipped ? `[SKIPPED] ${v.notes || ""}` : (v.notes || ""),
       ];
       (row as any).__skipped = isSkipped;
@@ -669,7 +674,7 @@ export default function AdminExports() {
       startY: tableStartY,
       head: [["#", "Account #", "Customer", "Area", "Arrival", "Departure", "Duration", "Order No.", "Qty", "Amount (R)", "Notes"]],
       body: bodyRows,
-      foot: [["Tot", "", "", "", "", "", formatDuration(totalProductiveMins), "", String(totalOrderQty), totalOrderAmount.toFixed(2), ""]],
+      foot: [["Tot", "", "", "", "", "", formatDuration(totalProductiveMins), "", String(totalOrderQty), formatAmount(totalOrderAmount), ""]],
       theme: "grid",
       styles: {
         font: "helvetica",
