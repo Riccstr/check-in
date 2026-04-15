@@ -38,6 +38,23 @@ async function syncPendingScheduleItemUpdates(): Promise<{ synced: number; error
         await updateScheduleItemUpdateSyncStatus(update.schedule_item_id, "error", error.message);
         errors++;
       } else {
+        // If this update carries a visitId it means the visit row was already INSERTed at
+        // arrival (online) and we now need to PATCH it with the checkout fields.
+        if (update.visitId) {
+          try {
+            await supabase.from("visits").update({
+              leaving_time: update.payload.leaving_time,
+              duration_minutes: update.payload.duration_minutes,
+              notes: update.payload.notes,
+              status: update.payload.status,
+              ...(update.payload.order_number  !== undefined ? { order_number:  update.payload.order_number  } : {}),
+              ...(update.payload.order_quantity !== undefined ? { order_quantity: update.payload.order_quantity } : {}),
+              ...(update.payload.order_amount  !== undefined ? { order_amount:  update.payload.order_amount  } : {}),
+            } as any).eq("id", update.visitId);
+          } catch (patchErr) {
+            console.warn("[Sync] Failed to patch visit on reconnect:", patchErr);
+          }
+        }
         await updateScheduleItemUpdateSyncStatus(update.schedule_item_id, "synced");
         synced++;
       }

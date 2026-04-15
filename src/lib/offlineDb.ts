@@ -32,12 +32,17 @@ export interface OfflineScheduleItemUpdate {
   rep_id: string;
   schedule_date: string;
   customer_id: string;
+  /** When set, the sync engine PATCHes this visits row by id instead of only updating schedule_items. */
+  visitId?: string | null;
   payload: {
     arrival_time: string | null;
     leaving_time: string | null;
     duration_minutes: number | null;
     notes: string | null;
     status: string;
+    order_number?: string | null;
+    order_quantity?: number | null;
+    order_amount?: number | null;
   };
   created_at_local: string;
   sync_status: "pending" | "synced" | "error";
@@ -309,6 +314,10 @@ export interface ActiveCardState {
   scheduleItemId: string;
   arrivalTime: string;
   notes: string;
+  /** Supabase visits.id created at online arrival. Used for PATCH at checkout. */
+  visitId?: string | null;
+  /** UUID generated at arrival for idempotent upsert. */
+  clientGeneratedId?: string | null;
 }
 
 export async function saveActiveCard(data: ActiveCardState): Promise<void> {
@@ -320,7 +329,13 @@ export async function getActiveCard(): Promise<ActiveCardState | null> {
   const db = await getDb();
   const entry = await db.get("active_card_state", "current");
   if (!entry) return null;
-  return { scheduleItemId: entry.scheduleItemId, arrivalTime: entry.arrivalTime, notes: entry.notes };
+  return {
+    scheduleItemId: entry.scheduleItemId,
+    arrivalTime: entry.arrivalTime,
+    notes: entry.notes,
+    visitId: entry.visitId ?? null,
+    clientGeneratedId: entry.clientGeneratedId ?? null,
+  };
 }
 
 export async function clearActiveCard(): Promise<void> {
