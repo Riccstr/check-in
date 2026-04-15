@@ -1108,8 +1108,17 @@ export default function DailySchedule() {
   // accordion state
   const [expandedActiveId,    setExpandedActiveId]    = useState<string | null>(null);
   const expandedActiveIdRef = useRef<string | null>(null);
+  const itemsRef            = useRef<any[]>([]);
   const [openCompletedId,     setOpenCompletedId]     = useState<string | null>(null);
   const [activeTab,           setActiveTab]           = useState<"active" | "done">("active");
+
+  // unscheduled visits (Done tab)
+  const [unscheduledVisits,           setUnscheduledVisits]           = useState<any[]>([]);
+  const [unscheduledEditingId,        setUnscheduledEditingId]        = useState<string | null>(null);
+  const [unscheduledOrderNumber,      setUnscheduledOrderNumber]      = useState("");
+  const [unscheduledOrderQty,         setUnscheduledOrderQty]         = useState("");
+  const [unscheduledOrderAmount,      setUnscheduledOrderAmount]      = useState("");
+  const [unscheduledActionInProgress, setUnscheduledActionInProgress] = useState(false);
 
   // in-progress visit recovery banner
   const [recoveryItemId,       setRecoveryItemId]       = useState<string | null>(null);
@@ -1156,10 +1165,13 @@ export default function DailySchedule() {
     setExpandedActiveId(target?.id ?? null);
   }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // keep ref in sync so realtime callbacks can read current value without stale closure
+  // keep refs in sync so realtime callbacks can read current values without stale closures
   useEffect(() => {
     expandedActiveIdRef.current = expandedActiveId;
   }, [expandedActiveId]);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
 
   // ─── data (preserved verbatim) ─────────────────────────────────────────────
 
@@ -1238,6 +1250,21 @@ export default function DailySchedule() {
     return () => { supabase.removeChannel(channel); };
   }, [repId, scheduleDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Realtime subscription for visits table — refreshes unscheduled visits on INSERT/UPDATE.
+  // Uses the same expandedActiveIdRef guard as the other subscriptions.
+  useEffect(() => {
+    if (!repId) return;
+    const channel = supabase
+      .channel(`visits-unscheduled-${repId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "visits", filter: `rep_id=eq.${repId}` }, () => {
+        if (!expandedActiveIdRef.current) {
+          fetchUnscheduledVisits();
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [repId, scheduleDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const fetchSchedule = async () => {
     if (!repId) return;
     setLoading(true);
@@ -1303,6 +1330,39 @@ export default function DailySchedule() {
       setLoading(false);
     }
   };
+
+  // ─── unscheduled visits ───────────────────────────────────────────────────
+  // Fetches visits for this rep/date that are NOT linked to any schedule_item.
+  // Uses itemsRef (not items) so the function stays stable for repId/scheduleDate
+  // and can safely be called from the realtime subscription without stale closure.
+  const fetchUnscheduledVisits = useCallback(async () => {
+    if (!repId) return;
+    try {
+      const linkedVisitIds = itemsRef.current
+        .map((i: any) => i.visit_id)
+        .filter(Boolean) as string[];
+
+      let query = supabase
+        .from("visits")
+        .select("*, customers(customer_name)")
+        .eq("rep_id", repId)
+        .eq("visit_date", scheduleDate);
+
+      if (linkedVisitIds.length > 0) {
+        query = (query as any).not("id", "in", `(${linkedVisitIds.join(",")})`);
+      }
+
+      const { data } = await query;
+      if (data) setUnscheduledVisits(data);
+    } catch {
+      // network error — keep existing state
+    }
+  }, [repId, scheduleDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-fetch unscheduled visits whenever scheduled items change (a new visit_id may appear)
+  useEffect(() => {
+    fetchUnscheduledVisits();
+  }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── stale template self-heal ──────────────────────────────────────────────
   // Runs once per schedule row after the initial fetch. Detects a weekly_template_id
@@ -1716,7 +1776,7 @@ export default function DailySchedule() {
             >
               {tab === "active"
                 ? `Active${activeItems.length > 0 ? ` (${activeItems.length})` : ""}`
-                : `Done${completedItems.length > 0 ? ` (${completedItems.length})` : ""}`}
+                : `Done${completedItems.length + unscheduledVisits.length > 0 ? ` (${completedItems.length + unscheduledVisits.length})` : ""}`}
             </button>
           ))}
         </div>
@@ -1803,24 +1863,220 @@ export default function DailySchedule() {
             ))
           )
         ) : (
-          completedItems.length === 0 ? (
+          completedItems.length === 0 && unscheduledVisits.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-2" style={{ color: C.textMuted }}>
               <p className="text-sm">No completed visits yet</p>
             </div>
           ) : (
-            completedItems.map((item, i) => (
-              <ScheduleCard
-                key={item.id}
-                item={item}
-                repId={repId!}
-                scheduleDate={scheduleDate}
-                onRefresh={fetchSchedule}
-                onLocalUpdate={handleLocalUpdate}
-                isExpanded={openCompletedId === item.id}
-                onToggle={() => setOpenCompletedId((prev) => (prev === item.id ? null : item.id))}
-                index={i}
-              />
-            ))
+            <>
+              {completedItems.map((item, i) => (
+                <ScheduleCard
+                  key={item.id}
+                  item={item}
+                  repId={repId!}
+                  scheduleDate={scheduleDate}
+                  onRefresh={fetchSchedule}
+                  onLocalUpdate={handleLocalUpdate}
+                  isExpanded={openCompletedId === item.id}
+                  onToggle={() => setOpenCompletedId((prev) => (prev === item.id ? null : item.id))}
+                  index={i}
+                />
+              ))}
+
+              {unscheduledVisits.map((visit) => {
+                const isEditing = unscheduledEditingId === visit.id;
+                const customerName = visit.customers?.customer_name ?? "Unknown";
+                return (
+                  <div
+                    key={visit.id}
+                    className="rounded-2xl overflow-hidden"
+                    style={{ background: C.card, border: `1.5px solid ${C.greenLight}` }}
+                  >
+                    {/* header row */}
+                    <div className="w-full flex items-center gap-3 px-4 py-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate font-syne" style={{ color: C.text }}>{customerName}</p>
+                      </div>
+                      <span
+                        className="text-[11px] font-semibold px-2 py-0.5 rounded-full font-syne shrink-0"
+                        style={{ background: C.orangeBg, color: C.orange }}
+                      >
+                        Unscheduled
+                      </span>
+                    </div>
+
+                    {/* details body */}
+                    <div className="px-4 pb-4 space-y-3" style={{ borderTop: `1px solid ${C.border}` }}>
+                      <div className="pt-3">
+                        <div className="flex gap-3 items-start">
+                          <div className="flex-1 space-y-1.5">
+
+                            {/* times */}
+                            {visit.arrival_time && visit.leaving_time && (
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>In:</span>
+                                  <span className="text-sm font-medium" style={{ color: C.text }}>{visit.arrival_time?.slice(0, 5)}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Out:</span>
+                                  <span className="text-sm font-medium" style={{ color: C.text }}>{visit.leaving_time?.slice(0, 5)}</span>
+                                </div>
+                                {visit.duration_minutes > 0 && (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Dur:</span>
+                                    <span className="text-sm font-medium" style={{ color: C.text }}>{visit.duration_minutes}m</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* order details */}
+                            {(visit.order_number || visit.order_quantity != null || visit.order_amount != null) && (
+                              <div className="flex items-center gap-3 flex-wrap">
+                                {visit.order_number && (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Order:</span>
+                                    <span className="text-sm" style={{ color: C.text }}>{visit.order_number}</span>
+                                  </div>
+                                )}
+                                {visit.order_quantity != null && (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Qty:</span>
+                                    <span className="text-sm" style={{ color: C.text }}>{visit.order_quantity}</span>
+                                  </div>
+                                )}
+                                {visit.order_amount != null && (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Amt:</span>
+                                    <span className="text-sm" style={{ color: C.text }}>R {Number(visit.order_amount).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* notes */}
+                            {visit.notes && (
+                              <p className="text-xs italic" style={{ color: C.textMuted }}>"{visit.notes}"</p>
+                            )}
+
+                            {/* Edit Order button / inline form */}
+                            {!isEditing && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setUnscheduledOrderNumber(visit.order_number || "");
+                                  setUnscheduledOrderQty(visit.order_quantity != null ? String(visit.order_quantity) : "");
+                                  setUnscheduledOrderAmount(visit.order_amount != null ? String(visit.order_amount) : "");
+                                  setUnscheduledEditingId(visit.id);
+                                }}
+                                className="text-xs font-medium mt-2 px-3 py-1.5 rounded-lg"
+                                style={{ color: C.green, border: `1px solid ${C.border}`, background: C.bg }}
+                              >
+                                <Pencil size={11} className="inline mr-1" /> Edit Order
+                              </button>
+                            )}
+
+                            {isEditing && (
+                              <div className="mt-2 space-y-2">
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div>
+                                    <label className="text-[10px] font-medium" style={{ color: C.textMuted }}>Order No.</label>
+                                    <Input
+                                      value={unscheduledOrderNumber}
+                                      onChange={(e) => setUnscheduledOrderNumber(e.target.value)}
+                                      onBlur={resetMobileZoom}
+                                      className="h-8 text-sm"
+                                      style={{ borderColor: C.border, background: C.bg }}
+                                      placeholder="Order #"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] font-medium" style={{ color: C.textMuted }}>Qty</label>
+                                    <Input
+                                      type="number" min="0" step="1"
+                                      value={unscheduledOrderQty}
+                                      onChange={(e) => setUnscheduledOrderQty(e.target.value)}
+                                      onBlur={resetMobileZoom}
+                                      className="h-8 text-sm"
+                                      style={{ borderColor: C.border, background: C.bg }}
+                                      placeholder="0"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] font-medium" style={{ color: C.textMuted }}>Amount</label>
+                                    <Input
+                                      type="number" min="0" step="0.01"
+                                      value={unscheduledOrderAmount}
+                                      onChange={(e) => setUnscheduledOrderAmount(e.target.value)}
+                                      onBlur={resetMobileZoom}
+                                      className="h-8 text-sm"
+                                      style={{ borderColor: C.border, background: C.bg }}
+                                      placeholder="0.00"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setUnscheduledEditingId(null)}
+                                    className="text-xs px-3 py-1.5 rounded-lg"
+                                    style={{ color: C.textMuted, border: `1px solid ${C.border}` }}
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={unscheduledActionInProgress}
+                                    onClick={async () => {
+                                      setUnscheduledActionInProgress(true);
+                                      try {
+                                        const { error } = await supabase.from("visits").update({
+                                          order_number: unscheduledOrderNumber || null,
+                                          order_quantity: unscheduledOrderQty !== "" ? Number(unscheduledOrderQty) : null,
+                                          order_amount: unscheduledOrderAmount !== "" ? Number(unscheduledOrderAmount) : null,
+                                        } as any).eq("id", visit.id);
+                                        if (error) {
+                                          toast.error(error.message);
+                                        } else {
+                                          toast.success("Order updated");
+                                          setUnscheduledEditingId(null);
+                                          await fetchUnscheduledVisits();
+                                        }
+                                      } catch {
+                                        toast.error("Failed to update");
+                                      } finally {
+                                        setUnscheduledActionInProgress(false);
+                                      }
+                                    }}
+                                    className="text-xs px-3 py-1.5 rounded-lg font-medium"
+                                    style={{ background: C.green, color: "#fff" }}
+                                  >
+                                    {unscheduledActionInProgress ? "Saving..." : "Update"}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* photo thumbnail */}
+                          {visit.photo_url && (
+                            <div className="shrink-0">
+                              <img
+                                src={visit.photo_url}
+                                alt="Visit photo"
+                                className="w-16 h-16 object-cover rounded-xl"
+                                style={{ border: `1px solid ${C.border}` }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
           )
         )}
 
