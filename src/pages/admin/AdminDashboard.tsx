@@ -313,7 +313,8 @@ export default function AdminDashboard() {
         supabase
           .from("visits")
           .select("id, rep_id, customer_id, order_number, order_amount, status, created_at")
-          .eq("visit_date", todayStr),
+          .eq("visit_date", todayStr)
+          .neq("status", "in_progress"),
       ]);
 
       if (schedulesRes.error) throw schedulesRes.error;

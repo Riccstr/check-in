@@ -1503,7 +1503,8 @@ export default function DailySchedule() {
         .from("visits")
         .select("*, customers(customer_name)")
         .eq("rep_id", repId)
-        .eq("visit_date", scheduleDate);
+        .eq("visit_date", scheduleDate)
+        .neq("status", "in_progress");
 
       if (linkedVisitIds.length > 0) {
         query = (query as any).not("id", "in", `(${linkedVisitIds.join(",")})`);

@@ -72,6 +72,7 @@ async function buildReportData(
     .from("visits")
     .select("*, reps(rep_name), customers(customer_name, area, account_number)")
     .eq("rep_id", repId)
+    .neq("status", "in_progress")
     .order("visit_date", { ascending: true })
     .order("arrival_time", { ascending: true });
   if (dateFrom) q = q.gte("visit_date", dateFrom);
@@ -240,6 +241,7 @@ export default function AdminExports() {
     let q = supabase
       .from("visits")
       .select("*, reps(rep_name), customers(customer_name, account_number, area)")
+      .neq("status", "in_progress")
       .order("visit_date", { ascending: false })
       .order("arrival_time", { ascending: true });
     if (repFilter !== "all") q = q.eq("rep_id", repFilter);
