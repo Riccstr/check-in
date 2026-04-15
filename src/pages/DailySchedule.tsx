@@ -424,6 +424,27 @@ function ScheduleCard({
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Silent pre-fill from IndexedDB when this card is expanded.
+  // Runs whenever isExpanded flips to true. Only fills fields that the server
+  // hasn't populated yet — never overwrites a value that came from the server.
+  useEffect(() => {
+    if (!isExpanded) return;
+    (async () => {
+      try {
+        const card = await getActiveCard();
+        if (!card || card.scheduleItemId !== item.id) return;
+        if (!item.arrival_time && card.arrivalTime) {
+          setLocalArrival(card.arrivalTime);
+        }
+        if (!item.notes && card.notes) {
+          setLocalNotes(card.notes);
+        }
+      } catch {
+        // IDB unavailable — do nothing silently
+      }
+    })();
+  }, [isExpanded]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-persist notes to IndexedDB while a visit is in-progress
   useEffect(() => {
     if (!item.arrival_time || item.leaving_time) return;
