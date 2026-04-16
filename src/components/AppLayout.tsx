@@ -3,7 +3,6 @@ import { Navigate, Outlet, Link, useLocation } from "react-router-dom";
 import {
   LogOut,
   Users,
-  UserCog,
   Eye,
   Download,
   Menu,
@@ -119,7 +118,6 @@ export default function AppLayout() {
   const adminLinks = [
     { to: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { to: "/admin/customers", label: "Customers", icon: Users },
-    { to: "/admin/reps", label: "Reps", icon: UserCog },
     { to: "/admin/schedules", label: "Schedules", icon: CalendarDays },
     { to: "/admin/visits", label: "Visits", icon: Eye },
     { to: "/admin/reports", label: "Reports", icon: Download },

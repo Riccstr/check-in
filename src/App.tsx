@@ -14,7 +14,6 @@ import MyVisits from "@/pages/MyVisits";
 import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminCustomers from "@/pages/admin/AdminCustomers";
 import CustomerDashboard from "@/pages/admin/CustomerDashboard";
-import AdminReps from "@/pages/admin/AdminReps";
 import AdminSchedules from "@/pages/admin/AdminSchedules";
 import AdminVisits from "@/pages/admin/AdminVisits";
 import AdminExports from "@/pages/admin/AdminExports";
@@ -100,7 +99,6 @@ const App = () => (
                 <Route path="/admin/dashboard" element={<AdminDashboard />} />
                 <Route path="/admin/customers" element={<AdminCustomers />} />
                 <Route path="/admin/customer/:customerId" element={<CustomerDashboard />} />
-                <Route path="/admin/reps" element={<AdminReps />} />
                 <Route path="/admin/schedules" element={<AdminSchedules />} />
                 <Route path="/admin/visits" element={<AdminVisits />} />
                 <Route path="/admin/reports" element={<AdminExports />} />
