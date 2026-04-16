@@ -292,9 +292,26 @@ export async function updateCachedScheduleItem(
 
 // === Pending Photos ===
 
-export async function savePendingPhoto(scheduleItemId: string, base64: string): Promise<void> {
+export interface PendingPhoto {
+  scheduleItemId: string;
+  base64: string;
+  visitId: string | null;
+  clientGeneratedId: string | null;
+}
+
+export async function savePendingPhoto(
+  scheduleItemId: string,
+  base64: string,
+  visitId: string | null,
+  clientGeneratedId: string | null
+): Promise<void> {
   const db = await getDb();
-  await db.put("pending_photos", { scheduleItemId, base64 });
+  await db.put("pending_photos", { scheduleItemId, base64, visitId, clientGeneratedId });
+}
+
+export async function getAllPendingPhotos(): Promise<PendingPhoto[]> {
+  const db = await getDb();
+  return db.getAll("pending_photos");
 }
 
 export async function getPendingPhoto(scheduleItemId: string): Promise<string | null> {

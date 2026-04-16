@@ -28,6 +28,7 @@ import {
   savePendingPhoto,
   getPendingPhoto,
   clearPendingPhoto,
+  getAllPendingPhotos,
   saveActiveCard,
   getActiveCard,
   clearActiveCard,
@@ -543,7 +544,7 @@ function ScheduleCard({
       setPhotoBlob(compressed);
       setPhotoPreview(URL.createObjectURL(compressed));
       // Persist immediately so a background/resume cycle cannot lose the photo
-      blobToBase64(compressed).then((b64) => savePendingPhoto(item.id, b64)).catch(() => {});
+      blobToBase64(compressed).then((b64) => savePendingPhoto(item.id, b64, null, null)).catch(() => {});
     } catch {
       toast.error("Failed to process photo");
     }
@@ -556,17 +557,29 @@ function ScheduleCard({
     clearPendingPhoto(item.id).catch(() => {});
   };
 
-  const uploadPhotoOnline = async (visitId: string): Promise<string | null> => {
+  const uploadPhotoOnline = async (visitId: string, clientGeneratedId: string | null = null): Promise<string | null> => {
     if (!photoBlob) return null;
+    const queuePhoto = async () => {
+      try {
+        const b64 = await blobToBase64(photoBlob);
+        await savePendingPhoto(item.id, b64, visitId, clientGeneratedId);
+        toast.warning("Photo saved for upload — will retry when connection improves");
+      } catch { /* IDB write failure must not block checkout */ }
+    };
     try {
       const path = `${repId}/${visitId}.jpg`;
       const { error } = await supabase.storage
         .from("visit-photos")
         .upload(path, photoBlob, { contentType: "image/jpeg", upsert: true });
-      if (error) { console.warn("[Photo] Upload failed:", error.message); return null; }
+      if (error) {
+        console.warn("[Photo] Upload failed:", error.message);
+        await queuePhoto();
+        return null;
+      }
       const { data: urlData } = supabase.storage.from("visit-photos").getPublicUrl(path);
       return urlData?.publicUrl || null;
     } catch {
+      await queuePhoto();
       return null;
     }
   };
@@ -647,7 +660,7 @@ function ScheduleCard({
 
         if (patchVisitId) {
           // ── PATCH path: visit was already inserted at arrival ──
-          const photoUrl = await uploadPhotoOnline(patchVisitId);
+          const photoUrl = await uploadPhotoOnline(patchVisitId, clientGenIdRef.current);
           const { error: patchErr } = await supabase.from("visits").update({
             ...checkoutData,
             ...(photoUrl ? { photo_url: photoUrl } : {}),
@@ -669,7 +682,7 @@ function ScheduleCard({
           // ── Legacy update: visit_id already linked on schedule_item ──
           const { error: updateErr } = await supabase.from("visits").update(checkoutData).eq("id", item.visit_id);
           if (updateErr) console.error("[Schedule] visit update error:", updateErr.code, updateErr.message, updateErr.details, updateErr.hint);
-          const photoUrl = await uploadPhotoOnline(item.visit_id);
+          const photoUrl = await uploadPhotoOnline(item.visit_id, null);
           if (photoUrl)
             await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", item.visit_id);
         } else {
@@ -685,7 +698,7 @@ function ScheduleCard({
           if (insertErr) console.error("[Schedule] visit insert FAILED:", insertErr.code, insertErr.message, insertErr.details, insertErr.hint);
           if (visit) {
             await supabase.from("schedule_items").update({ visit_id: visit.id }).eq("id", item.id);
-            const photoUrl = await uploadPhotoOnline(visit.id);
+            const photoUrl = await uploadPhotoOnline(visit.id, clientGenIdRef.current);
             if (photoUrl)
               await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", visit.id);
           }
@@ -807,7 +820,7 @@ function ScheduleCard({
 
           // Upload photo if the rep had already captured one before tapping the clock
           if (photoBlob) {
-            const photoUrl = await uploadPhotoOnline(data.id);
+            const photoUrl = await uploadPhotoOnline(data.id, cgid);
             if (photoUrl)
               await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", data.id);
           }
@@ -1313,6 +1326,53 @@ export default function DailySchedule() {
     window.addEventListener("online",  onOnline);
     window.addEventListener("offline", onOffline);
     return () => { window.removeEventListener("online", onOnline); window.removeEventListener("offline", onOffline); };
+  }, []);
+
+  // pending photo retry handler
+  useEffect(() => {
+    const retryPendingPhotos = async () => {
+      try {
+        const pending = await getAllPendingPhotos();
+        for (const p of pending) {
+          try {
+            const base64 = p.base64;
+            const byteString = atob(base64.split(",")[1] ?? base64);
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+            const blob = new Blob([ab], { type: "image/jpeg" });
+
+            const fileName = `${p.clientGeneratedId || p.scheduleItemId}.jpg`;
+            const { error } = await supabase.storage
+              .from("visit-photos")
+              .upload(fileName, blob, { upsert: true });
+            if (error) continue;
+
+            const { data: urlData } = supabase.storage.from("visit-photos").getPublicUrl(fileName);
+            const publicUrl = urlData?.publicUrl;
+            if (!publicUrl) continue;
+
+            if (p.visitId) {
+              await supabase.from("visits").update({ photo_url: publicUrl }).eq("id", p.visitId);
+            } else if (p.clientGeneratedId) {
+              await supabase.from("visits").update({ photo_url: publicUrl }).eq("client_generated_id", p.clientGeneratedId);
+            }
+
+            await clearPendingPhoto(p.scheduleItemId);
+          } catch { /* leave this photo in the queue, try next */ }
+        }
+      } catch { /* never throw, never block UI */ }
+    };
+
+    const onOnlineRetry = () => retryPendingPhotos();
+    const onVisibilityRetry = () => { if (document.visibilityState === "visible") retryPendingPhotos(); };
+
+    window.addEventListener("online", onOnlineRetry);
+    document.addEventListener("visibilitychange", onVisibilityRetry);
+    return () => {
+      window.removeEventListener("online", onOnlineRetry);
+      document.removeEventListener("visibilitychange", onVisibilityRetry);
+    };
   }, []);
 
   // derived item lists
