@@ -166,7 +166,7 @@ export default function AdminVisits() {
                   <TableHead>Customer</TableHead>
                   <TableHead className="w-28">Time</TableHead>
                   <TableHead><Camera className="h-3.5 w-3.5" /></TableHead>
-                  <TableHead>Order No.</TableHead>
+                  <TableHead className="min-w-[100px]">Order No.</TableHead>
                   <TableHead>Qty</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Notes</TableHead>
@@ -193,9 +193,9 @@ export default function AdminVisits() {
                       </TableCell>
                       <TableCell>{renderTime(v)}</TableCell>
                       <TableCell>{renderPhoto(v)}</TableCell>
-                      <TableCell>{v.order_number || "—"}</TableCell>
+                      <TableCell className="whitespace-nowrap">{v.order_number || "—"}</TableCell>
                       <TableCell>{v.order_quantity != null ? v.order_quantity : "—"}</TableCell>
-                      <TableCell>{v.order_amount != null ? v.order_amount : "—"}</TableCell>
+                      <TableCell>{v.order_amount != null ? Number(v.order_amount).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(",", ".") : "—"}</TableCell>
                       <TableCell className="max-w-[150px]">
                         {v.notes ? (
                           <Tooltip>
