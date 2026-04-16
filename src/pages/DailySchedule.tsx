@@ -1284,8 +1284,10 @@ export default function DailySchedule() {
   // stale-template self-heal — tracks the last schedule.id that was validated so it only runs once per schedule
   const validationRanRef = useRef<string | null>(null);
 
+  // bottom card expansion — mutually exclusive: "unscheduled" | "offroute" | null
+  const [expandedBottomCard, setExpandedBottomCard] = useState<"unscheduled" | "offroute" | null>(null);
+
   // ad-hoc visit state
-  const [adHocOpen,        setAdHocOpen]        = useState(false);
   const [adHocCustomers,   setAdHocCustomers]   = useState<any[]>([]);
   const [adHocCustomerId,  setAdHocCustomerId]  = useState("");
   const [adHocArrival,     setAdHocArrival]     = useState("");
@@ -1295,6 +1297,14 @@ export default function DailySchedule() {
   const [adHocOrderQty,    setAdHocOrderQty]    = useState("");
   const [adHocOrderAmount, setAdHocOrderAmount] = useState("");
   const [adHocSubmitting,  setAdHocSubmitting]  = useState(false);
+
+  // off-route order state
+  const [offRouteCustomerId,  setOffRouteCustomerId]  = useState("");
+  const [offRouteOrderNumber, setOffRouteOrderNumber] = useState("");
+  const [offRouteOrderQty,    setOffRouteOrderQty]    = useState("");
+  const [offRouteOrderAmount, setOffRouteOrderAmount] = useState("");
+  const [offRouteNotes,       setOffRouteNotes]       = useState("");
+  const [offRouteSubmitting,  setOffRouteSubmitting]  = useState(false);
 
   // online/offline listener
   useEffect(() => {
@@ -1666,9 +1676,83 @@ export default function DailySchedule() {
   };
 
   const resetAdHoc = () => {
-    setAdHocOpen(false);
+    setExpandedBottomCard(null);
     setAdHocCustomerId(""); setAdHocArrival(""); setAdHocLeaving(""); setAdHocNotes("");
     setAdHocOrderNumber(""); setAdHocOrderQty(""); setAdHocOrderAmount("");
+  };
+
+  const resetOffRoute = () => {
+    setExpandedBottomCard(null);
+    setOffRouteCustomerId(""); setOffRouteOrderNumber(""); setOffRouteOrderQty("");
+    setOffRouteOrderAmount(""); setOffRouteNotes("");
+  };
+
+  const submitOffRoute = async () => {
+    if (!repId || !offRouteCustomerId) { toast.error("Please select a customer"); return; }
+    const hasOrder = offRouteOrderNumber || offRouteOrderQty !== "" || offRouteOrderAmount !== "";
+    if (!hasOrder) { toast.error("Please fill in at least one order field"); return; }
+    setOffRouteSubmitting(true);
+    const clientId = uuidv4();
+    const customerName = adHocCustomers.find((c) => c.id === offRouteCustomerId)?.customer_name;
+    const payload: any = {
+      rep_id: repId,
+      customer_id: offRouteCustomerId,
+      visit_date: scheduleDate,
+      status: "off_route",
+      order_number: offRouteOrderNumber || null,
+      order_quantity: offRouteOrderQty !== "" ? Number(offRouteOrderQty) : null,
+      order_amount: offRouteOrderAmount !== "" ? Number(offRouteOrderAmount) : null,
+      notes: offRouteNotes || null,
+      arrival_time: null,
+      leaving_time: null,
+      photo_url: null,
+      client_generated_id: clientId,
+    };
+    const saveOffline = async () => {
+      await addOfflineVisit({
+        client_generated_id: clientId,
+        payload,
+        created_at_local: new Date().toISOString(),
+        sync_status: "pending",
+        last_sync_attempt: null,
+        error_message: null,
+        customer_name: customerName,
+        photo_base64: null,
+      });
+    };
+    try {
+      if (navigator.onLine) {
+        const { error } = await supabase.from("visits").insert(payload);
+        if (error) {
+          if (isOfflineError(error)) {
+            await saveOffline();
+            toast.success("Saved offline. Will sync when online.");
+          } else {
+            toast.error(error.message);
+            setOffRouteSubmitting(false);
+            return;
+          }
+        } else {
+          toast.success("Off-route order logged");
+        }
+      } else {
+        await saveOffline();
+        toast.success("Saved offline. Will sync when online.");
+      }
+      resetOffRoute();
+      fetchUnscheduledVisits();
+    } catch (err: any) {
+      console.warn("[Schedule] Network error on off-route:", err?.message);
+      try {
+        await saveOffline();
+        toast.success("Saved offline. Will sync when online.");
+        resetOffRoute();
+      } catch {
+        toast.error("Failed to save. Please try again.");
+      }
+    } finally {
+      setOffRouteSubmitting(false);
+    }
   };
 
   // ─── end-of-day summary logic ───────────────────────────────────────────────
@@ -2044,6 +2128,7 @@ export default function DailySchedule() {
               {unscheduledVisits.map((visit) => {
                 const isEditing = unscheduledEditingId === visit.id;
                 const customerName = visit.customers?.customer_name ?? "Unknown";
+                const isOffRoute = visit.status === "off_route";
                 return (
                   <div
                     key={visit.id}
@@ -2055,12 +2140,21 @@ export default function DailySchedule() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold truncate font-syne" style={{ color: C.text }}>{customerName}</p>
                       </div>
-                      <span
-                        className="text-[11px] font-semibold px-2 py-0.5 rounded-full font-syne shrink-0"
-                        style={{ background: C.orangeBg, color: C.orange }}
-                      >
-                        Unscheduled
-                      </span>
+                      {isOffRoute ? (
+                        <span
+                          className="text-[11px] font-semibold px-2 py-0.5 rounded-full font-syne shrink-0"
+                          style={{ background: "#FFF3E0", color: "#B45309" }}
+                        >
+                          Off-Route Order
+                        </span>
+                      ) : (
+                        <span
+                          className="text-[11px] font-semibold px-2 py-0.5 rounded-full font-syne shrink-0"
+                          style={{ background: C.orangeBg, color: C.orange }}
+                        >
+                          Unscheduled
+                        </span>
+                      )}
                     </div>
 
                     {/* details body */}
@@ -2069,8 +2163,8 @@ export default function DailySchedule() {
                         <div className="flex gap-3 items-start">
                           <div className="flex-1 space-y-1.5">
 
-                            {/* times */}
-                            {visit.arrival_time && visit.leaving_time && (
+                            {/* times — hidden for off-route orders */}
+                            {!isOffRoute && visit.arrival_time && visit.leaving_time && (
                               <div className="flex items-center gap-3">
                                 <div className="flex items-center gap-1">
                                   <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>In:</span>
@@ -2217,8 +2311,8 @@ export default function DailySchedule() {
                             )}
                           </div>
 
-                          {/* photo thumbnail */}
-                          {visit.photo_url && (
+                          {/* photo thumbnail — hidden for off-route orders */}
+                          {!isOffRoute && visit.photo_url && (
                             <div className="shrink-0">
                               <img
                                 src={visit.photo_url}
@@ -2243,19 +2337,36 @@ export default function DailySchedule() {
           <EodSummaryModal stats={summaryStats} onClose={closeSummary} />
         )}
 
-        {/* ad-hoc visit section */}
+        {/* bottom action cards — side by side when collapsed, full-width when expanded */}
         {schedule && (
           <div className="pt-2">
-            {!adHocOpen ? (
-              <button
-                type="button"
-                onClick={() => setAdHocOpen(true)}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-medium"
-                style={{ background: C.card, border: `1.5px dashed ${C.border}`, color: C.textMuted }}
-              >
-                <Plus size={16} /> Log Unscheduled Visit
-              </button>
-            ) : (
+
+            {/* collapsed: two cards sitting side by side */}
+            {expandedBottomCard === null && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setExpandedBottomCard("unscheduled")}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-2xl text-sm font-medium min-w-0"
+                  style={{ background: C.card, border: `1.5px dashed ${C.border}`, color: C.textMuted }}
+                >
+                  <Plus size={15} className="shrink-0" />
+                  <span className="truncate">Unscheduled</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpandedBottomCard("offroute")}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-2xl text-sm font-medium min-w-0"
+                  style={{ background: C.card, border: `1.5px dashed ${C.border}`, color: C.textMuted }}
+                >
+                  <Plus size={15} className="shrink-0" />
+                  <span className="truncate">Off-Route Order</span>
+                </button>
+              </div>
+            )}
+
+            {/* expanded: unscheduled visit form */}
+            {expandedBottomCard === "unscheduled" && (
               <div className="rounded-2xl p-4 space-y-3" style={{ background: C.card, border: `1.5px solid ${C.border}` }}>
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold font-syne" style={{ color: C.text }}>Unscheduled Visit</p>
@@ -2346,6 +2457,75 @@ export default function DailySchedule() {
                   } : { background: C.green, color: "#fff" }}
                 >
                   Log Visit
+                </Button>
+              </div>
+            )}
+
+            {/* expanded: off-route order form */}
+            {expandedBottomCard === "offroute" && (
+              <div className="rounded-2xl p-4 space-y-3" style={{ background: C.card, border: `1.5px solid ${C.border}` }}>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold font-syne" style={{ color: C.text }}>Off-Route Order</p>
+                  <button type="button" onClick={resetOffRoute} style={{ color: C.textMuted }}><X size={16} /></button>
+                </div>
+
+                <div>
+                  <Label className="text-xs" style={{ color: C.textMuted }}>Customer</Label>
+                  <SearchableSelect
+                    options={[...adHocCustomers]
+                      .sort((a, b) => a.customer_name.localeCompare(b.customer_name))
+                      .map((c) => ({ value: c.id, label: c.customer_name }))}
+                    value={offRouteCustomerId}
+                    onValueChange={setOffRouteCustomerId}
+                    placeholder="Search customers..."
+                    searchPlaceholder="Search customers..."
+                    emptyMessage="No customers found"
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <Label className="text-xs" style={{ color: C.textMuted }}>Order No.</Label>
+                    <Input value={offRouteOrderNumber} onChange={(e) => setOffRouteOrderNumber(e.target.value)}
+                      onBlur={resetMobileZoom}
+                      className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="Order #" />
+                  </div>
+                  <div>
+                    <Label className="text-xs" style={{ color: C.textMuted }}>Qty</Label>
+                    <Input type="number" min="0" step="1" value={offRouteOrderQty} onChange={(e) => setOffRouteOrderQty(e.target.value)}
+                      onBlur={resetMobileZoom}
+                      className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0" />
+                  </div>
+                  <div>
+                    <Label className="text-xs" style={{ color: C.textMuted }}>Amount</Label>
+                    <Input type="number" min="0" step="0.01" value={offRouteOrderAmount} onChange={(e) => setOffRouteOrderAmount(e.target.value)}
+                      onBlur={resetMobileZoom}
+                      className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0.00" />
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs" style={{ color: C.textMuted }}>Notes</Label>
+                  <Textarea value={offRouteNotes} onChange={(e) => setOffRouteNotes(e.target.value)}
+                    onBlur={resetMobileZoom} rows={2}
+                    className="text-sm resize-none" style={{ borderColor: C.border, background: C.bg }} />
+                </div>
+
+                <Button
+                  onClick={submitOffRoute}
+                  disabled={offRouteSubmitting || !offRouteCustomerId}
+                  className="w-full h-10 font-syne font-semibold"
+                  style={offRouteSubmitting ? {
+                    background: `linear-gradient(90deg, ${C.green} 25%, ${C.greenMid} 50%, ${C.green} 75%)`,
+                    backgroundSize: "200% 100%",
+                    animationName: "btn-shimmer",
+                    animationDuration: "1.2s",
+                    animationIterationCount: "infinite",
+                    animationTimingFunction: "linear",
+                    color: "#fff",
+                  } : { background: C.green, color: "#fff" }}
+                >
+                  Log Order
                 </Button>
               </div>
             )}
