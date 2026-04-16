@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -108,10 +107,26 @@ export default function AdminVisits() {
         </button>
       );
     }
+    if (v.status === "off_route") {
+      return <Badge className="text-xs bg-amber-100 text-amber-800 border border-amber-200 hover:bg-amber-100">Off-Route</Badge>;
+    }
+    return <span className="text-muted-foreground">—</span>;
+  };
+
+  const renderTime = (v: any) => {
+    if (v.status === "skipped" || v.status === "off_route") return <span className="text-muted-foreground">—</span>;
+    const arr = v.arrival_time?.slice(0, 5);
+    const lev = v.leaving_time?.slice(0, 5);
+    if (arr && lev) {
+      const dur = v.duration_minutes != null ? ` (${v.duration_minutes} min)` : "";
+      return <span className="text-xs whitespace-nowrap">{arr} – {lev}{dur}</span>;
+    }
+    if (arr) return <span className="text-xs whitespace-nowrap">{arr} –</span>;
     return <span className="text-muted-foreground">—</span>;
   };
 
   return (
+    <div className="-mx-4">
     <Card>
       <CardHeader><CardTitle className="flex items-center gap-2"><Eye className="h-5 w-5 text-accent" /> All Visits</CardTitle></CardHeader>
       <CardContent>
@@ -143,17 +158,14 @@ export default function AdminVisits() {
         </div>
         {loading ? <p className="text-muted-foreground py-8 text-center">Loading...</p> : (
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="[&_td]:py-2">
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Rep</TableHead>
                   <TableHead>Customer</TableHead>
-                  <TableHead>Acc #</TableHead>
-                  <TableHead>Arrival</TableHead>
-                  <TableHead>Leaving</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead><Camera className="h-3.5 w-3.5 inline mr-1" />Photo</TableHead>
+                  <TableHead className="w-28">Time</TableHead>
+                  <TableHead><Camera className="h-3.5 w-3.5" /></TableHead>
                   <TableHead>Order No.</TableHead>
                   <TableHead>Qty</TableHead>
                   <TableHead>Amount</TableHead>
@@ -163,44 +175,44 @@ export default function AdminVisits() {
               </TableHeader>
               <TableBody>
                 {visits.map((v: any) => {
-                  const isSkipped  = v.status === "skipped";
-                  const isOffRoute = v.status === "off_route";
+                  const isSkipped = v.status === "skipped";
                   return (
-                   <TableRow key={v.id} className={isSkipped ? "bg-destructive/10" : ""}>
-                    <TableCell>{v.visit_date}</TableCell>
-                    <TableCell>{v.reps?.rep_name}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {v.customers?.customer_name}
-                        {isSkipped  && <Badge variant="destructive" className="text-xs">Skipped</Badge>}
-                        {isOffRoute && <Badge className="text-xs bg-amber-100 text-amber-800 border border-amber-200 hover:bg-amber-100">Off-Route Order</Badge>}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{v.customers?.account_number || "—"}</TableCell>
-                    <TableCell>{isSkipped ? "—" : isOffRoute ? "" : (v.arrival_time?.slice(0,5) ?? "")}</TableCell>
-                    <TableCell>{isSkipped ? "—" : isOffRoute ? "" : (v.leaving_time?.slice(0,5) ?? "")}</TableCell>
-                    <TableCell>{isSkipped || isOffRoute ? "—" : (v.duration_minutes != null ? `${v.duration_minutes} min` : "")}</TableCell>
-                    <TableCell>{renderPhoto(v)}</TableCell>
-                    <TableCell>{v.order_number || "—"}</TableCell>
-                    <TableCell>{v.order_quantity != null ? v.order_quantity : "—"}</TableCell>
-                    <TableCell>{v.order_amount != null ? v.order_amount : "—"}</TableCell>
-                    <TableCell className="max-w-[150px]">
-                      {v.notes ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="truncate block cursor-default">{v.notes}</span>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs whitespace-pre-wrap">{v.notes}</TooltipContent>
-                        </Tooltip>
-                      ) : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(v)}><Pencil className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => del(v.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                    <TableRow key={v.id} className={isSkipped ? "bg-destructive/10" : ""}>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{v.visit_date}</TableCell>
+                      <TableCell>{v.reps?.rep_name}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-2">
+                            {v.customers?.customer_name}
+                            {isSkipped && <Badge variant="destructive" className="text-xs">Skipped</Badge>}
+                          </div>
+                          {v.customers?.account_number && (
+                            <span className="text-xs text-muted-foreground">{v.customers.account_number}</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>{renderTime(v)}</TableCell>
+                      <TableCell>{renderPhoto(v)}</TableCell>
+                      <TableCell>{v.order_number || "—"}</TableCell>
+                      <TableCell>{v.order_quantity != null ? v.order_quantity : "—"}</TableCell>
+                      <TableCell>{v.order_amount != null ? v.order_amount : "—"}</TableCell>
+                      <TableCell className="max-w-[150px]">
+                        {v.notes ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="truncate block cursor-default">{v.notes}</span>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs whitespace-pre-wrap">{v.notes}</TooltipContent>
+                          </Tooltip>
+                        ) : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => openEdit(v)}><Pencil className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => del(v.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
               </TableBody>
@@ -252,5 +264,6 @@ export default function AdminVisits() {
         </DialogContent>
       </Dialog>
     </Card>
+    </div>
   );
 }
