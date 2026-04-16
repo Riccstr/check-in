@@ -41,7 +41,7 @@ export function stampImage(blob: Blob, label: string): Promise<Blob> {
       canvas.toBlob(
         (b) => { if (b) resolve(b); else reject(new Error("Stamp failed")); },
         "image/jpeg",
-        0.88
+        0.72
       );
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Image load failed")); };
@@ -55,8 +55,8 @@ export function stampImage(blob: Blob, label: string): Promise<Blob> {
  */
 export function compressImage(
   file: Blob,
-  maxDimension = 1200,
-  quality = 0.7
+  maxDimension = 1000,
+  quality = 0.65
 ): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
