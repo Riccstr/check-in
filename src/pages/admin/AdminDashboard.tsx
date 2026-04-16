@@ -33,6 +33,7 @@ interface VisitRow {
   order_amount: number | null;
   status: string | null;
   created_at: string;
+  customers: { customer_name: string } | null;
 }
 
 type RepStatus =
@@ -55,7 +56,7 @@ interface RepCardData {
 }
 
 interface ActivityEvent {
-  type: "checkin" | "checkout" | "skip";
+  type: "checkin" | "checkout" | "skip" | "offroute";
   repName: string;
   customerName: string;
   timeDisplay: string;
@@ -186,6 +187,8 @@ function ActivityRow({ event }: { event: ActivityEvent }) {
       ? "text-green-700"
       : event.type === "skip"
       ? "text-destructive"
+      : event.type === "offroute"
+      ? "text-amber-700"
       : "text-foreground";
 
   let line = "";
@@ -194,6 +197,8 @@ function ActivityRow({ event }: { event: ActivityEvent }) {
   } else if (event.type === "checkout") {
     const dur = event.duration != null ? ` (${event.duration}m)` : "";
     line = `${event.repName} checked out of ${event.customerName}${dur}`;
+  } else if (event.type === "offroute") {
+    line = `${event.repName} logged an off-route order at ${event.customerName}`;
   } else {
     const reason = event.notes ? ` — ${event.notes}` : "";
     line = `${event.repName} skipped ${event.customerName}${reason}`;
@@ -312,7 +317,7 @@ export default function AdminDashboard() {
 
         supabase
           .from("visits")
-          .select("id, rep_id, customer_id, order_number, order_amount, status, created_at")
+          .select("id, rep_id, customer_id, order_number, order_amount, status, created_at, customers(customer_name)")
           .eq("visit_date", todayStr)
           .neq("status", "in_progress"),
       ]);
@@ -365,8 +370,11 @@ export default function AdminDashboard() {
   const allItems = schedules.flatMap((s) => s.schedule_items);
 
   const stats = {
+    // Visit counts from schedule_items — off_route visits never produce schedule_items
+    // so they are already excluded; guard explicitly for safety.
     visited:    allItems.filter((i) => i.status === "visited").length,
     skipped:    allItems.filter((i) => i.status === "skipped").length,
+    // Orders and order value: include off_route — those orders are real.
     orders:     visits.filter((v) => v.order_number != null && v.order_number !== "").length,
     orderValue: visits.reduce((sum, v) => sum + (Number(v.order_amount) || 0), 0),
   };
@@ -446,6 +454,22 @@ export default function AdminDashboard() {
         });
       }
     }
+  }
+
+  // Off-route orders from the visits table — not tied to any schedule_item
+  for (const v of visits) {
+    if (v.status !== "off_route") continue;
+    const repName = repById[v.rep_id]?.rep_name ?? "Unknown";
+    const customerName = (v as any).customers?.customer_name ?? "Unknown";
+    activityEvents.push({
+      type: "offroute",
+      repName,
+      customerName,
+      timeDisplay: fmtFromIso(v.created_at),
+      sortKey: isoToLocalSortKey(v.created_at),
+      duration: null,
+      notes: null,
+    });
   }
 
   activityEvents.sort((a, b) => b.sortKey.localeCompare(a.sortKey));

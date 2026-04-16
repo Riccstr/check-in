@@ -278,25 +278,27 @@ export default function AdminExports() {
     for (let idx = 0; idx < (data as any[]).length; idx++) {
       const v = data[idx] as any;
       const isSkipped = v.status === "skipped";
+      const isOffRoute = v.status === "off_route";
       const dur = v.duration_minutes || 0;
       if (!isSkipped) {
         totalDuration += dur;
         totalQty += v.order_quantity || 0;
         totalAmount += Number(v.order_amount) || 0;
       }
+      const statusLabel = isOffRoute ? "Off-Route Order" : isSkipped ? "Skipped" : "Visited";
       const row = [
         String(idx + 1),
         v.customers?.account_number || "",
         v.customers?.customer_name || "",
         v.customers?.area || "",
-        isSkipped ? "" : (v.arrival_time ? v.arrival_time.slice(0, 5) : ""),
-        isSkipped ? "" : (v.leaving_time ? v.leaving_time.slice(0, 5) : ""),
-        isSkipped ? "" : String(dur),
+        isSkipped || isOffRoute ? "" : (v.arrival_time ? v.arrival_time.slice(0, 5) : ""),
+        isSkipped || isOffRoute ? "" : (v.leaving_time ? v.leaving_time.slice(0, 5) : ""),
+        isSkipped || isOffRoute ? "" : String(dur),
         v.order_number || "",
         v.order_quantity != null ? String(v.order_quantity) : "",
         v.order_amount != null ? Number(v.order_amount).toFixed(2) : "",
         (v.notes || "").replace(/"/g, '""'),
-        isSkipped ? "Skipped" : "Visited",
+        statusLabel,
       ];
       lines.push(row.map((c) => `"${c}"`).join(","));
     }
@@ -441,25 +443,27 @@ export default function AdminExports() {
       ws["!rows"][row] = { hpt: 22 };
 
       const isSkipped = v.status === "skipped";
+      const isOffRoute = v.status === "off_route";
       const isOdd = idx % 2 === 1;
       const bgFill = isSkipped ? redFill : isOdd ? altFill : whiteFill;
       const fnt = isSkipped ? skipFont : dataFont;
 
       const dur = v.duration_minutes || 0;
+      const statusLabel = isOffRoute ? "Off-Route Order" : isSkipped ? "Skipped" : "Visited";
 
       const rowValues: any[] = [
         idx + 1,
         v.customers?.account_number || "",
         v.customers?.customer_name || "",
         v.customers?.area || "",
-        isSkipped ? "—" : formatTime12h(v.arrival_time),
-        isSkipped ? "—" : formatTime12h(v.leaving_time),
-        dur > 0 ? formatDuration(dur) : "",
+        isSkipped || isOffRoute ? "" : formatTime12h(v.arrival_time),
+        isSkipped || isOffRoute ? "" : formatTime12h(v.leaving_time),
+        isSkipped || isOffRoute ? "" : (dur > 0 ? formatDuration(dur) : ""),
         v.order_number || "",
         v.order_quantity != null ? v.order_quantity : "",
         v.order_amount != null ? v.order_amount : "",
         isSkipped ? `[SKIPPED] ${v.notes || ""}` : (v.notes || ""),
-        isSkipped ? "Skipped" : "Visited",
+        statusLabel,
       ];
 
       for (let c = 0; c < rowValues.length; c++) {
@@ -654,19 +658,20 @@ export default function AdminExports() {
     for (let idx = 0; idx < (data as any[]).length; idx++) {
       const v = data[idx] as any;
       const isSkipped = v.status === "skipped";
+      const isOffRoute = v.status === "off_route";
       const dur = v.duration_minutes || 0;
       const row: any[] = [
         idx + 1,
         v.customers?.account_number || "",
         v.customers?.customer_name  || "",
         v.customers?.area           || "",
-        isSkipped ? "—" : formatTime12h(v.arrival_time),
-        isSkipped ? "—" : formatTime12h(v.leaving_time),
-        dur > 0 ? formatDuration(dur) : "",
+        isSkipped || isOffRoute ? "" : formatTime12h(v.arrival_time),
+        isSkipped || isOffRoute ? "" : formatTime12h(v.leaving_time),
+        isSkipped || isOffRoute ? "" : (dur > 0 ? formatDuration(dur) : ""),
         v.order_number || "",
         v.order_quantity != null ? String(v.order_quantity) : "",
         v.order_amount   != null ? formatAmount(Number(v.order_amount)) : "",
-        isSkipped ? `[SKIPPED] ${v.notes || ""}` : (v.notes || ""),
+        isSkipped ? `[SKIPPED] ${v.notes || ""}` : (isOffRoute ? `[OFF-ROUTE] ${v.notes || ""}`.trimEnd() : (v.notes || "")),
       ];
       (row as any).__skipped = isSkipped;
       bodyRows.push(row);

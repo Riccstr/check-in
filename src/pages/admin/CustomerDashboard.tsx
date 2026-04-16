@@ -119,26 +119,37 @@ export default function CustomerDashboard() {
 
   // ── metrics ───────────────────────────────────────────────────────────────
   const metrics = useMemo(() => {
-    const active = filtered.filter((v) => v.status !== "skipped");
+    // visitActive: actual physical visits — excludes skipped AND off_route.
+    // Used for visit count, strike rate, and average time.
+    const visitActive = filtered.filter((v) => v.status !== "skipped" && v.status !== "off_route");
 
-    const totalVisits = active.length;
+    // orderActive: all rows that could carry real orders — excludes skipped only.
+    // Off_route orders are real and count toward revenue / avg order value.
+    const orderActive = filtered.filter((v) => v.status !== "skipped");
 
-    const orderVisits = active.filter(
+    const totalVisits = visitActive.length;
+
+    // Strike rate: orders placed during actual scheduled visits only.
+    const visitOrders = visitActive.filter(
       (v) => v.order_number != null || (v.order_quantity != null && v.order_quantity > 0)
     );
-    const totalOrders = orderVisits.length;
-
     const strikeRate =
-      totalVisits > 0 ? ((totalOrders / totalVisits) * 100).toFixed(1) + "%" : "—";
+      totalVisits > 0 ? ((visitOrders.length / totalVisits) * 100).toFixed(1) + "%" : "—";
 
-    const totalQty = active.reduce((sum, v) => sum + (v.order_quantity ?? 0), 0);
+    // Order totals include off_route.
+    const orderEligible = orderActive.filter(
+      (v) => v.order_number != null || (v.order_quantity != null && v.order_quantity > 0)
+    );
+    const totalOrders = orderEligible.length;
 
-    const totalRevenue = active.reduce((sum, v) => sum + (v.order_amount ?? 0), 0);
+    const totalQty = orderActive.reduce((sum, v) => sum + (v.order_quantity ?? 0), 0);
+    const totalRevenue = orderActive.reduce((sum, v) => sum + (v.order_amount ?? 0), 0);
 
     const avgOrderValue =
       totalOrders > 0 ? fmtCurrency(totalRevenue / totalOrders) : "—";
 
-    const visitsWithDuration = active.filter((v) => v.duration_minutes > 0);
+    // Duration is only meaningful for physical visits.
+    const visitsWithDuration = visitActive.filter((v) => v.duration_minutes > 0);
     const avgDuration =
       visitsWithDuration.length > 0
         ? fmtDuration(
@@ -149,17 +160,15 @@ export default function CustomerDashboard() {
           )
         : "—";
 
-    // trend: compare avg order value of recent half vs older half
+    // Trend: compare avg order value of recent vs older order-eligible rows (includes off_route).
     let trend: React.ReactNode = null;
-    if (orderVisits.length >= 4) {
-      const half = Math.floor(orderVisits.length / 2);
+    if (orderEligible.length >= 4) {
+      const half = Math.floor(orderEligible.length / 2);
       // visits are sorted newest first
-      const recentHalf = orderVisits.slice(0, half);
-      const olderHalf = orderVisits.slice(half);
-      const recentAvg =
-        recentHalf.reduce((s, v) => s + (v.order_amount ?? 0), 0) / recentHalf.length;
-      const olderAvg =
-        olderHalf.reduce((s, v) => s + (v.order_amount ?? 0), 0) / olderHalf.length;
+      const recentHalf = orderEligible.slice(0, half);
+      const olderHalf  = orderEligible.slice(half);
+      const recentAvg  = recentHalf.reduce((s, v) => s + (v.order_amount ?? 0), 0) / recentHalf.length;
+      const olderAvg   = olderHalf.reduce((s, v) => s + (v.order_amount ?? 0), 0) / olderHalf.length;
       if (olderAvg > 0) {
         const pct = (((recentAvg - olderAvg) / olderAvg) * 100).toFixed(1);
         const up = recentAvg >= olderAvg;
@@ -308,25 +317,27 @@ export default function CustomerDashboard() {
               </TableHeader>
               <TableBody>
                 {filtered.map((v) => {
-                  const isSkipped = v.status === "skipped";
+                  const isSkipped  = v.status === "skipped";
+                  const isOffRoute = v.status === "off_route";
                   const hasOrder = v.order_number != null || (v.order_quantity != null && v.order_quantity > 0);
                   const rowClass = [
-                    isSkipped ? "bg-red-50" : !hasOrder ? "text-muted-foreground" : "",
+                    isSkipped ? "bg-red-50" : !hasOrder && !isOffRoute ? "text-muted-foreground" : "",
                     highlightedId === v.id ? "ring-2 ring-inset ring-green-500" : "",
                   ].filter(Boolean).join(" ");
                   return (
                     <TableRow key={v.id} id={`visit-row-${v.id}`} className={rowClass}>
                       <TableCell className="font-medium whitespace-nowrap">{v.visit_date}</TableCell>
-                      <TableCell>{fmtTime(v.arrival_time)}</TableCell>
-                      <TableCell>{fmtTime(v.leaving_time)}</TableCell>
-                      <TableCell>{v.duration_minutes > 0 ? fmtDuration(v.duration_minutes) : "—"}</TableCell>
+                      <TableCell>{isOffRoute ? "" : fmtTime(v.arrival_time)}</TableCell>
+                      <TableCell>{isOffRoute ? "" : fmtTime(v.leaving_time)}</TableCell>
+                      <TableCell>{isOffRoute ? "—" : (v.duration_minutes > 0 ? fmtDuration(v.duration_minutes) : "—")}</TableCell>
                       <TableCell>{v.order_number || "—"}</TableCell>
                       <TableCell>{v.order_quantity ?? "—"}</TableCell>
                       <TableCell className="whitespace-nowrap">
                         {v.order_amount != null ? fmtCurrency(Number(v.order_amount)) : "—"}
                       </TableCell>
                       <TableCell className="max-w-xs text-xs">
-                        {isSkipped && <span className="font-semibold text-red-600 mr-1">[SKIPPED]</span>}
+                        {isSkipped  && <span className="font-semibold text-red-600 mr-1">[SKIPPED]</span>}
+                        {isOffRoute && <span className="font-semibold text-amber-600 mr-1">[OFF-ROUTE]</span>}
                         {v.notes || ""}
                       </TableCell>
                     </TableRow>

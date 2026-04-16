@@ -162,20 +162,24 @@ export default function AdminVisits() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {visits.map((v: any) => (
-                   <TableRow key={v.id} className={v.status === "skipped" ? "bg-destructive/10" : ""}>
+                {visits.map((v: any) => {
+                  const isSkipped  = v.status === "skipped";
+                  const isOffRoute = v.status === "off_route";
+                  return (
+                   <TableRow key={v.id} className={isSkipped ? "bg-destructive/10" : ""}>
                     <TableCell>{v.visit_date}</TableCell>
                     <TableCell>{v.reps?.rep_name}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {v.customers?.customer_name}
-                        {v.status === "skipped" && <Badge variant="destructive" className="text-xs">Skipped</Badge>}
+                        {isSkipped  && <Badge variant="destructive" className="text-xs">Skipped</Badge>}
+                        {isOffRoute && <Badge className="text-xs bg-amber-100 text-amber-800 border border-amber-200 hover:bg-amber-100">Off-Route Order</Badge>}
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{v.customers?.account_number || "—"}</TableCell>
-                    <TableCell>{v.status === "skipped" ? "—" : v.arrival_time?.slice(0,5)}</TableCell>
-                    <TableCell>{v.status === "skipped" ? "—" : v.leaving_time?.slice(0,5)}</TableCell>
-                    <TableCell>{v.status === "skipped" ? "—" : `${v.duration_minutes} min`}</TableCell>
+                    <TableCell>{isSkipped ? "—" : isOffRoute ? "" : (v.arrival_time?.slice(0,5) ?? "")}</TableCell>
+                    <TableCell>{isSkipped ? "—" : isOffRoute ? "" : (v.leaving_time?.slice(0,5) ?? "")}</TableCell>
+                    <TableCell>{isSkipped || isOffRoute ? "—" : (v.duration_minutes != null ? `${v.duration_minutes} min` : "")}</TableCell>
                     <TableCell>{renderPhoto(v)}</TableCell>
                     <TableCell>{v.order_number || "—"}</TableCell>
                     <TableCell>{v.order_quantity != null ? v.order_quantity : "—"}</TableCell>
@@ -197,7 +201,8 @@ export default function AdminVisits() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
