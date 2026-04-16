@@ -409,6 +409,8 @@ export default function AdminDashboard() {
     };
   });
 
+  const totalScheduled = repCards.reduce((sum, card) => sum + card.total, 0);
+
   // Build activity feed events from schedule_items
   const visitsById: Record<string, VisitRow> = {};
   for (const v of visits) visitsById[v.id] = v;
@@ -511,7 +513,7 @@ export default function AdminDashboard() {
 
       {/* ── Section 2: Summary stat strip ─────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Visits Completed" value={stats.visited}  accentClass="border-l-green-500" />
+        <StatCard label="Visits Completed" value={`${stats.visited} / ${totalScheduled}`} accentClass="border-l-green-500" />
         <StatCard label="Skipped"          value={stats.skipped}  accentClass="border-l-red-500"   />
         <StatCard label="Orders Placed"    value={stats.orders}   accentClass="border-l-blue-500"  />
         <StatCard
