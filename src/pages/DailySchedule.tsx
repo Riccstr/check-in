@@ -368,6 +368,7 @@ function ScheduleCard({
   isExpanded,
   onToggle,
   index,
+  allItems,
 }: {
   item: any;
   repId: string;
@@ -377,6 +378,7 @@ function ScheduleCard({
   isExpanded: boolean;
   onToggle: () => void;
   index: number;
+  allItems: any[];
 }) {
   const [localNotes, setLocalNotes]           = useState(item.notes || "");
   const [localArrival, setLocalArrival]       = useState(item.arrival_time || "");
@@ -788,6 +790,26 @@ function ScheduleCard({
   const commitLeaving = () => { if (localLeaving !== (item.leaving_time || "")) updateItem({ leaving_time: localLeaving }); };
 
   const markArrived = async () => {
+    // Guard: block if another visit is already open
+    const alreadyOpen = allItems.find(
+      (i: any) => i.arrival_time && !i.leaving_time && i.id !== item.id
+    );
+    if (alreadyOpen) {
+      toast.error(`You have an open visit at ${alreadyOpen.customers?.customer_name ?? "another customer"}. Please check out first.`);
+      return;
+    }
+
+    // Guard: check IDB active card for a different item
+    try {
+      const card = await getActiveCard();
+      if (card?.scheduleItemId && card.scheduleItemId !== item.id) {
+        const openCardItem = allItems.find((i: any) => i.id === card.scheduleItemId);
+        const customerName = openCardItem?.customers?.customer_name ?? "another customer";
+        toast.error(`You have an open visit at ${customerName}. Please check out first.`);
+        return;
+      }
+    } catch { /* IDB unavailable — skip check */ }
+
     const t = nowTime();
     setLocalArrival(t);
     // Always update schedule_items arrival_time (handles online/offline paths internally)
@@ -1310,6 +1332,8 @@ export default function DailySchedule() {
   const [adHocOrderQty,    setAdHocOrderQty]    = useState("");
   const [adHocOrderAmount, setAdHocOrderAmount] = useState("");
   const [adHocSubmitting,  setAdHocSubmitting]  = useState(false);
+  const [adHocPhoto,          setAdHocPhoto]          = useState<string | null>(null);
+  const [adHocPhotoConfirmed, setAdHocPhotoConfirmed] = useState(false);
 
   // off-route order state
   const [offRouteCustomerId,  setOffRouteCustomerId]  = useState("");
@@ -1550,6 +1574,7 @@ export default function DailySchedule() {
           setSchedule(null); setItems([]);
         }
       }
+      if (isToday) repairMissingVisitIds();
     } catch (err) {
       console.warn("[Schedule] Online refresh failed, keeping cached schedule if available", err);
       if (!hasCachedSchedule) { setSchedule(null); setItems([]); }
@@ -1581,7 +1606,15 @@ export default function DailySchedule() {
       }
 
       const { data } = await query;
-      if (data) setUnscheduledVisits(data);
+      const scheduledCustomerIds = new Set(
+        itemsRef.current
+          .filter((i: any) => i.status === "visited" || i.status === "skipped")
+          .map((i: any) => i.customer_id)
+      );
+      const trueUnscheduled = (data ?? []).filter(
+        (v: any) => !scheduledCustomerIds.has(v.customer_id)
+      );
+      setUnscheduledVisits(trueUnscheduled);
     } catch {
       // network error — keep existing state
     }
@@ -1591,6 +1624,37 @@ export default function DailySchedule() {
   useEffect(() => {
     fetchUnscheduledVisits();
   }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Silent background repair: stamps visit_id back onto schedule_items that missed it
+  // due to network failures. Uses itemsRef so it doesn't need a stable closure dependency.
+  const repairMissingVisitIds = async () => {
+    try {
+      if (!repId) return;
+      const unlinked = itemsRef.current.filter(
+        (i: any) => (i.status === "visited" || i.status === "skipped") && !i.visit_id
+      );
+      if (!unlinked.length) { fetchUnscheduledVisits(); return; }
+      for (const si of unlinked) {
+        try {
+          const { data: visit } = await supabase
+            .from("visits")
+            .select("id")
+            .eq("rep_id", repId)
+            .eq("customer_id", si.customer_id)
+            .eq("visit_date", scheduleDate)
+            .eq("status", "visited")
+            .maybeSingle();
+          if (visit?.id) {
+            await supabase
+              .from("schedule_items")
+              .update({ visit_id: visit.id })
+              .eq("id", si.id);
+          }
+        } catch { /* per-item failure is non-fatal */ }
+      }
+      fetchUnscheduledVisits();
+    } catch { /* never throw, never block UI */ }
+  };
 
   // ─── stale template self-heal ──────────────────────────────────────────────
   // Runs once per schedule row after the initial fetch. Detects a weekly_template_id
@@ -1700,18 +1764,52 @@ export default function DailySchedule() {
     const dur = calcDuration(adHocArrival, adHocLeaving);
     if (dur <= 0) { toast.error("Leaving must be after arrival"); return; }
     setAdHocSubmitting(true);
+    const adHocClientId = uuidv4();
     const customerName = adHocCustomers.find((c) => c.id === adHocCustomerId)?.customer_name;
+
+    // Upload photo if captured
+    let adHocPhotoUrl: string | null = null;
+    if (adHocPhoto) {
+      try {
+        const byteString = atob(adHocPhoto.split(",")[1] ?? adHocPhoto);
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+        const photoBlob = new Blob([ab], { type: "image/jpeg" });
+        const { error: uploadErr } = await supabase.storage
+          .from("visit-photos")
+          .upload(`${adHocClientId}.jpg`, photoBlob, { upsert: true });
+        if (!uploadErr) {
+          const { data: urlData } = supabase.storage.from("visit-photos").getPublicUrl(`${adHocClientId}.jpg`);
+          adHocPhotoUrl = urlData?.publicUrl || null;
+        } else {
+          try {
+            await savePendingPhoto(adHocClientId, adHocPhoto, null, adHocClientId);
+            toast.warning("Photo saved for upload — will retry when connection improves");
+          } catch { /* IDB failure must not block submit */ }
+        }
+      } catch {
+        try {
+          await savePendingPhoto(adHocClientId, adHocPhoto, null, adHocClientId);
+          toast.warning("Photo saved for upload — will retry when connection improves");
+        } catch { /* IDB failure must not block submit */ }
+      }
+    }
+
     try {
       const { error } = await supabase.from("visits").insert({
         rep_id: repId, customer_id: adHocCustomerId, visit_date: scheduleDate,
         arrival_time: adHocArrival, leaving_time: adHocLeaving, duration_minutes: dur, notes: adHocNotes || null,
+        status: "visited",
+        client_generated_id: adHocClientId,
+        ...(adHocPhotoUrl ? { photo_url: adHocPhotoUrl } : {}),
         order_number: adHocOrderNumber || null,
         order_quantity: adHocOrderQty !== "" ? Number(adHocOrderQty) : null,
         order_amount: adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null,
       });
       if (error) {
         if (isOfflineError(error)) {
-          await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrival, adHocLeaving, dur, adHocNotes || null, customerName, undefined, null, adHocOrderNumber || null, adHocOrderQty !== "" ? Number(adHocOrderQty) : null, adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null);
+          await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrival, adHocLeaving, dur, adHocNotes || null, customerName, "visited", adHocPhoto, adHocOrderNumber || null, adHocOrderQty !== "" ? Number(adHocOrderQty) : null, adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null);
           toast.success("Saved offline. Will sync when online.");
           resetAdHoc();
         } else {
@@ -1724,7 +1822,7 @@ export default function DailySchedule() {
     } catch (err: any) {
       console.warn("[Schedule] Network error on ad-hoc:", err?.message);
       try {
-        await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrival, adHocLeaving, dur, adHocNotes || null, customerName, undefined, null, adHocOrderNumber || null, adHocOrderQty !== "" ? Number(adHocOrderQty) : null, adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null);
+        await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrival, adHocLeaving, dur, adHocNotes || null, customerName, "visited", adHocPhoto, adHocOrderNumber || null, adHocOrderQty !== "" ? Number(adHocOrderQty) : null, adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null);
         toast.success("Saved offline. Will sync when online.");
         resetAdHoc();
       } catch (idbErr) {
@@ -1739,6 +1837,8 @@ export default function DailySchedule() {
     setExpandedBottomCard(null);
     setAdHocCustomerId(""); setAdHocArrival(""); setAdHocLeaving(""); setAdHocNotes("");
     setAdHocOrderNumber(""); setAdHocOrderQty(""); setAdHocOrderAmount("");
+    setAdHocPhoto(null);
+    setAdHocPhotoConfirmed(false);
   };
 
   const resetOffRoute = () => {
@@ -2161,6 +2261,7 @@ export default function DailySchedule() {
                 isExpanded={expandedActiveId === item.id}
                 onToggle={() => setExpandedActiveId((prev) => (prev === item.id ? null : item.id))}
                 index={i}
+                allItems={items}
               />
             ))
           )
@@ -2182,6 +2283,7 @@ export default function DailySchedule() {
                   isExpanded={openCompletedId === item.id}
                   onToggle={() => setOpenCompletedId((prev) => (prev === item.id ? null : item.id))}
                   index={i}
+                  allItems={items}
                 />
               ))}
 
@@ -2500,6 +2602,31 @@ export default function DailySchedule() {
                   <Textarea value={adHocNotes} onChange={(e) => setAdHocNotes(e.target.value)}
                     onBlur={resetMobileZoom} rows={2}
                     className="text-sm resize-none" style={{ borderColor: C.border, background: C.bg }} />
+                </div>
+
+                {/* photo */}
+                <div>
+                  {adHocPhoto ? (
+                    <div className="relative inline-block">
+                      <img src={adHocPhoto} alt="Store photo" className="h-20 w-20 object-cover rounded-xl" style={{ border: `1px solid ${C.border}` }} />
+                      <button type="button" onClick={() => { setAdHocPhoto(null); setAdHocPhotoConfirmed(false); }}
+                        className="absolute -top-1 -right-1 rounded-full p-0.5"
+                        style={{ background: C.red, color: "#fff" }}>
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <CameraCapture onCapture={async (blob) => {
+                      try {
+                        const compressed = await compressImage(blob);
+                        const b64 = await blobToBase64(compressed);
+                        setAdHocPhoto(b64);
+                        setAdHocPhotoConfirmed(true);
+                      } catch {
+                        toast.error("Failed to process photo");
+                      }
+                    }} triggerClassName="h-8 text-xs" />
+                  )}
                 </div>
 
                 <Button
