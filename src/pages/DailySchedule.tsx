@@ -1317,7 +1317,10 @@ export default function DailySchedule() {
   const [recoveryCustomerName, setRecoveryCustomerName] = useState<string | null>(null);
 
   // stale-template self-heal — tracks the last schedule.id that was validated so it only runs once per schedule
-  const validationRanRef = useRef<string | null>(null);
+  const validationRanRef   = useRef<string | null>(null);
+  // Stable refs so visibility/online handlers always read the latest values without recreating
+  const scheduleDateRef    = useRef(scheduleDate);
+  const fetchScheduleRef   = useRef<() => Promise<void>>(async () => {});
 
   // bottom card expansion — mutually exclusive: "unscheduled" | "offroute" | null
   const [expandedBottomCard, setExpandedBottomCard] = useState<"unscheduled" | "offroute" | null>(null);
@@ -1583,6 +1586,8 @@ export default function DailySchedule() {
     }
   };
 
+  fetchScheduleRef.current = fetchSchedule;
+
   // ─── unscheduled visits ───────────────────────────────────────────────────
   // Fetches visits for this rep/date that are NOT linked to any schedule_item.
   // Uses itemsRef (not items) so the function stays stable for repId/scheduleDate
@@ -1711,12 +1716,34 @@ export default function DailySchedule() {
         console.log(`[ScheduleValidation] Stale template detected and corrected for ${scheduleDate}`);
 
         // Step 7: refresh so the UI shows the new items
+        validationRanRef.current = null;
         fetchSchedule();
       } catch {
         // Offline or unexpected error — fail silently, never surface to the rep
       }
     })();
   }, [schedule?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset validation ref when the rep navigates to a different date
+  useEffect(() => {
+    scheduleDateRef.current = scheduleDate;
+    validationRanRef.current = null;
+  }, [scheduleDate]);
+
+  // Week-boundary detection on app resume — catches overnight / cross-weekend opens
+  useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState === "visible") {
+        const todayStr = new Date().toISOString().split("T")[0];
+        if (scheduleDateRef.current !== todayStr) {
+          validationRanRef.current = null;
+          fetchScheduleRef.current();
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchAdHocCustomers = async () => {
     if (!repId) return;
