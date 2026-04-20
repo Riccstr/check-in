@@ -223,7 +223,7 @@ Unique: `(rep_id, customer_id)`. Upsert on conflict is used. RLS: Admins manage 
 | `leaving_time` | time | |
 | `duration_minutes` | integer | Calculated: `(leaving - arrival)` in minutes |
 | `notes` | text | |
-| `status` | text | Valid values: `visited`, `skipped`, `in_progress`, `off_route` (enforced by `visits_status_check` constraint) |
+| `status` | text | `'visited'` or `'skipped'` |
 | `order_number` | text | Nullable — sales order reference |
 | `order_quantity` | integer | Nullable — units ordered |
 | `order_amount` | numeric | Nullable — currency amount |
@@ -235,11 +235,6 @@ Unique: `(rep_id, customer_id)`. Upsert on conflict is used. RLS: Admins manage 
 | `created_at` | timestamptz | |
 
 RLS: Admins manage all; reps can INSERT/SELECT/UPDATE/DELETE own visits (verified via `reps.user_id = auth.uid()`).
-
-> **Important:** `visits.rep_id` references `reps.id` (NOT `profiles.id`).
-> The link between visits and schedule_items is one-way:
-> `schedule_items.visit_id → visits.id`. There is no FK column on
-> `visits` back to `schedule_items`.
 
 ---
 
@@ -354,7 +349,7 @@ Used keys: `current_week_order` (int 1–4), `week_cycle_start_date` (date, e.g.
 
 - Upload path: `{rep_id}/{visit_id}.jpg`
 - RLS: Authenticated reps can INSERT; authenticated users can SELECT; reps can DELETE own files
-- Photos are always compressed before upload (max 1000px, 65% JPEG quality)
+- Photos are always compressed before upload (max 1200px, 70% JPEG quality)
 
 ---
 
@@ -484,6 +479,17 @@ Full CRUD for customer records and rep assignments.
 - Account number uniqueness validated in real-time with **300ms debounce** against the `customers` table
 - Permanent delete cascades: removes `schedule_template_items`, `customer_assignments`, then the `customers` row
 - Filter/sort by rep, area, active status
+
+#### `/admin/reps` — [AdminReps.tsx](src/pages/admin/AdminReps.tsx)
+Rep record management.
+
+**Tables read:** `reps`
+
+**Tables written:** `reps` (INSERT, UPDATE) via the `manage-rep-user` edge function
+
+**Notable logic:**
+- "Set Login" (KeyRound icon) shown for reps with `user_id IS NULL` — calls `manage-rep-user` with `action: 'create'`
+- Updates use `manage-rep-user` with `action: 'update'`
 
 #### `/admin/schedules` — [AdminSchedules.tsx](src/pages/admin/AdminSchedules.tsx)
 Manage weekly rotation templates and view daily schedules.
@@ -671,8 +677,8 @@ Database name: `checkin-tracker-offline`, version **5** (increment version if ad
 | `cached_customers` | `id` | `{id, customer_name, account_number, area}` |
 | `cached_schedules` | `key` (`{repId}_{date}`) | Full daily schedule + items |
 | `cached_user_auth` | `user_id` | `{role, rep_id, rep_name, profile, permissions, cached_at}` |
-| `pending_photos` | `scheduleItemId` | failed photo uploads awaiting retry (key: scheduleItemId, fields: base64, visitId, clientGeneratedId) |
-| `active_card_state` | `key` (`"current"`) | currently expanded/active card context (key: "current", fields: scheduleItemId, arrivalTime, notes, visitId, clientGeneratedId) |
+| `pending_photos` | `scheduleItemId` | `{scheduleItemId, base64}` — photo captured during an active visit, persisted immediately so it survives app backgrounding |
+| `active_card_state` | `key` (`"current"`) | `{scheduleItemId, arrivalTime, notes}` — in-progress visit card state, cleared on checkout |
 
 ### Sync Engine (`src/lib/syncEngine.ts`)
 
@@ -738,15 +744,6 @@ When an admin manually sets the current week in [AdminSchedules.tsx](src/pages/a
 
 This ensures the rotation anchor remains consistent after a manual correction.
 
-### Automatic Week Rollover
-
-The week rotation is fully automatic and requires no manual intervention in normal operation. Both the rep app ([DailySchedule.tsx](src/pages/DailySchedule.tsx)) and the admin schedules page ([AdminSchedules.tsx](src/pages/admin/AdminSchedules.tsx)) derive the current week directly from `get_week_order_for_date(today)` on every load. The admin schedules page also silently updates `current_week_order` in `app_settings` if it has drifted.
-
-Self-healing runs in [DailySchedule.tsx](src/pages/DailySchedule.tsx) on three triggers:
-- **Initial load:** compares stored `weekly_template_id` against the correct template for today; deletes and regenerates if mismatched and no visits have started
-- **Date change:** `validationRanRef` resets when `scheduleDate` changes, forcing fresh validation for the new day
-- **App resume:** `visibilitychange` handler detects if `scheduleDate` no longer matches today (app left open overnight), resets ref and refetches
-
 ### Template Save → Regeneration
 
 When admin saves a template, [AdminSchedules.tsx](src/pages/admin/AdminSchedules.tsx) deletes future `daily_schedules` rows for that rep/day where no items have been started (no arrivals, no visited/skipped status). Next time the rep opens that date, `auto_generate_daily_schedule()` runs again from the updated template.
@@ -806,13 +803,12 @@ src/
 │   └── admin/
 │       ├── AdminAccount.tsx   # /admin/account
 │       ├── AdminCustomers.tsx # /admin/customers
-│       ├── AdminDashboard.tsx # /admin/dashboard — live rep activity dashboard
 │       ├── AdminExports.tsx   # /admin/reports — CSV, Excel, PDF export
+│       ├── AdminReps.tsx      # /admin/reps
 │       ├── AdminSchedules.tsx # /admin/schedules
 │       ├── AdminUsers.tsx     # /admin/users
 │       ├── AdminVisits.tsx    # /admin/visits
-│       ├── CustomerChart.tsx  # /admin/customer-chart — recharts visit visualisation
-│       └── CustomerDashboard.tsx # /admin/customer/:id — per-customer metrics
+│       └── CustomerChart.tsx  # /admin/customer-chart — recharts visit visualisation
 ├── sw-custom.ts               # Custom service worker (caching routes)
 ├── App.tsx                    # Root: router, providers
 ├── index.css                  # Tailwind directives + HSL design tokens
@@ -907,9 +903,3 @@ VITE_SUPABASE_ANON_KEY=<your-anon-key>
 15. **Photo persistence uses two IndexedDB stores** — `pending_photos` (keyed by `scheduleItemId`) holds the base64-encoded photo from capture until checkout; `active_card_state` (key `"current"`) holds arrival time and notes. Both are cleared in the `updateItem` finally block when status becomes `visited` or `skipped`. **Do not** clear them earlier or the recovery banner will never trigger
 16. **`xlsx-js-style` replaces `xlsx`** — do not revert to `xlsx`; the cell-level styling API (`s: { fill, font, alignment }`) is incompatible with the base library. The package is already listed in `package.json`; no further changes needed
 17. **PDF report banner text layout depends on `TEXT_X = ML + 19`** — this offset accounts for the logo width (14mm) + left margin + padding. If the logo is resized, update `TEXT_X` accordingly. The three info blocks are each exactly 92mm wide (`(PW - ML - MR) / 3 = 276 / 3`); changing `ML` or `MR` breaks the equal-width layout
-18. **`visits.rep_id` is `reps.id` not `profiles.id`** — always query the `reps` table to get a rep's id; never use `auth.users.id` or `profiles.id` as `rep_id` when writing to `visits`, `daily_schedules`, or `schedule_items`
-19. **`visits_status_check` constraint** — valid status values are `visited`, `skipped`, `in_progress`, `off_route`. Any new status value requires an `ALTER TABLE` in Supabase SQL Editor before the frontend can write it
-20. **`off_route` visits** — excluded from strike rate and Visits Completed counts; included in order value totals and report exports. Never have `arrival_time`, `leaving_time`, or `photo_url` set.
-21. **`in_progress` visits** — excluded from all admin queries, reports, Done tab, and export functions. Represent an open visit where the rep has arrived but not yet checked out. Always filtered with `.neq('status', 'in_progress')` in admin queries.
-22. **`pending_photos` retry** — on photo upload failure, save to `pending_photos` IndexedDB store with `visitId` and `clientGeneratedId`. `retryPendingPhotos()` in [DailySchedule.tsx](src/pages/DailySchedule.tsx) fires on `window online` event and `visibilitychange` to upload and PATCH `visits.photo_url`.
-23. **Windsurf prompt efficiency** — always include exact file paths, function names, and line-level anchors in prompts. Never ask Windsurf to search for context it can be given directly.
