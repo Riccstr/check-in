@@ -1403,7 +1403,7 @@ export default function DailySchedule() {
   }, []);
 
   // derived item lists
-  const activeItems    = items.filter((i) => i.status !== "visited" && i.status !== "skipped");
+  const activeItems    = items.filter((i) => i.status !== "visited" && i.status !== "skipped" && i.customers?.customer_name);
   const completedItems = items.filter((i) => i.status === "visited" || i.status === "skipped");
 
   const visitedCount = items.filter((i) => i.status === "visited").length;
