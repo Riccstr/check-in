@@ -1519,6 +1519,23 @@ export default function DailySchedule() {
     return () => { supabase.removeChannel(channel); };
   }, [repId, scheduleDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const resolveUnknownCustomers = async (loadedItems: any[]) => {
+    const unresolved = loadedItems.filter((i) => !i.customers?.customer_name);
+    if (!unresolved.length) return;
+    const ids = [...new Set(unresolved.map((i: any) => i.customer_id).filter(Boolean))];
+    if (!ids.length) return;
+    try {
+      const { data } = await supabase.from("customers").select("*").in("id", ids);
+      if (!data?.length) return;
+      const byId = Object.fromEntries(data.map((c: any) => [c.id, c]));
+      setItems((prev) =>
+        prev.map((i) => (!i.customers?.customer_name && byId[i.customer_id] ? { ...i, customers: byId[i.customer_id] } : i))
+      );
+    } catch {
+      // silently ignore — items remain in state, rendering falls through to existing fallback
+    }
+  };
+
   const fetchSchedule = async () => {
     if (!repId) return;
     setLoading(true);
@@ -1551,7 +1568,9 @@ export default function DailySchedule() {
 
       if (data) {
         setSchedule(data);
-        setItems((data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
+        const sortedItems = (data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
+        setItems(sortedItems);
+        resolveUnknownCustomers(sortedItems);
         await setCachedSchedule(repId, scheduleDate, data);
       } else {
         // Only auto-generate for today or past dates — never pre-generate future schedules
@@ -1567,7 +1586,9 @@ export default function DailySchedule() {
               .eq("id", newId)
               .maybeSingle();
             setSchedule(newData);
-            setItems((newData?.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order));
+            const sortedNewItems = (newData?.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
+            setItems(sortedNewItems);
+            resolveUnknownCustomers(sortedNewItems);
             if (newData) await setCachedSchedule(repId, scheduleDate, newData);
           } else {
             setSchedule(null); setItems([]);
