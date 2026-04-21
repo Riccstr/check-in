@@ -713,14 +713,26 @@ function ScheduleCard({
       }
     } catch (err: any) {
       console.warn("[Schedule] Network error on update:", err?.message);
+      // Clear active card state even on network error to prevent stuck guard
+      getActiveCard().then((card) => {
+        if (card?.scheduleItemId === item.id) {
+          clearActiveCard().catch(() => {});
+        }
+      }).catch(() => {});
       await queueScheduleItemUpdate(newItem);
       if (!activeVisitId) await handleOfflineVisitSave(newItem);
     } finally {
       setActionInProgress(false);
       if (newItem.status === "visited" || newItem.status === "skipped") {
         clearPendingPhoto(item.id).catch(() => {});
-        clearActiveCard().catch(() => {});
       }
+      // Always clear active_card_state if this item was the active card,
+      // even if the status update failed — prevents stuck visit guard
+      getActiveCard().then((card) => {
+        if (card?.scheduleItemId === item.id) {
+          clearActiveCard().catch(() => {});
+        }
+      }).catch(() => {});
     }
   };
 
