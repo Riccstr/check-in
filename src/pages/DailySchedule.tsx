@@ -816,9 +816,19 @@ function ScheduleCard({
       const card = await getActiveCard();
       if (card?.scheduleItemId && card.scheduleItemId !== item.id) {
         const openCardItem = allItems.find((i: any) => i.id === card.scheduleItemId);
-        const customerName = openCardItem?.customers?.customer_name ?? "another customer";
-        toast.error(`You have an open visit at ${customerName}. Please check out first.`);
-        return;
+        const isStale = !openCardItem
+          || openCardItem.status === "visited"
+          || openCardItem.status === "skipped"
+          || !!openCardItem.leaving_time;
+
+        if (isStale) {
+          clearActiveCard().catch(() => {});
+          // do NOT return — allow markArrived to proceed
+        } else {
+          const customerName = openCardItem?.customers?.customer_name ?? "another customer";
+          toast.error(`You have an open visit at ${customerName}. Please check out first.`);
+          return;
+        }
       }
     } catch { /* IDB unavailable — skip check */ }
 
