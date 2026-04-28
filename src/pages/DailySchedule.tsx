@@ -1621,6 +1621,28 @@ export default function DailySchedule() {
         }
       }
       if (isToday) repairMissingVisitIds();
+      if (isToday) {
+        try {
+          const today = new Date().toISOString().split("T")[0];
+          const { data: weekOrder } = await supabase
+            .rpc("get_week_order_for_date", { p_date: today });
+          const { data: setting } = await supabase
+            .from("app_settings")
+            .select("setting_value")
+            .eq("setting_key", "current_week_order")
+            .maybeSingle();
+          const storedOrder = setting ? parseInt(setting.setting_value) || 1 : 1;
+          if (weekOrder !== null && weekOrder !== undefined && weekOrder !== storedOrder) {
+            await supabase.from("app_settings").upsert({
+              setting_key: "current_week_order",
+              setting_value: String(weekOrder),
+              updated_at: new Date().toISOString(),
+            }, { onConflict: "setting_key" });
+          }
+        } catch (healErr) {
+          console.warn("[Schedule] Week order self-heal failed:", healErr);
+        }
+      }
     } catch (err) {
       console.warn("[Schedule] Online refresh failed, keeping cached schedule if available", err);
       if (!hasCachedSchedule) { setSchedule(null); setItems([]); }
