@@ -656,8 +656,31 @@ function ScheduleCard({
         if (!patchVisitId) {
           try {
             const card = await getActiveCard();
-            if (card?.scheduleItemId === item.id && card.visitId) patchVisitId = card.visitId;
+            if (card?.scheduleItemId === item.id && card.visitId) {
+              patchVisitId = card.visitId;
+              setActiveVisitId(card.visitId); // sync state for future calls
+              if (card.clientGeneratedId && !clientGenIdRef.current) {
+                clientGenIdRef.current = card.clientGeneratedId;
+              }
+            }
           } catch { /* IDB unavailable */ }
+        }
+
+        // Also fall back to client_generated_id upsert if patchVisitId is
+        // still null but clientGenIdRef.current exists — this handles the
+        // case where arrival upsert succeeded but visitId was never stored
+        if (!patchVisitId && clientGenIdRef.current) {
+          try {
+            const { data } = await supabase
+              .from("visits")
+              .select("id")
+              .eq("client_generated_id", clientGenIdRef.current)
+              .maybeSingle();
+            if (data?.id) {
+              patchVisitId = data.id;
+              setActiveVisitId(data.id);
+            }
+          } catch { /* DB unavailable */ }
         }
 
         if (patchVisitId) {
