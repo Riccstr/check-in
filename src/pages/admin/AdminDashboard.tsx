@@ -53,6 +53,7 @@ interface RepCardData {
   progress: number;
   currentCustomer?: string;
   currentArrivalTime?: string;
+  areas: string[];
 }
 
 interface ActivityEvent {
@@ -173,6 +174,20 @@ function RepStatusCard({ card }: { card: RepCardData }) {
           <p className="text-[11px] text-muted-foreground">
             {card.visited + card.skipped} / {card.total} customers
           </p>
+        </div>
+      )}
+
+      {/* Area tags */}
+      {card.areas.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {card.areas.map(area => (
+            <span
+              key={area}
+              className="inline-block bg-green-800 text-white text-xs font-medium px-2 py-0.5 rounded-full"
+            >
+              {area}
+            </span>
+          ))}
         </div>
       )}
     </div>
@@ -311,7 +326,7 @@ export default function AdminDashboard() {
         supabase
           .from("daily_schedules")
           .select(
-            "id, rep_id, schedule_items(id, status, arrival_time, leaving_time, duration_minutes, notes, sort_order, customer_id, visit_id, customers(customer_name))"
+            "id, rep_id, schedule_items(id, status, arrival_time, leaving_time, duration_minutes, notes, sort_order, customer_id, visit_id, customers(customer_name, area))"
           )
           .eq("schedule_date", todayStr),
 
@@ -386,7 +401,7 @@ export default function AdminDashboard() {
   const repCards: RepCardData[] = reps.map((rep) => {
     const sch = scheduleByRepId[rep.id];
     if (!sch) {
-      return { rep, status: "no_schedule", hasSchedule: false, visited: 0, skipped: 0, total: 0, progress: 0 };
+      return { rep, status: "no_schedule", hasSchedule: false, visited: 0, skipped: 0, total: 0, progress: 0, areas: [] };
     }
 
     const items   = sch.schedule_items;
@@ -400,12 +415,20 @@ export default function AdminDashboard() {
         ? items.find((i) => i.arrival_time && !i.leaving_time)
         : undefined;
 
+    const areaSet = new Set<string>();
+    items.forEach((item) => {
+      const area = item.customers?.area;
+      if (area && area.trim()) areaSet.add(area);
+    });
+    const areas = Array.from(areaSet);
+
     return {
       rep, status, hasSchedule: true,
       visited, skipped, total,
       progress: total > 0 ? (visited + skipped) / total : 0,
       currentCustomer:    inProgressItem?.customers?.customer_name,
       currentArrivalTime: inProgressItem?.arrival_time ?? undefined,
+      areas,
     };
   });
 
