@@ -712,6 +712,27 @@ function ScheduleCard({
             await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", item.visit_id);
         } else {
           // ── Insert path: no prior visit row exists ──
+          // Guard: check if a visited row already exists for this visit
+          const { data: existing } = await supabase
+            .from("visits")
+            .select("id")
+            .eq("rep_id", repId)
+            .eq("customer_id", item.customer_id)
+            .eq("visit_date", scheduleDate)
+            .eq("arrival_time", newItem.arrival_time)
+            .maybeSingle();
+
+          if (existing?.id) {
+            // Row already exists — PATCH it instead of inserting a duplicate
+            await supabase.from("visits").update(checkoutData).eq("id", existing.id);
+            await supabase.from("schedule_items").update({ visit_id: existing.id }).eq("id", item.id);
+            const photoUrl = await uploadPhotoOnline(existing.id, clientGenIdRef.current);
+            if (photoUrl)
+              await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", existing.id);
+            return;
+          }
+
+          // No existing row — safe to insert
           const insertPayload = { rep_id: repId, customer_id: item.customer_id, visit_date: scheduleDate, ...checkoutData };
           console.log("[Schedule] inserting visit payload:", JSON.stringify(insertPayload));
           const { data: visit, error: insertErr } = await supabase
