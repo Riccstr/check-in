@@ -34,7 +34,7 @@ export default function AdminVisits() {
 
   const fetchVisits = async () => {
     setLoading(true);
-    let q = supabase.from("visits").select("*, reps(rep_name), customers(customer_name, account_number)").order("visit_date", { ascending: false });
+    let q = supabase.from("visits").select("*, reps(rep_name), customers(customer_name, account_number)").order("visit_date", { ascending: false }).order("arrival_time", { ascending: false });
     if (repFilter !== "all") q = q.eq("rep_id", repFilter);
     if (custFilter !== "all") q = q.eq("customer_id", custFilter);
     if (dateFrom) q = q.gte("visit_date", dateFrom);
