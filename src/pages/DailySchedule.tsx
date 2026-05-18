@@ -1602,6 +1602,44 @@ export default function DailySchedule() {
     }
   };
 
+  const validateScheduleItemCustomers = async (scheduleItems: any[]) => {
+    try {
+      // Build array of resolved customers from items
+      const customers = [
+        ...new Map(
+          (scheduleItems || [])
+            .map((i: any) => i.customers)
+            .filter((c: any) => c)
+            .map((c: any) => [c.id, c])
+        ).values(),
+      ];
+
+      // Find customer_ids that aren't resolved
+      const unresolvedIds = (scheduleItems ?? [])
+        .map((si: any) => si.customer_id)
+        .filter((id: string) => {
+          const found = customers.find((c: any) => c.id === id);
+          return !found;
+        });
+
+      if (unresolvedIds.length > 0) {
+        const { data: missingCustomers } = await supabase
+          .from("customers")
+          .select("*")
+          .in("id", unresolvedIds);
+
+        if (missingCustomers && missingCustomers.length > 0) {
+          const byId = Object.fromEntries(missingCustomers.map((c: any) => [c.id, c]));
+          setItems((prev: any[]) =>
+            prev.map((i) => (!i.customers && byId[i.customer_id] ? { ...i, customers: byId[i.customer_id] } : i))
+          );
+        }
+      }
+    } catch {
+      // silently ignore — items remain in state
+    }
+  };
+
   const fetchSchedule = async () => {
     if (!repId) return;
     setLoading(true);
@@ -1637,6 +1675,7 @@ export default function DailySchedule() {
         const sortedItems = (data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
         setItems(sortedItems);
         resolveUnknownCustomers(sortedItems);
+        validateScheduleItemCustomers(sortedItems);
         await setCachedSchedule(repId, scheduleDate, data);
       } else {
         // Only auto-generate for today or past dates — never pre-generate future schedules
@@ -1655,6 +1694,7 @@ export default function DailySchedule() {
             const sortedNewItems = (newData?.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
             setItems(sortedNewItems);
             resolveUnknownCustomers(sortedNewItems);
+            validateScheduleItemCustomers(sortedNewItems);
             if (newData) await setCachedSchedule(repId, scheduleDate, newData);
           } else {
             setSchedule(null); setItems([]);
