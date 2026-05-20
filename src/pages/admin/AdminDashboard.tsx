@@ -17,7 +17,7 @@ interface ScheduleItem {
   sort_order: number;
   customer_id: string;
   visit_id: string | null;
-  customers: { customer_name: string } | null;
+  customers: { customer_name: string; area: string | null } | null;
 }
 
 interface DailyScheduleRow {
@@ -324,10 +324,10 @@ export default function AdminDashboard() {
           )
           .eq("schedule_date", todayStr),
 
-        supabase
+        (supabase
           .from("visits")
           .select("id, rep_id, customer_id, order_number, order_amount, status, created_at, customers(customer_name)")
-          .eq("visit_date", todayStr)
+          .eq("visit_date", todayStr) as any)
           .neq("status", "in_progress")
           .eq("is_deleted", false),
       ]);

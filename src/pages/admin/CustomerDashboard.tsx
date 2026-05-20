@@ -35,6 +35,26 @@ function startOfMonth(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
+interface CustomerRow {
+  id: string;
+  customer_name: string;
+  account_number: string | null;
+  area: string | null;
+}
+
+interface VisitRow {
+  id: string;
+  visit_date: string;
+  arrival_time: string | null;
+  leaving_time: string | null;
+  duration_minutes: number;
+  notes: string | null;
+  status: string;
+  order_number: string | null;
+  order_quantity: number | null;
+  order_amount: number | null;
+}
+
 // ─── MetricCard ───────────────────────────────────────────────────────────────
 
 function MetricCard({
@@ -63,9 +83,9 @@ export default function CustomerDashboard() {
   const { customerId } = useParams<{ customerId: string }>();
   const navigate = useNavigate();
 
-  const [customer, setCustomer] = useState<any>(null);
+  const [customer, setCustomer] = useState<CustomerRow | null>(null);
   const [repName, setRepName] = useState<string>("—");
-  const [visits, setVisits] = useState<any[]>([]);
+  const [visits, setVisits] = useState<VisitRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   // date range state — default "all time"
@@ -78,8 +98,8 @@ export default function CustomerDashboard() {
       setLoading(true);
 
       const [custRes, visitsRes, assignRes] = await Promise.all([
-        supabase.from("customers").select("*").eq("id", customerId).maybeSingle(),
-        (supabase.from("visits").select("*").eq("customer_id", customerId).neq("status", "in_progress").eq("is_deleted", false).order("visit_date", { ascending: false }).order("arrival_time", { ascending: false }) as any),
+        supabase.from("customers").select("id, customer_name, account_number, area").eq("id", customerId).maybeSingle(),
+        (supabase.from("visits").select("id, visit_date, arrival_time, leaving_time, duration_minutes, notes, status, order_number, order_quantity, order_amount").eq("customer_id", customerId).neq("status", "in_progress").eq("is_deleted", false) as any).order("visit_date", { ascending: false }).order("arrival_time", { ascending: false }),
         supabase.from("customer_assignments").select("rep_id").eq("customer_id", customerId).maybeSingle(),
       ]);
 
