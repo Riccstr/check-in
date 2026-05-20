@@ -734,14 +734,11 @@ function ScheduleCard({
 
           // No existing row — safe to insert
           const insertPayload = { rep_id: repId, customer_id: item.customer_id, visit_date: scheduleDate, ...checkoutData };
-          console.log("[Schedule] inserting visit payload:", JSON.stringify(insertPayload));
           const { data: visit, error: insertErr } = await supabase
             .from("visits")
             .insert(insertPayload as any)
             .select("id")
             .single();
-          console.log("[Schedule] visit insert response:", { data: visit, error: insertErr ? { code: insertErr.code, message: insertErr.message, details: insertErr.details, hint: insertErr.hint } : null });
-          if (insertErr) console.error("[Schedule] visit insert FAILED:", insertErr.code, insertErr.message, insertErr.details, insertErr.hint);
           if (visit) {
             await supabase.from("schedule_items").update({ visit_id: visit.id }).eq("id", item.id);
             const photoUrl = await uploadPhotoOnline(visit.id, clientGenIdRef.current);
@@ -1861,8 +1858,6 @@ export default function DailySchedule() {
           p_schedule_date: scheduleDate,
         });
         if (genErr) return;
-
-        console.log(`[ScheduleValidation] Stale template detected and corrected for ${scheduleDate}`);
 
         // Step 7: refresh so the UI shows the new items
         validationRanRef.current = null;
