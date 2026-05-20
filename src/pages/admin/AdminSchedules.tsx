@@ -73,10 +73,10 @@ export default function AdminSchedules() {
 
   const fetchBaseData = async () => {
     const [repsRes, custRes, weekRes, settingRes] = await Promise.all([
-      supabase.from("reps").select("*").eq("is_active", true).order("rep_name"),
-      supabase.from("customers").select("*").eq("is_active", true).order("customer_name"),
-      supabase.from("weekly_templates").select("*").order("sort_order"),
-      supabase.from("app_settings").select("*").eq("setting_key", "current_week_order").maybeSingle(),
+      supabase.from("reps").select("id, rep_name, surname, is_active").eq("is_active", true).order("rep_name"),
+      supabase.from("customers").select("id, customer_name, account_number, area, is_active").eq("is_active", true).order("customer_name"),
+      supabase.from("weekly_templates").select("id, name, sort_order").order("sort_order"),
+      supabase.from("app_settings").select("setting_key, setting_value").eq("setting_key", "current_week_order").maybeSingle(),
     ]);
     setReps(repsRes.data || []);
     setCustomers(custRes.data || []);
