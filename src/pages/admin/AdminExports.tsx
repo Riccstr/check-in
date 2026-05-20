@@ -90,11 +90,11 @@ export default function AdminExports() {
 
   // ── Export Visits CSV ──────────────────────────────────────────────────────
   const exportVisits = async () => {
-    let q = (supabase
+    let q = (supabase as any)
       .from("visits")
       .select("*, reps(rep_name), customers(customer_name, account_number, area)")
       .neq("status", "in_progress")
-      .eq("is_deleted", false) as any)
+      .eq("is_deleted", false)
       .order("visit_date", { ascending: false })
       .order("arrival_time", { ascending: true });
     if (repFilter !== "all") q = q.eq("rep_id", repFilter);
