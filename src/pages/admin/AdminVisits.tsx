@@ -34,7 +34,7 @@ export default function AdminVisits() {
 
   const fetchVisits = async () => {
     setLoading(true);
-    let q = supabase.from("visits").select("*, reps(rep_name), customers(customer_name, account_number)").order("visit_date", { ascending: false }).order("arrival_time", { ascending: false });
+    let q = supabase.from("visits").select("*, reps(rep_name), customers(customer_name, account_number)").eq("is_deleted", false).order("visit_date", { ascending: false }).order("arrival_time", { ascending: false });
     if (repFilter !== "all") q = q.eq("rep_id", repFilter);
     if (custFilter !== "all") q = q.eq("customer_id", custFilter);
     if (dateFrom) q = q.gte("visit_date", dateFrom);
@@ -74,7 +74,7 @@ export default function AdminVisits() {
 
   const del = async (id: string) => {
     if (!confirm("Delete this visit?")) return;
-    const { error } = await supabase.from("visits").delete().eq("id", id);
+    const { error } = await supabase.from("visits").update({ is_deleted: true } as any).eq("id", id);
     if (error) { toast.error("Failed to delete: " + error.message); return; }
     toast.success("Deleted"); fetchVisits();
   };

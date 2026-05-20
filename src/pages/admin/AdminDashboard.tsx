@@ -334,7 +334,8 @@ export default function AdminDashboard() {
           .from("visits")
           .select("id, rep_id, customer_id, order_number, order_amount, status, created_at, customers(customer_name)")
           .eq("visit_date", todayStr)
-          .neq("status", "in_progress"),
+          .neq("status", "in_progress")
+          .eq("is_deleted", false),
       ]);
 
       if (schedulesRes.error) throw schedulesRes.error;

@@ -89,7 +89,7 @@ export default function CustomerDashboard() {
 
       const [custRes, visitsRes, assignRes] = await Promise.all([
         supabase.from("customers").select("*").eq("id", customerId).maybeSingle(),
-        supabase.from("visits").select("*").eq("customer_id", customerId).neq("status", "in_progress").order("visit_date", { ascending: false }).order("arrival_time", { ascending: false }),
+        (supabase.from("visits").select("*").eq("customer_id", customerId).neq("status", "in_progress").eq("is_deleted", false).order("visit_date", { ascending: false }).order("arrival_time", { ascending: false }) as any),
         supabase.from("customer_assignments").select("rep_id").eq("customer_id", customerId).maybeSingle(),
       ]);
 
