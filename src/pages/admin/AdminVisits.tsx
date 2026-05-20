@@ -13,16 +13,60 @@ import { Eye, Pencil, Trash2, Camera } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
+interface VisitRep {
+  rep_name: string;
+}
+
+interface VisitCustomer {
+  customer_name: string;
+  account_number: string | null;
+}
+
+interface Visit {
+  id: string;
+  rep_id: string;
+  customer_id: string;
+  visit_date: string;
+  arrival_time: string | null;
+  leaving_time: string | null;
+  duration_minutes: number | null;
+  notes: string | null;
+  status: string;
+  order_number: string | null;
+  order_quantity: number | null;
+  order_amount: number | null;
+  photo_url: string | null;
+  is_deleted: boolean;
+  client_generated_id: string | null;
+  created_at: string;
+  latitude: number | null;
+  longitude: number | null;
+  location_address: string | null;
+  reps: VisitRep | null;
+  customers: VisitCustomer | null;
+}
+
+interface RepOption {
+  id: string;
+  rep_name: string;
+}
+
+interface CustomerOption {
+  id: string;
+  customer_name: string;
+  area: string | null;
+}
+
 export default function AdminVisits() {
-  const [visits, setVisits] = useState<any[]>([]);
-  const [reps, setReps] = useState<any[]>([]);
-  const [customers, setCustomers] = useState<any[]>([]);
+  const [visits, setVisits] = useState<Visit[]>([]);
+  const [reps, setReps] = useState<RepOption[]>([]);
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [repFilter, setRepFilter] = useState("all");
   const [custFilter, setCustFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [editVisit, setEditVisit] = useState<any>(null);
+  const [editVisit, setEditVisit] = useState<Visit | null>(null);
   const [editArrival, setEditArrival] = useState("");
   const [editLeaving, setEditLeaving] = useState("");
   const [editNotes, setEditNotes] = useState("");
@@ -30,7 +74,7 @@ export default function AdminVisits() {
   const [editOrderNumber, setEditOrderNumber] = useState("");
   const [editOrderQty, setEditOrderQty] = useState("");
   const [editOrderAmount, setEditOrderAmount] = useState("");
-  const [photoModal, setPhotoModal] = useState<any>(null);
+  const [photoModal, setPhotoModal] = useState<Visit | null>(null);
 
   const fetchVisits = async () => {
     setLoading(true);

@@ -26,26 +26,85 @@ const WEEKDAYS = [
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+interface Rep {
+  id: string;
+  rep_name: string;
+  surname: string | null;
+  is_active: boolean;
+}
+
+interface Customer {
+  id: string;
+  customer_name: string;
+  account_number: string | null;
+  area: string | null;
+  is_active: boolean;
+}
+
+interface WeeklyTemplate {
+  id: string;
+  name: string;
+  sort_order: number;
+}
+
+interface ScheduleTemplateItem {
+  id: string;
+  customer_id: string;
+  sort_order: number;
+  customers: {
+    customer_name: string;
+    account_number: string | null;
+    area: string | null;
+  } | null;
+}
+
+interface ScheduleTemplate {
+  id: string;
+  rep_id: string;
+  day_of_week: number;
+  weekly_template_id: string;
+  travel_time_minutes: number | null;
+  is_active: boolean;
+  created_at: string;
+  schedule_template_items: ScheduleTemplateItem[];
+}
+
+interface ScheduleItem {
+  id: string;
+  sort_order: number;
+  status: string;
+  customers: {
+    customer_name: string;
+    account_number: string | null;
+  } | null;
+}
+
+interface DailySchedule {
+  id: string;
+  schedule_date: string;
+  schedule_items: ScheduleItem[];
+}
+
 export default function AdminSchedules() {
   const { user } = useAuth();
-  const [reps, setReps] = useState<any[]>([]);
-  const [customers, setCustomers] = useState<any[]>([]);
+  const [reps, setReps] = useState<Rep[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedRep, setSelectedRep] = useState("");
 
   // Weekly templates (global)
-  const [weeklyTemplates, setWeeklyTemplates] = useState<any[]>([]);
+  const [weeklyTemplates, setWeeklyTemplates] = useState<WeeklyTemplate[]>([]);
   const [currentWeekOrder, setCurrentWeekOrder] = useState<number>(1);
 
   // Schedule templates state (per rep per week per day)
   const [selectedWeeklyTemplate, setSelectedWeeklyTemplate] = useState("");
-  const [templates, setTemplates] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<ScheduleTemplate[]>([]);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [templateDay, setTemplateDay] = useState("1");
   const [templateTravelTime, setTemplateTravelTime] = useState<string>("");
   const [templateCustomers, setTemplateCustomers] = useState<string[]>([]);
 
   // Daily schedules
-  const [dailySchedules, setDailySchedules] = useState<any[]>([]);
+  const [dailySchedules, setDailySchedules] = useState<DailySchedule[]>([]);
 
   // Inline week rename
   const [editingWeekId, setEditingWeekId] = useState<string | null>(null);
