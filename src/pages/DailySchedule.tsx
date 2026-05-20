@@ -120,6 +120,18 @@ async function saveVisitOffline(
   });
 }
 
+function nowTime(): string {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+function calcDuration(arr: string, lv: string): number {
+  if (!arr || !lv) return 0;
+  const [ah, am] = arr.split(":").map(Number);
+  const [lh, lm] = lv.split(":").map(Number);
+  return lh * 60 + lm - (ah * 60 + am);
+}
+
 // ─── small UI helpers ──────────────────────────────────────────────────────────
 
 function StatusPill({ status, isInProgress }: { status: string; isInProgress: boolean }) {
@@ -486,18 +498,6 @@ function ScheduleCard({
       clientGeneratedId: clientGenIdRef.current,
     }).catch(() => {});
   }, [localNotes]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const nowTime = () => {
-    const now = new Date();
-    return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  };
-
-  const calcDuration = (arr: string, lv: string) => {
-    if (!arr || !lv) return 0;
-    const [ah, am] = arr.split(":").map(Number);
-    const [lh, lm] = lv.split(":").map(Number);
-    return lh * 60 + lm - (ah * 60 + am);
-  };
 
   const queueScheduleItemUpdate = async (newItem: any) => {
     // Resolve visitId: prefer component state, fall back to IDB for the
@@ -1909,18 +1909,6 @@ export default function DailySchedule() {
         );
       }
     } catch { /* online fetch failed, keep cache */ }
-  };
-
-  const nowTime = () => {
-    const now = new Date();
-    return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  };
-
-  const calcDuration = (arr: string, lv: string) => {
-    if (!arr || !lv) return 0;
-    const [ah, am] = arr.split(":").map(Number);
-    const [lh, lm] = lv.split(":").map(Number);
-    return lh * 60 + lm - (ah * 60 + am);
   };
 
   const submitAdHoc = async () => {
