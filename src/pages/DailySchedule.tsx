@@ -1363,8 +1363,7 @@ export default function DailySchedule() {
   const [adHocOrderQty,    setAdHocOrderQty]    = useState("");
   const [adHocOrderAmount, setAdHocOrderAmount] = useState("");
   const [adHocSubmitting,  setAdHocSubmitting]  = useState(false);
-  const [adHocPhoto,          setAdHocPhoto]          = useState<string | null>(null);
-  const [adHocPhotoConfirmed, setAdHocPhotoConfirmed] = useState(false);
+  const [adHocPhoto, setAdHocPhoto] = useState<{ blob: Blob; preview: string } | null>(null);
 
   // off-route order state
   const [offRouteCustomerId,  setOffRouteCustomerId]  = useState("");
@@ -1895,26 +1894,23 @@ export default function DailySchedule() {
     let adHocPhotoUrl: string | null = null;
     if (adHocPhoto) {
       try {
-        const byteString = atob(adHocPhoto.split(",")[1] ?? adHocPhoto);
-        const ab = new ArrayBuffer(byteString.length);
-        const ia = new Uint8Array(ab);
-        for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-        const photoBlob = new Blob([ab], { type: "image/jpeg" });
         const { error: uploadErr } = await supabase.storage
           .from("visit-photos")
-          .upload(`${adHocClientId}.jpg`, photoBlob, { upsert: true });
+          .upload(`${adHocClientId}.jpg`, adHocPhoto.blob, { contentType: "image/jpeg", upsert: true });
         if (!uploadErr) {
           const { data: urlData } = supabase.storage.from("visit-photos").getPublicUrl(`${adHocClientId}.jpg`);
           adHocPhotoUrl = urlData?.publicUrl || null;
         } else {
           try {
-            await savePendingPhoto(adHocClientId, adHocPhoto, null, adHocClientId);
+            const b64 = await blobToBase64(adHocPhoto.blob);
+            await savePendingPhoto(adHocClientId, b64, null, adHocClientId);
             toast.warning("Photo saved for upload — will retry when connection improves");
           } catch { /* IDB failure must not block submit */ }
         }
       } catch {
         try {
-          await savePendingPhoto(adHocClientId, adHocPhoto, null, adHocClientId);
+          const b64 = await blobToBase64(adHocPhoto.blob);
+          await savePendingPhoto(adHocClientId, b64, null, adHocClientId);
           toast.warning("Photo saved for upload — will retry when connection improves");
         } catch { /* IDB failure must not block submit */ }
       }
@@ -1933,7 +1929,8 @@ export default function DailySchedule() {
       });
       if (error) {
         if (isOfflineError(error)) {
-          await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrival, adHocLeaving, dur, adHocNotes || null, customerName, "visited", adHocPhoto, adHocOrderNumber || null, adHocOrderQty !== "" ? Number(adHocOrderQty) : null, adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null);
+          const photoB64 = adHocPhoto ? await blobToBase64(adHocPhoto.blob) : null;
+          await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrival, adHocLeaving, dur, adHocNotes || null, customerName, "visited", photoB64, adHocOrderNumber || null, adHocOrderQty !== "" ? Number(adHocOrderQty) : null, adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null);
           toast.success("Saved offline. Will sync when online.");
           resetAdHoc();
         } else {
@@ -1946,7 +1943,8 @@ export default function DailySchedule() {
     } catch (err: any) {
       console.warn("[Schedule] Network error on ad-hoc:", err?.message);
       try {
-        await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrival, adHocLeaving, dur, adHocNotes || null, customerName, "visited", adHocPhoto, adHocOrderNumber || null, adHocOrderQty !== "" ? Number(adHocOrderQty) : null, adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null);
+        const photoB64 = adHocPhoto ? await blobToBase64(adHocPhoto.blob) : null;
+        await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrival, adHocLeaving, dur, adHocNotes || null, customerName, "visited", photoB64, adHocOrderNumber || null, adHocOrderQty !== "" ? Number(adHocOrderQty) : null, adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null);
         toast.success("Saved offline. Will sync when online.");
         resetAdHoc();
       } catch (idbErr) {
@@ -1961,8 +1959,8 @@ export default function DailySchedule() {
     setExpandedBottomCard(null);
     setAdHocCustomerId(""); setAdHocArrival(""); setAdHocLeaving(""); setAdHocNotes("");
     setAdHocOrderNumber(""); setAdHocOrderQty(""); setAdHocOrderAmount("");
+    if (adHocPhoto) URL.revokeObjectURL(adHocPhoto.preview);
     setAdHocPhoto(null);
-    setAdHocPhotoConfirmed(false);
   };
 
   const resetOffRoute = () => {
@@ -2747,8 +2745,11 @@ export default function DailySchedule() {
                 <div>
                   {adHocPhoto ? (
                     <div className="relative inline-block">
-                      <img src={adHocPhoto} alt="Store photo" className="h-20 w-20 object-cover rounded-xl" style={{ border: `1px solid ${C.border}` }} />
-                      <button type="button" onClick={() => { setAdHocPhoto(null); setAdHocPhotoConfirmed(false); }}
+                      <img src={adHocPhoto.preview} alt="Store photo" className="h-20 w-20 object-cover rounded-xl" style={{ border: `1px solid ${C.border}` }} />
+                      <button type="button" onClick={() => {
+                        URL.revokeObjectURL(adHocPhoto.preview);
+                        setAdHocPhoto(null);
+                      }}
                         className="absolute -top-1 -right-1 rounded-full p-0.5"
                         style={{ background: C.red, color: "#fff" }}>
                         <X size={12} />
@@ -2758,9 +2759,8 @@ export default function DailySchedule() {
                     <CameraCapture onCapture={async (blob) => {
                       try {
                         const compressed = await compressImage(blob);
-                        const b64 = await blobToBase64(compressed);
-                        setAdHocPhoto(b64);
-                        setAdHocPhotoConfirmed(true);
+                        const preview = URL.createObjectURL(compressed);
+                        setAdHocPhoto({ blob: compressed, preview });
                       } catch {
                         toast.error("Failed to process photo");
                       }
