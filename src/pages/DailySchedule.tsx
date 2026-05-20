@@ -1301,6 +1301,7 @@ function ScheduleCard({
 
 export default function DailySchedule() {
   const { repId } = useAuth();
+  if (!repId) return null;
   const navigate  = useNavigate();
   const location  = useLocation();
 
