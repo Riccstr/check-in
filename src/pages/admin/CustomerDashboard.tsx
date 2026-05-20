@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ArrowLeft, TrendingUp, TrendingDown } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import type { ChartEntry } from "./CustomerChart";
+import { fmtDuration, fmtCurrency, fmtDate } from "@/lib/timeUtils";
 
 const CustomerChart = React.lazy(() => import("./CustomerChart"));
 
@@ -17,17 +18,6 @@ const CustomerChart = React.lazy(() => import("./CustomerChart"));
 function fmtTime(t: string | null | undefined): string {
   if (!t) return "—";
   return t.slice(0, 5);
-}
-
-function fmtCurrency(n: number): string {
-  return "R " + n.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function fmtDuration(mins: number): string {
-  if (mins < 60) return `${mins}m`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
 function today(): string {

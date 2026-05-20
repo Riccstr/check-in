@@ -11,33 +11,11 @@ import { Download, FileSpreadsheet } from "lucide-react";
 import XLSX from "xlsx-js-style";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { fmtDuration, fmtTime12h, fmtCurrency, fmtDate } from "@/lib/timeUtils";
 
 const LOGO_BASE64 = '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';
 
-// ── Formatting helpers ───────────────────────────────────────────────────────
-
-const formatAmount = (value: number | null | undefined): string => {
-  if (value == null) return '';
-  return value.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
-
-function formatTime12h(time: string | null) {
-  if (!time) return "";
-  const [h, m] = time.split(":").map(Number);
-  const ampm = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 || 12;
-  return `${String(h12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${ampm}`;
-}
-
-function formatDuration(mins: number) {
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
-
-function fmtDate(d: string) {
-  return new Date(d + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-}
+// ── Shared report data fetcher ───────────────────────────────────────────────
 
 // ── Shared report data fetcher ───────────────────────────────────────────────
 
@@ -382,14 +360,14 @@ export default function AdminExports() {
     const leftValues  = [repName,          generatedAt,   period,    String(data.length)];
     const centreLabels = ["Travel Time",   "Expected Productive Time", "Total Customers on Route", "Time / Customer"];
     const centreValues = [
-      travelTimeMins !== null ? formatDuration(travelTimeMins)         : "—",
-      travelTimeMins !== null ? formatDuration(expectedProductiveMins)  : "—",
+      travelTimeMins !== null ? fmtDuration(travelTimeMins)         : "—",
+      travelTimeMins !== null ? fmtDuration(expectedProductiveMins)  : "—",
       String(scheduleItemCount),
-      scheduleItemCount > 0   ? formatDuration(timePerCustomer)         : "—",
+      scheduleItemCount > 0   ? fmtDuration(timePerCustomer)         : "—",
     ];
     const rightLabels = ["Productive Time", "Order Qty",       "Order Amount (R)", "Skipped"];
     const rightValues = [
-      formatDuration(totalProductiveMins),
+      fmtDuration(totalProductiveMins),
       String(totalOrderQty),
       `R ${totalOrderAmount.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       String(skippedCount),
@@ -458,9 +436,9 @@ export default function AdminExports() {
         v.customers?.account_number || "",
         v.customers?.customer_name || "",
         v.customers?.area || "",
-        isSkipped || isOffRoute ? "" : formatTime12h(v.arrival_time),
-        isSkipped || isOffRoute ? "" : formatTime12h(v.leaving_time),
-        isSkipped || isOffRoute ? "" : (dur > 0 ? formatDuration(dur) : ""),
+        isSkipped || isOffRoute ? "" : fmtTime12h(v.arrival_time),
+        isSkipped || isOffRoute ? "" : fmtTime12h(v.leaving_time),
+        isSkipped || isOffRoute ? "" : (dur > 0 ? fmtDuration(dur) : ""),
         v.order_number || "",
         v.order_quantity != null ? v.order_quantity : "",
         v.order_amount != null ? v.order_amount : "",
@@ -490,7 +468,7 @@ export default function AdminExports() {
     for (let c = 1; c < 6; c++) ss(ws, totalsRow, c, tStyle);
     ws["!merges"].push({ s: { r: totalsRow, c: 0 }, e: { r: totalsRow, c: 5 } });
 
-    sc(ws, totalsRow, 6, formatDuration(totalProductiveMins), tStyle);
+    sc(ws, totalsRow, 6, fmtDuration(totalProductiveMins), tStyle);
     ss(ws, totalsRow, 7, tStyle);
     sc(ws, totalsRow, 8, totalOrderQty, tStyle);
     sc(ws, totalsRow, 9, totalOrderAmount, tRightStyle);
@@ -584,16 +562,16 @@ export default function AdminExports() {
     const leftValues  = [repName, generatedAt,   period,    String(data.length)];
     const centreLabels = ["Travel Time", "Expected Productive Time", "Total Customers on Route", "Time / Customer"];
     const centreValues = [
-      travelTimeMins !== null ? formatDuration(travelTimeMins)         : "—",
-      travelTimeMins !== null ? formatDuration(expectedProductiveMins)  : "—",
+      travelTimeMins !== null ? fmtDuration(travelTimeMins)         : "—",
+      travelTimeMins !== null ? fmtDuration(expectedProductiveMins)  : "—",
       String(scheduleItemCount),
-      scheduleItemCount > 0   ? formatDuration(timePerCustomer)         : "—",
+      scheduleItemCount > 0   ? fmtDuration(timePerCustomer)         : "—",
     ];
     const rightLabels = ["Productive Time",   "Order Qty",       "Order Amount (R)",  "Skipped"];
     const rightValues = [
-      formatDuration(totalProductiveMins),
+      fmtDuration(totalProductiveMins),
       String(totalOrderQty),
-      formatAmount(totalOrderAmount),
+      fmtCurrency(totalOrderAmount),
       String(skippedCount),
     ];
 
@@ -667,12 +645,12 @@ export default function AdminExports() {
         v.customers?.account_number || "",
         v.customers?.customer_name  || "",
         v.customers?.area           || "",
-        isSkipped || isOffRoute ? "" : formatTime12h(v.arrival_time),
-        isSkipped || isOffRoute ? "" : formatTime12h(v.leaving_time),
-        isSkipped || isOffRoute ? "" : (dur > 0 ? formatDuration(dur) : ""),
+        isSkipped || isOffRoute ? "" : fmtTime12h(v.arrival_time),
+        isSkipped || isOffRoute ? "" : fmtTime12h(v.leaving_time),
+        isSkipped || isOffRoute ? "" : (dur > 0 ? fmtDuration(dur) : ""),
         v.order_number || "",
         v.order_quantity != null ? String(v.order_quantity) : "",
-        v.order_amount   != null ? formatAmount(Number(v.order_amount)) : "",
+        v.order_amount   != null ? fmtCurrency(Number(v.order_amount)) : "",
         isSkipped ? `[SKIPPED] ${v.notes || ""}` : (isOffRoute ? `[OFF-ROUTE] ${v.notes || ""}`.trimEnd() : (v.notes || "")),
       ];
       (row as any).__skipped = isSkipped;
@@ -683,7 +661,7 @@ export default function AdminExports() {
       startY: tableStartY,
       head: [["#", "Account #", "Customer", "Area", "Arrival", "Departure", "Duration", "Order No.", "Qty", "Amount (R)", "Notes"]],
       body: bodyRows,
-      foot: [["Tot", "", "", "", "", "", formatDuration(totalProductiveMins), "", String(totalOrderQty), formatAmount(totalOrderAmount), ""]],
+      foot: [["Tot", "", "", "", "", "", fmtDuration(totalProductiveMins), "", String(totalOrderQty), fmtCurrency(totalOrderAmount), ""]],
       theme: "grid",
       styles: {
         font: "helvetica",

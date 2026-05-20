@@ -17,6 +17,7 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import { compressImage, blobToBase64 } from "@/lib/imageCompressor";
 import { CameraCapture } from "@/components/CameraCapture";
+import { fmtDuration } from "@/lib/timeUtils";
 import {
   addOfflineVisit,
   getCachedCustomers,
@@ -167,14 +168,6 @@ interface SummaryStats {
   avgDuration: number; // minutes
   histAvgOrders: number | null;     // null = fewer than 2 historical days, don't show
   histAvgOrderValue: number | null; // null = fewer than 2 historical days, don't show
-}
-
-function fmtDuration(mins: number): string {
-  if (mins <= 0) return "—";
-  if (mins < 60) return `${mins}m`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
 function EodSummaryModal({ stats, onClose }: { stats: SummaryStats; onClose: () => void }) {

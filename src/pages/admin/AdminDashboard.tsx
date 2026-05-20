@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
+import { fmtTime12h } from "@/lib/timeUtils";
 
 // ─── local types ──────────────────────────────────────────────────────────────
 
@@ -76,13 +77,6 @@ function deriveStatus(items: ScheduleItem[]): RepStatus {
   return "not_started";
 }
 
-/** Format a PostgreSQL time string (HH:MM or HH:MM:SS) to "10:22 AM" */
-function fmtTime(t: string | null): string {
-  if (!t) return "—";
-  const [h, m] = t.split(":").map(Number);
-  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
-}
-
 /** Format an ISO timestamp string to local "10:22 AM" */
 function fmtFromIso(iso: string): string {
   const d = new Date(iso);
@@ -153,7 +147,7 @@ function RepStatusCard({ card }: { card: RepCardData }) {
       {card.status === "checked_in" && card.currentCustomer && (
         <p className="text-xs text-muted-foreground">
           {card.currentCustomer}
-          {card.currentArrivalTime ? ` since ${fmtTime(card.currentArrivalTime)}` : ""}
+          {card.currentArrivalTime ? ` since ${fmtTime12h(card.currentArrivalTime)}` : ""}
         </p>
       )}
 
@@ -453,7 +447,7 @@ export default function AdminDashboard() {
       if (item.arrival_time) {
         activityEvents.push({
           type: "checkin", repName, customerName,
-          timeDisplay: fmtTime(item.arrival_time),
+          timeDisplay: fmtTime12h(item.arrival_time),
           sortKey:     item.arrival_time,
           duration: null, notes: null,
         });
@@ -462,7 +456,7 @@ export default function AdminDashboard() {
       if (item.leaving_time) {
         activityEvents.push({
           type: "checkout", repName, customerName,
-          timeDisplay: fmtTime(item.leaving_time),
+          timeDisplay: fmtTime12h(item.leaving_time),
           sortKey:     item.leaving_time,
           duration:    item.duration_minutes,
           notes: null,
