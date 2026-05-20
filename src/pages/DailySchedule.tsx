@@ -945,6 +945,12 @@ function ScheduleCard({
       }
     } finally {
       setActionInProgress(false);
+      // Clear active card state in case rep arrived then chose to skip
+      getActiveCard().then((card) => {
+        if (card?.scheduleItemId === item.id) {
+          clearActiveCard().catch(() => {});
+        }
+      }).catch(() => {});
     }
   };
 
@@ -2079,9 +2085,24 @@ export default function DailySchedule() {
     })();
   }, [items, isToday]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Read dismissed flag from localStorage whenever date or rep changes
+  // Read dismissed flag from localStorage whenever date or rep changes.
+  // Also cleans up stale summary_dismissed_ keys older than 7 days.
   useEffect(() => {
     setSummaryDismissed(dismissedKey ? localStorage.getItem(dismissedKey) === "1" : false);
+
+    try {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 7);
+      const cutoffStr = cutoff.toISOString().slice(0, 10); // "YYYY-MM-DD"
+      Object.keys(localStorage).forEach((key) => {
+        if (!key.startsWith("summary_dismissed_")) return;
+        // Key format: summary_dismissed_{repId}_{YYYY-MM-DD}
+        const datePart = key.split("_").pop();
+        if (datePart && datePart < cutoffStr) {
+          localStorage.removeItem(key);
+        }
+      });
+    } catch { /* localStorage unavailable — ignore */ }
   }, [dismissedKey]);
 
   const openSummary = useCallback(async () => {

@@ -239,7 +239,7 @@ export default function AdminVisits() {
                       <TableCell>{renderPhoto(v)}</TableCell>
                       <TableCell className="whitespace-nowrap">{v.order_number || "—"}</TableCell>
                       <TableCell>{v.order_quantity != null ? v.order_quantity : "—"}</TableCell>
-                      <TableCell>{v.order_amount != null ? Number(v.order_amount).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(",", ".") : "—"}</TableCell>
+                      <TableCell>{v.order_amount != null ? Number(v.order_amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}</TableCell>
                       <TableCell className="max-w-[150px]">
                         {v.notes ? (
                           <Tooltip>

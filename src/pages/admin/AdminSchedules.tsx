@@ -358,6 +358,7 @@ export default function AdminSchedules() {
   };
 
   const deleteTemplate = async (id: string) => {
+    if (!confirm("Delete this day template? This will also remove future unstarted schedules for this day.")) return;
     await supabase.from("schedule_templates").delete().eq("id", id);
     toast.success("Template deleted");
     fetchTemplates();
@@ -365,6 +366,7 @@ export default function AdminSchedules() {
 
   // --- Daily schedules ---
   const deleteDaily = async (id: string) => {
+    if (!confirm("Delete this daily schedule? This cannot be undone.")) return;
     await supabase.from("daily_schedules").delete().eq("id", id);
     toast.success("Schedule deleted");
     fetchDailySchedules();
