@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useVisitDetails } from "@/hooks/useVisitDetails";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -284,25 +285,7 @@ function EodSummaryModal({ stats, onClose }: { stats: SummaryStats; onClose: () 
 // handle offline-synced visits where visit_id may not yet be on schedule_items.
 
 function VisitDetailsText({ visitId, repId, customerId, scheduleDate }: { visitId: string | null; repId: string; customerId: string; scheduleDate: string }) {
-  const [visitData, setVisitData] = useState<any>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const fetchVisit = async () => {
-      let data: any = null;
-      if (visitId) {
-        const res = await supabase.from("visits").select("order_number, order_quantity, order_amount").eq("id", visitId).maybeSingle();
-        data = res.data;
-      }
-      if (!data) {
-        const res = await supabase.from("visits").select("order_number, order_quantity, order_amount").eq("rep_id", repId).eq("customer_id", customerId).eq("visit_date", scheduleDate).order("created_at", { ascending: false }).limit(1).maybeSingle();
-        data = res.data;
-      }
-      if (!cancelled && data) setVisitData(data);
-    };
-    fetchVisit();
-    return () => { cancelled = true; };
-  }, [visitId, repId, customerId, scheduleDate]);
+  const { data: visitData } = useVisitDetails(visitId, repId, customerId, scheduleDate, "order_number, order_quantity, order_amount");
 
   if (!visitData) return null;
   const hasAny = visitData.order_number || visitData.order_quantity != null || visitData.order_amount != null;
@@ -333,31 +316,13 @@ function VisitDetailsText({ visitId, repId, customerId, scheduleDate }: { visitI
 }
 
 function VisitPhotoOnly({ visitId, repId, customerId, scheduleDate }: { visitId: string | null; repId: string; customerId: string; scheduleDate: string }) {
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const { data } = useVisitDetails(visitId, repId, customerId, scheduleDate, "photo_url");
 
-  useEffect(() => {
-    let cancelled = false;
-    const fetchPhoto = async () => {
-      let data: any = null;
-      if (visitId) {
-        const res = await supabase.from("visits").select("photo_url").eq("id", visitId).maybeSingle();
-        data = res.data;
-      }
-      if (!data) {
-        const res = await supabase.from("visits").select("photo_url").eq("rep_id", repId).eq("customer_id", customerId).eq("visit_date", scheduleDate).order("created_at", { ascending: false }).limit(1).maybeSingle();
-        data = res.data;
-      }
-      if (!cancelled && data?.photo_url) setPhotoUrl(data.photo_url);
-    };
-    fetchPhoto();
-    return () => { cancelled = true; };
-  }, [visitId, repId, customerId, scheduleDate]);
-
-  if (!photoUrl) return null;
+  if (!data?.photo_url) return null;
 
   return (
     <div className="shrink-0">
-      <img src={photoUrl} alt="Visit photo" className="w-16 h-16 object-cover rounded-xl" style={{ border: `1px solid ${C.border}` }} />
+      <img src={data.photo_url} alt="Visit photo" className="w-16 h-16 object-cover rounded-xl" style={{ border: `1px solid ${C.border}` }} />
     </div>
   );
 }
