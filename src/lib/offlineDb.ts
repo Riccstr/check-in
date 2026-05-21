@@ -102,18 +102,30 @@ function getDb() {
 // === Offline Visits ===
 
 export async function addOfflineVisit(visit: OfflineVisit): Promise<void> {
-  const db = await getDb();
-  await db.put("offline_visits_queue", visit);
+  try {
+    const db = await getDb();
+    await db.put("offline_visits_queue", visit);
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function getAllOfflineVisits(): Promise<OfflineVisit[]> {
-  const db = await getDb();
-  return db.getAll("offline_visits_queue");
+  try {
+    const db = await getDb();
+    return db.getAll("offline_visits_queue");
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function getPendingVisits(): Promise<OfflineVisit[]> {
-  const all = await getAllOfflineVisits();
-  return all.filter((v) => v.sync_status === "pending" || v.sync_status === "error");
+  try {
+    const all = await getAllOfflineVisits();
+    return all.filter((v) => v.sync_status === "pending" || v.sync_status === "error");
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function updateVisitSyncStatus(
@@ -121,48 +133,72 @@ export async function updateVisitSyncStatus(
   status: "synced" | "error",
   errorMessage?: string
 ): Promise<void> {
-  const db = await getDb();
-  const visit = await db.get("offline_visits_queue", clientId);
-  if (visit) {
-    visit.sync_status = status;
-    visit.last_sync_attempt = new Date().toISOString();
-    visit.error_message = errorMessage || null;
-    await db.put("offline_visits_queue", visit);
+  try {
+    const db = await getDb();
+    const visit = await db.get("offline_visits_queue", clientId);
+    if (visit) {
+      visit.sync_status = status;
+      visit.last_sync_attempt = new Date().toISOString();
+      visit.error_message = errorMessage || null;
+      await db.put("offline_visits_queue", visit);
+    }
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
 export async function removeOfflineVisit(clientId: string): Promise<void> {
-  const db = await getDb();
-  await db.delete("offline_visits_queue", clientId);
+  try {
+    const db = await getDb();
+    await db.delete("offline_visits_queue", clientId);
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function removeSyncedVisits(): Promise<number> {
-  const all = await getAllOfflineVisits();
-  const synced = all.filter((v) => v.sync_status === "synced");
-  const db = await getDb();
-  const tx = db.transaction("offline_visits_queue", "readwrite");
-  for (const v of synced) {
-    await tx.store.delete(v.client_generated_id);
+  try {
+    const all = await getAllOfflineVisits();
+    const synced = all.filter((v) => v.sync_status === "synced");
+    const db = await getDb();
+    const tx = db.transaction("offline_visits_queue", "readwrite");
+    for (const v of synced) {
+      await tx.store.delete(v.client_generated_id);
+    }
+    await tx.done;
+    return synced.length;
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
   }
-  await tx.done;
-  return synced.length;
 }
 
 // === Offline Schedule Item Updates ===
 
 export async function upsertOfflineScheduleItemUpdate(update: OfflineScheduleItemUpdate): Promise<void> {
-  const db = await getDb();
-  await db.put("offline_schedule_item_updates", update);
+  try {
+    const db = await getDb();
+    await db.put("offline_schedule_item_updates", update);
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function getAllOfflineScheduleItemUpdates(): Promise<OfflineScheduleItemUpdate[]> {
-  const db = await getDb();
-  return db.getAll("offline_schedule_item_updates");
+  try {
+    const db = await getDb();
+    return db.getAll("offline_schedule_item_updates");
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function getPendingScheduleItemUpdates(): Promise<OfflineScheduleItemUpdate[]> {
-  const all = await getAllOfflineScheduleItemUpdates();
-  return all.filter((v) => v.sync_status === "pending" || v.sync_status === "error");
+  try {
+    const all = await getAllOfflineScheduleItemUpdates();
+    return all.filter((v) => v.sync_status === "pending" || v.sync_status === "error");
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function updateScheduleItemUpdateSyncStatus(
@@ -170,43 +206,59 @@ export async function updateScheduleItemUpdateSyncStatus(
   status: "synced" | "error",
   errorMessage?: string
 ): Promise<void> {
-  const db = await getDb();
-  const update = await db.get("offline_schedule_item_updates", scheduleItemId);
-  if (update) {
-    update.sync_status = status;
-    update.last_sync_attempt = new Date().toISOString();
-    update.error_message = errorMessage || null;
-    await db.put("offline_schedule_item_updates", update);
+  try {
+    const db = await getDb();
+    const update = await db.get("offline_schedule_item_updates", scheduleItemId);
+    if (update) {
+      update.sync_status = status;
+      update.last_sync_attempt = new Date().toISOString();
+      update.error_message = errorMessage || null;
+      await db.put("offline_schedule_item_updates", update);
+    }
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
 export async function removeSyncedScheduleItemUpdates(): Promise<number> {
-  const all = await getAllOfflineScheduleItemUpdates();
-  const synced = all.filter((v) => v.sync_status === "synced");
-  const db = await getDb();
-  const tx = db.transaction("offline_schedule_item_updates", "readwrite");
-  for (const v of synced) {
-    await tx.store.delete(v.schedule_item_id);
+  try {
+    const all = await getAllOfflineScheduleItemUpdates();
+    const synced = all.filter((v) => v.sync_status === "synced");
+    const db = await getDb();
+    const tx = db.transaction("offline_schedule_item_updates", "readwrite");
+    for (const v of synced) {
+      await tx.store.delete(v.schedule_item_id);
+    }
+    await tx.done;
+    return synced.length;
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
   }
-  await tx.done;
-  return synced.length;
 }
 
 // === Cached Customers ===
 
 export async function setCachedCustomers(customers: CachedCustomer[]): Promise<void> {
-  const db = await getDb();
-  const tx = db.transaction("cached_customers", "readwrite");
-  await tx.store.clear();
-  for (const c of customers) {
-    await tx.store.put(c);
+  try {
+    const db = await getDb();
+    const tx = db.transaction("cached_customers", "readwrite");
+    await tx.store.clear();
+    for (const c of customers) {
+      await tx.store.put(c);
+    }
+    await tx.done;
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
   }
-  await tx.done;
 }
 
 export async function getCachedCustomers(): Promise<CachedCustomer[]> {
-  const db = await getDb();
-  return db.getAll("cached_customers");
+  try {
+    const db = await getDb();
+    return db.getAll("cached_customers");
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 // === Cached User Auth ===
@@ -230,45 +282,65 @@ export interface CachedUserAuth {
 }
 
 export async function setCachedUserAuth(auth: CachedUserAuth): Promise<void> {
-  const db = await getDb();
-  await db.put("cached_user_auth", auth);
+  try {
+    const db = await getDb();
+    await db.put("cached_user_auth", auth);
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function getCachedUserAuth(userId: string): Promise<CachedUserAuth | null> {
-  const db = await getDb();
-  const cached = (await db.get("cached_user_auth", userId)) as CachedUserAuth | null;
-  if (!cached) return null;
+  try {
+    const db = await getDb();
+    const cached = (await db.get("cached_user_auth", userId)) as CachedUserAuth | null;
+    if (!cached) return null;
 
-  return {
-    ...cached,
-    profile: cached.profile ?? null,
-    permissions: Array.isArray(cached.permissions) ? cached.permissions : [],
-  };
+    return {
+      ...cached,
+      profile: cached.profile ?? null,
+      permissions: Array.isArray(cached.permissions) ? cached.permissions : [],
+    };
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function clearCachedUserAuth(userId: string): Promise<void> {
-  const db = await getDb();
-  await db.delete("cached_user_auth", userId);
+  try {
+    const db = await getDb();
+    await db.delete("cached_user_auth", userId);
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 // === Cached Schedules ===
 
 export async function setCachedSchedule(repId: string, date: string, data: any): Promise<void> {
-  const db = await getDb();
-  await db.put("cached_schedules", {
-    key: `${repId}_${date}`,
-    rep_id: repId,
-    schedule_date: date,
-    schedule_id: data?.id || null,
-    data,
-    cached_at: new Date().toISOString(),
-  });
+  try {
+    const db = await getDb();
+    await db.put("cached_schedules", {
+      key: `${repId}_${date}`,
+      rep_id: repId,
+      schedule_date: date,
+      schedule_id: data?.id || null,
+      data,
+      cached_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function getCachedSchedule(repId: string, date: string): Promise<any | null> {
-  const db = await getDb();
-  const cached = await db.get("cached_schedules", `${repId}_${date}`);
-  return cached?.data || null;
+  try {
+    const db = await getDb();
+    const cached = await db.get("cached_schedules", `${repId}_${date}`);
+    return cached?.data || null;
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function updateCachedScheduleItem(
@@ -277,17 +349,21 @@ export async function updateCachedScheduleItem(
   itemId: string,
   updates: Record<string, any>
 ): Promise<void> {
-  const db = await getDb();
-  const key = `${repId}_${date}`;
-  const cached = await db.get("cached_schedules", key);
-  if (!cached?.data?.schedule_items || !Array.isArray(cached.data.schedule_items)) return;
+  try {
+    const db = await getDb();
+    const key = `${repId}_${date}`;
+    const cached = await db.get("cached_schedules", key);
+    if (!cached?.data?.schedule_items || !Array.isArray(cached.data.schedule_items)) return;
 
-  cached.data.schedule_items = cached.data.schedule_items.map((item: any) =>
-    item.id === itemId ? { ...item, ...updates } : item
-  );
-  cached.cached_at = new Date().toISOString();
+    cached.data.schedule_items = cached.data.schedule_items.map((item: any) =>
+      item.id === itemId ? { ...item, ...updates } : item
+    );
+    cached.cached_at = new Date().toISOString();
 
-  await db.put("cached_schedules", cached);
+    await db.put("cached_schedules", cached);
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 // === Pending Photos ===
@@ -305,24 +381,40 @@ export async function savePendingPhoto(
   visitId: string | null,
   clientGeneratedId: string | null
 ): Promise<void> {
-  const db = await getDb();
-  await db.put("pending_photos", { scheduleItemId, base64, visitId, clientGeneratedId });
+  try {
+    const db = await getDb();
+    await db.put("pending_photos", { scheduleItemId, base64, visitId, clientGeneratedId });
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function getAllPendingPhotos(): Promise<PendingPhoto[]> {
-  const db = await getDb();
-  return db.getAll("pending_photos");
+  try {
+    const db = await getDb();
+    return db.getAll("pending_photos");
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function getPendingPhoto(scheduleItemId: string): Promise<string | null> {
-  const db = await getDb();
-  const entry = await db.get("pending_photos", scheduleItemId);
-  return entry?.base64 ?? null;
+  try {
+    const db = await getDb();
+    const entry = await db.get("pending_photos", scheduleItemId);
+    return entry?.base64 ?? null;
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function clearPendingPhoto(scheduleItemId: string): Promise<void> {
-  const db = await getDb();
-  await db.delete("pending_photos", scheduleItemId);
+  try {
+    const db = await getDb();
+    await db.delete("pending_photos", scheduleItemId);
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 // === Active Card State ===
@@ -338,24 +430,36 @@ export interface ActiveCardState {
 }
 
 export async function saveActiveCard(data: ActiveCardState): Promise<void> {
-  const db = await getDb();
-  await db.put("active_card_state", { key: "current", ...data });
+  try {
+    const db = await getDb();
+    await db.put("active_card_state", { key: "current", ...data });
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function getActiveCard(): Promise<ActiveCardState | null> {
-  const db = await getDb();
-  const entry = await db.get("active_card_state", "current");
-  if (!entry) return null;
-  return {
-    scheduleItemId: entry.scheduleItemId,
-    arrivalTime: entry.arrivalTime,
-    notes: entry.notes,
-    visitId: entry.visitId ?? null,
-    clientGeneratedId: entry.clientGeneratedId ?? null,
-  };
+  try {
+    const db = await getDb();
+    const entry = await db.get("active_card_state", "current");
+    if (!entry) return null;
+    return {
+      scheduleItemId: entry.scheduleItemId,
+      arrivalTime: entry.arrivalTime,
+      notes: entry.notes,
+      visitId: entry.visitId ?? null,
+      clientGeneratedId: entry.clientGeneratedId ?? null,
+    };
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export async function clearActiveCard(): Promise<void> {
-  const db = await getDb();
-  await db.delete("active_card_state", "current");
+  try {
+    const db = await getDb();
+    await db.delete("active_card_state", "current");
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
