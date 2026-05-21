@@ -10,8 +10,6 @@ import {
 import { toast } from "sonner";
 import { base64ToBlob } from "./imageCompressor";
 
-let syncing = false;
-
 async function syncPendingScheduleItemUpdates(): Promise<{ synced: number; errors: number }> {
   const pending = await getPendingScheduleItemUpdates();
   if (pending.length === 0) return { synced: 0, errors: 0 };
@@ -114,120 +112,119 @@ async function linkVisitToScheduleItem(visitId: string, payload: any): Promise<v
 }
 
 export async function syncPendingVisits(): Promise<{ synced: number; errors: number }> {
-  if (syncing) return { synced: 0, errors: 0 };
-  syncing = true;
+  return navigator.locks.request('sync-visits', async () => {
+    let synced = 0;
+    let errors = 0;
+    let syncedVisitsCount = 0;
 
-  let synced = 0;
-  let errors = 0;
-  let syncedVisitsCount = 0;
+    try {
+      const pending = await getPendingVisits();
+      pending.sort((a, b) => a.created_at_local.localeCompare(b.created_at_local));
 
-  try {
-    const pending = await getPendingVisits();
-    pending.sort((a, b) => a.created_at_local.localeCompare(b.created_at_local));
+      for (const visit of pending) {
+        try {
+          const payload = visit.payload as any;
 
-    for (const visit of pending) {
-      try {
-        const payload = visit.payload as any;
+          // Check if already exists by client_generated_id (idempotency).
+          // Guard against the column not existing in the DB — if the query errors
+          // we skip this check and fall through to the duplicate check instead.
+          const { data: existing, error: existingErr } = await supabase
+            .from("visits")
+            .select("id")
+            .eq("client_generated_id", visit.client_generated_id)
+            .maybeSingle();
 
-        // Check if already exists by client_generated_id (idempotency).
-        // Guard against the column not existing in the DB — if the query errors
-        // we skip this check and fall through to the duplicate check instead.
-        const { data: existing, error: existingErr } = await supabase
-          .from("visits")
-          .select("id")
-          .eq("client_generated_id", visit.client_generated_id)
-          .maybeSingle();
+          if (!existingErr && existing) {
+            await updateVisitSyncStatus(visit.client_generated_id, "synced");
+            synced++;
+            syncedVisitsCount++;
+            continue;
+          }
 
-        if (!existingErr && existing) {
-          await updateVisitSyncStatus(visit.client_generated_id, "synced");
-          synced++;
-          syncedVisitsCount++;
-          continue;
-        }
+          // Duplicate check: same rep + customer + date + times
+          const { data: recentDupe } = await supabase
+            .from("visits")
+            .select("id")
+            .eq("rep_id", payload.rep_id)
+            .eq("customer_id", payload.customer_id)
+            .eq("visit_date", payload.visit_date)
+            .eq("arrival_time", payload.arrival_time)
+            .eq("leaving_time", payload.leaving_time)
+            .maybeSingle();
 
-        // Duplicate check: same rep + customer + date + times
-        const { data: recentDupe } = await supabase
-          .from("visits")
-          .select("id")
-          .eq("rep_id", payload.rep_id)
-          .eq("customer_id", payload.customer_id)
-          .eq("visit_date", payload.visit_date)
-          .eq("arrival_time", payload.arrival_time)
-          .eq("leaving_time", payload.leaving_time)
-          .maybeSingle();
+          if (recentDupe) {
+            await updateVisitSyncStatus(visit.client_generated_id, "synced");
+            synced++;
+            syncedVisitsCount++;
+            continue;
+          }
 
-        if (recentDupe) {
-          await updateVisitSyncStatus(visit.client_generated_id, "synced");
-          synced++;
-          syncedVisitsCount++;
-          continue;
-        }
+          // Strip client_generated_id from the insert payload — the visits table
+          // may not have this column. Idempotency is handled by the checks above.
+          const { client_generated_id: _cgid, ...insertPayload } = payload;
+          console.log("[Sync] inserting offline visit:", JSON.stringify(insertPayload));
 
-        // Strip client_generated_id from the insert payload — the visits table
-        // may not have this column. Idempotency is handled by the checks above.
-        const { client_generated_id: _cgid, ...insertPayload } = payload;
-        console.log("[Sync] inserting offline visit:", JSON.stringify(insertPayload));
+          const { data: insertedVisit, error } = await supabase
+            .from("visits")
+            .insert(insertPayload)
+            .select("id")
+            .maybeSingle();
 
-        const { data: insertedVisit, error } = await supabase
-          .from("visits")
-          .insert(insertPayload)
-          .select("id")
-          .maybeSingle();
+          if (error) {
+            console.error("[Sync] visit insert error:", error.code, error.message, error.details, error.hint);
+            await updateVisitSyncStatus(visit.client_generated_id, "error", error.message);
+            errors++;
+          } else {
+            await updateVisitSyncStatus(visit.client_generated_id, "synced");
+            synced++;
+            syncedVisitsCount++;
 
-        if (error) {
-          console.error("[Sync] visit insert error:", error.code, error.message, error.details, error.hint);
-          await updateVisitSyncStatus(visit.client_generated_id, "error", error.message);
-          errors++;
-        } else {
-          await updateVisitSyncStatus(visit.client_generated_id, "synced");
-          synced++;
-          syncedVisitsCount++;
+            if (insertedVisit?.id) {
+              await linkVisitToScheduleItem(insertedVisit.id, payload);
 
-          if (insertedVisit?.id) {
-            await linkVisitToScheduleItem(insertedVisit.id, payload);
-
-            // Upload photo if stored offline
-            if (visit.photo_base64) {
-              try {
-                const blob = base64ToBlob(visit.photo_base64);
-                const path = `${payload.rep_id}/${insertedVisit.id}.jpg`;
-                const { error: uploadErr } = await supabase.storage
-                  .from("visit-photos")
-                  .upload(path, blob, { contentType: "image/jpeg", upsert: true });
-                if (!uploadErr) {
-                  const { data: urlData } = supabase.storage.from("visit-photos").getPublicUrl(path);
-                  if (urlData?.publicUrl) {
-                    await supabase.from("visits").update({ photo_url: urlData.publicUrl } as any).eq("id", insertedVisit.id);
+              // Upload photo if stored offline
+              if (visit.photo_base64) {
+                try {
+                  const blob = base64ToBlob(visit.photo_base64);
+                  const path = `${payload.rep_id}/${insertedVisit.id}.jpg`;
+                  const { error: uploadErr } = await supabase.storage
+                    .from("visit-photos")
+                    .upload(path, blob, { contentType: "image/jpeg", upsert: true });
+                  if (!uploadErr) {
+                    const { data: urlData } = supabase.storage.from("visit-photos").getPublicUrl(path);
+                    if (urlData?.publicUrl) {
+                      await supabase.from("visits").update({ photo_url: urlData.publicUrl } as any).eq("id", insertedVisit.id);
+                    }
                   }
+                } catch (photoErr) {
+                  console.warn("[Sync] Photo upload failed:", photoErr);
                 }
-              } catch (photoErr) {
-                console.warn("[Sync] Photo upload failed:", photoErr);
               }
             }
           }
+        } catch (err: any) {
+          await updateVisitSyncStatus(
+            visit.client_generated_id,
+            "error",
+            err?.message || "Unknown sync error"
+          );
+          errors++;
         }
-      } catch (err: any) {
-        await updateVisitSyncStatus(
-          visit.client_generated_id,
-          "error",
-          err?.message || "Unknown sync error"
-        );
-        errors++;
       }
+
+      if (syncedVisitsCount > 0) {
+        await removeSyncedVisits();
+      }
+
+      const scheduleResult = await syncPendingScheduleItemUpdates();
+      synced += scheduleResult.synced;
+      errors += scheduleResult.errors;
+    } catch (err: any) {
+      console.error("[Sync] Unhandled sync error:", err);
     }
 
-    if (syncedVisitsCount > 0) {
-      await removeSyncedVisits();
-    }
-
-    const scheduleResult = await syncPendingScheduleItemUpdates();
-    synced += scheduleResult.synced;
-    errors += scheduleResult.errors;
-  } finally {
-    syncing = false;
-  }
-
-  return { synced, errors };
+    return { synced, errors };
+  });
 }
 
 // Setup auto-sync on online event, visibility change, and app load
