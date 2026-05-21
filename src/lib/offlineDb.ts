@@ -158,10 +158,10 @@ export async function removeOfflineVisit(clientId: string): Promise<void> {
 
 export async function removeSyncedVisits(): Promise<number> {
   try {
-    const all = await getAllOfflineVisits();
-    const synced = all.filter((v) => v.sync_status === "synced");
     const db = await getDb();
     const tx = db.transaction("offline_visits_queue", "readwrite");
+    const all = await tx.store.getAll();
+    const synced = all.filter((v) => v.sync_status === "synced");
     for (const v of synced) {
       await tx.store.delete(v.client_generated_id);
     }
@@ -222,10 +222,10 @@ export async function updateScheduleItemUpdateSyncStatus(
 
 export async function removeSyncedScheduleItemUpdates(): Promise<number> {
   try {
-    const all = await getAllOfflineScheduleItemUpdates();
-    const synced = all.filter((v) => v.sync_status === "synced");
     const db = await getDb();
     const tx = db.transaction("offline_schedule_item_updates", "readwrite");
+    const all = await tx.store.getAll();
+    const synced = all.filter((v) => v.sync_status === "synced");
     for (const v of synced) {
       await tx.store.delete(v.schedule_item_id);
     }
