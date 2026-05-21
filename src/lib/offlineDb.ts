@@ -352,15 +352,18 @@ export async function updateCachedScheduleItem(
   try {
     const db = await getDb();
     const key = `${repId}_${date}`;
-    const cached = await db.get("cached_schedules", key);
-    if (!cached?.data?.schedule_items || !Array.isArray(cached.data.schedule_items)) return;
-
+    const tx = db.transaction("cached_schedules", "readwrite");
+    const cached = await tx.store.get(key);
+    if (!cached?.data?.schedule_items || !Array.isArray(cached.data.schedule_items)) {
+      await tx.done;
+      return;
+    }
     cached.data.schedule_items = cached.data.schedule_items.map((item: any) =>
       item.id === itemId ? { ...item, ...updates } : item
     );
     cached.cached_at = new Date().toISOString();
-
-    await db.put("cached_schedules", cached);
+    await tx.store.put(cached);
+    await tx.done;
   } catch (err) {
     throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
   }
