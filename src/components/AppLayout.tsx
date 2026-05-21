@@ -23,12 +23,14 @@ import { PullToRefresh } from "@/components/PullToRefresh";
 import { setupAutoSync } from "@/lib/syncEngine";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { toast } from "sonner";
+import { useRegisterSW } from "virtual:pwa-register/react";
 
 export default function AppLayout() {
   const { user, role, repName, loading, signOut, roleState, refreshAuthContext } = useAuth();
   const isOnline = useOnlineStatus();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
 
   // Setup auto-sync for offline visits (rep only)
   useEffect(() => {
@@ -131,6 +133,20 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen bg-background">
+      {needRefresh && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm font-medium"
+          style={{ background: "#1B2A4A", color: "#fff", border: "1px solid #2E5090" }}>
+          <span>App updated — tap to reload</span>
+          <button
+            type="button"
+            onClick={() => updateServiceWorker(true)}
+            className="px-3 py-1 rounded-lg text-xs font-semibold"
+            style={{ background: "#2E5090", color: "#fff" }}
+          >
+            Reload
+          </button>
+        </div>
+      )}
       <PullToRefresh />
       <header className="sticky top-0 z-50 border-b bg-card">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
