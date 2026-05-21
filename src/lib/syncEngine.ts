@@ -6,6 +6,7 @@ import {
   getPendingScheduleItemUpdates,
   updateScheduleItemUpdateSyncStatus,
   removeSyncedScheduleItemUpdates,
+  savePendingPhoto,
 } from "./offlineDb";
 import { toast } from "sonner";
 import { base64ToBlob } from "./imageCompressor";
@@ -195,9 +196,21 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
                     if (urlData?.publicUrl) {
                       await supabase.from("visits").update({ photo_url: urlData.publicUrl } as any).eq("id", insertedVisit.id);
                     }
+                  } else {
+                    console.warn("[Sync] Photo upload failed, saving to pending_photos for retry:", uploadErr.message);
+                    try {
+                      await savePendingPhoto(insertedVisit.id, visit.photo_base64, insertedVisit.id, visit.client_generated_id);
+                    } catch (idbErr) {
+                      console.warn("[Sync] Failed to save photo to pending_photos:", idbErr);
+                    }
                   }
                 } catch (photoErr) {
-                  console.warn("[Sync] Photo upload failed:", photoErr);
+                  console.warn("[Sync] Photo upload exception, saving to pending_photos for retry:", photoErr);
+                  try {
+                    await savePendingPhoto(insertedVisit.id, visit.photo_base64, insertedVisit.id, visit.client_generated_id);
+                  } catch (idbErr) {
+                    console.warn("[Sync] Failed to save photo to pending_photos:", idbErr);
+                  }
                 }
               }
             }
