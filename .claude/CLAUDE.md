@@ -21,8 +21,11 @@ Language: TypeScript throughout.
 - src/pages/admin/AdminExports.tsx — Excel/PDF export
 - src/pages/admin/CustomerDashboard.tsx — Per-customer visit history
 - src/lib/offlineDb.ts — IndexedDB helpers (DB_VERSION: 5)
+- src/lib/reportData.ts — buildReportData() and ReportData interface (extracted from AdminExports.tsx)
+- src/lib/timeUtils.ts — shared time and currency formatting utilities
 - src/lib/imageCompressor.ts — Photo compression before upload
 - src/hooks/useAuth.tsx — Auth context
+- src/hooks/useVisitDetails.ts — shared Supabase visit lookup hook used by VisitDetailsText and VisitPhotoOnly
 - src/components/AppLayout.tsx — Nav and layout
 - src/App.tsx — Routes
 
@@ -33,6 +36,7 @@ Language: TypeScript throughout.
 - schedule_templates — rep_id, day_of_week, weekly_template_id, is_active
 - weekly_templates — name, sort_order (1=Week 1a, 2=Week 2a, 3=Week 1b, 4=Week 2b)
 - daily_schedules — rep_id, schedule_date, weekly_template_id. UNIQUE(rep_id, schedule_date)
+- customer_assignments — rep_id (references reps.id), customer_id (references customers.id), links reps to their assigned customers
 - customers — customer_name, account_number, area, is_active
 - reps — rep_name, user_id (links to profiles/auth), is_active
 - app_settings — current_week_order, week_cycle_start_date
@@ -56,6 +60,9 @@ Any new status must be added via SQL ALTER before frontend code can write it.
 - Never pre-generate future daily_schedules — breaks week rotation on anchor change
 - Off-route orders: excluded from strike rate and visit counts, included in order value totals
 - In-progress visits: excluded from all admin queries, reports, and Done tab
+- offlineDb.ts IDB operations re-throw as `IDB_ERROR: <message>` — call sites importing from offlineDb should catch this prefix to identify storage failures
+- `offline_schedule_item_updates` uses schedule_item_id as keyPath intentionally — state snapshot pattern, last write before sync is authoritative. Do not redesign
+- `adHocPhoto` in DailySchedule.tsx is `{ blob: Blob; preview: string } | null` — base64 conversion is lazy, only in offline/error fallback paths
 
 ## IndexedDB Stores (DB_VERSION: 5)
 - offline_visits_queue — queued visit inserts (key: client_generated_id)

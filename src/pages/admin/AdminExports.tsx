@@ -8,9 +8,6 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { Download, FileSpreadsheet } from "lucide-react";
-import XLSX from "xlsx-js-style";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import { fmtDuration, fmtTime12h, fmtCurrency } from "@/lib/timeUtils";
 import { buildReportData, type ReportData } from "@/lib/reportData";
 
@@ -177,6 +174,8 @@ export default function AdminExports() {
   const exportReportExcel = async () => {
     if (repFilter === "all") { toast.error("Please select a specific rep for the Excel report"); return; }
     if (!dateFrom) { toast.error("Please select a 'From' date for the Excel report"); return; }
+
+    const XLSX = (await import("xlsx-js-style")).default;
 
     const selectedRep = reps.find((r) => r.id === repFilter);
     const repName = selectedRep?.rep_name || "Unknown";
@@ -361,6 +360,9 @@ export default function AdminExports() {
   const exportReportPDF = async () => {
     if (repFilter === "all") { toast.error("Please select a specific rep for the PDF report"); return; }
     if (!dateFrom) { toast.error("Please select a 'From' date for the PDF report"); return; }
+
+    const jsPDF = (await import("jspdf")).default;
+    const { default: autoTable } = await import("jspdf-autotable");
 
     const selectedRep = reps.find((r) => r.id === repFilter);
     const repName = selectedRep?.rep_name || "Unknown";

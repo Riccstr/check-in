@@ -223,7 +223,7 @@ Unique: `(rep_id, customer_id)`. Upsert on conflict is used. RLS: Admins manage 
 | `leaving_time` | time | |
 | `duration_minutes` | integer | Calculated: `(leaving - arrival)` in minutes |
 | `notes` | text | |
-| `status` | text | `'visited'` or `'skipped'` |
+| `status` | text | `'visited'`, `'skipped'`, `'in_progress'`, `'off_route'` |
 | `order_number` | text | Nullable — sales order reference |
 | `order_quantity` | integer | Nullable — units ordered |
 | `order_amount` | numeric | Nullable — currency amount |
@@ -677,8 +677,8 @@ Database name: `checkin-tracker-offline`, version **5** (increment version if ad
 | `cached_customers` | `id` | `{id, customer_name, account_number, area}` |
 | `cached_schedules` | `key` (`{repId}_{date}`) | Full daily schedule + items |
 | `cached_user_auth` | `user_id` | `{role, rep_id, rep_name, profile, permissions, cached_at}` |
-| `pending_photos` | `scheduleItemId` | `{scheduleItemId, base64}` — photo captured during an active visit, persisted immediately so it survives app backgrounding |
-| `active_card_state` | `key` (`"current"`) | `{scheduleItemId, arrivalTime, notes}` — in-progress visit card state, cleared on checkout |
+| `pending_photos` | `scheduleItemId` | `{scheduleItemId, base64, visitId, clientGeneratedId}` — photo captured during active visit, base64 stored intentionally for iOS Safari IDB Blob compatibility |
+| `active_card_state` | `key` (`"current"`) | `{scheduleItemId, arrivalTime, notes, visitId, clientGeneratedId}` — in-progress visit card state, cleared on checkout |
 
 ### Sync Engine (`src/lib/syncEngine.ts`)
 
@@ -780,6 +780,7 @@ src/
 ├── hooks/
 │   ├── useAuth.tsx            # Auth context provider — role, repId, profile, permissions
 │   ├── useOnlineStatus.ts     # navigator.onLine + event listeners
+│   ├── useVisitDetails.ts     # Shared Supabase visit lookup hook used by VisitDetailsText and VisitPhotoOnly
 │   ├── use-mobile.tsx         # Mobile breakpoint detection
 │   └── use-toast.ts           # Toast hook
 ├── integrations/
@@ -790,7 +791,9 @@ src/
 │   ├── imageCompressor.ts     # compressImage(), stampImage(), blobToBase64(), base64ToBlob()
 │   ├── offlineBootstrap.ts    # Pre-cache customers/schedules/auth on first online login
 │   ├── offlineDb.ts           # All IndexedDB read/write operations
+│   ├── reportData.ts          # buildReportData() and ReportData interface (extracted from AdminExports.tsx)
 │   ├── syncEngine.ts          # syncPendingVisits(), syncPendingScheduleItemUpdates()
+│   ├── timeUtils.ts           # Shared time and currency formatting utilities
 │   └── utils.ts               # cn() Tailwind merge utility
 ├── pages/
 │   ├── Auth.tsx               # /auth — login form
@@ -843,7 +846,7 @@ vite.config.ts                 # Vite + PWA plugin config (injectManifest, sw-cu
 | `react-router-dom` | ^6.30.1 | Client-side routing |
 | `idb` | ^8.0.3 | IndexedDB wrapper (offline storage) |
 | `uuid` | ^13.0.0 | Client-generated UUIDs for offline deduplication |
-| `xlsx-js-style` | ^1.2.0 | Excel export with cell styling (replaces `xlsx` — do not revert) |
+| `xlsx-js-style` | ^1.2.0 | Excel export with cell styling — never replace with xlsx or exceljs (both confirmed broken) |
 | `jspdf` | ^4.2.1 | PDF generation for daily visit reports |
 | `jspdf-autotable` | ^5.0.7 | Auto-layout tables within jsPDF documents |
 | `date-fns` | ^3.6.0 | Date formatting |
@@ -903,3 +906,6 @@ VITE_SUPABASE_ANON_KEY=<your-anon-key>
 15. **Photo persistence uses two IndexedDB stores** — `pending_photos` (keyed by `scheduleItemId`) holds the base64-encoded photo from capture until checkout; `active_card_state` (key `"current"`) holds arrival time and notes. Both are cleared in the `updateItem` finally block when status becomes `visited` or `skipped`. **Do not** clear them earlier or the recovery banner will never trigger
 16. **`xlsx-js-style` replaces `xlsx`** — do not revert to `xlsx`; the cell-level styling API (`s: { fill, font, alignment }`) is incompatible with the base library. The package is already listed in `package.json`; no further changes needed
 17. **PDF report banner text layout depends on `TEXT_X = ML + 19`** — this offset accounts for the logo width (14mm) + left margin + padding. If the logo is resized, update `TEXT_X` accordingly. The three info blocks are each exactly 92mm wide (`(PW - ML - MR) / 3 = 276 / 3`); changing `ML` or `MR` breaks the equal-width layout
+18. **`offlineDb.ts` IDB operations all throw `IDB_ERROR: <message>`** on failure — call sites should catch errors prefixed with `IDB_ERROR:` to identify storage failures and surface feedback to the user
+19. **`offline_schedule_item_updates` uses `schedule_item_id` as keyPath intentionally** — the sync pattern is state snapshotting; the checkout payload includes all fields (arrival_time, leaving_time, status, notes, orders). Do not redesign to auto-increment
+20. **`adHocPhoto` in `DailySchedule.tsx` is stored as `{ blob: Blob; preview: string } | null`** — base64 conversion happens lazily only in the offline/error fallback path. Object URLs are revoked on clear and reset
