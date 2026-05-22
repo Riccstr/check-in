@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import {
   CalendarDays, Clock, Check, SkipForward, Plus, Loader2, X, Pencil,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
-  Home, ClipboardList, User, Wifi, WifiOff, MapPin,
+  Home, ClipboardList, User, Wifi, WifiOff, MapPin, Camera, FileText, Lock, Pin,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { compressImage, blobToBase64 } from "@/lib/imageCompressor";
