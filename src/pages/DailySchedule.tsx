@@ -1168,46 +1168,24 @@ function ScheduleCard({
     </button>
   );
 
-  if (!isExpanded) {
-    return (
-      <div
-        id={`card-${item.id}`}
-        className="rounded-[22px] overflow-hidden"
-        style={{
-          background: isInProgress ? `linear-gradient(180deg, ${C.surface} 0%, ${C.surfaceAlt} 100%)` : C.surface,
-          border: `1px solid ${C.border}`,
-          boxShadow: isInProgress
-            ? `0 14px 30px -14px rgba(27,82,56,0.32), 0 1px 0 rgba(255,255,255,0.6) inset`
-            : "0 1px 0 rgba(255,255,255,0.7) inset, 0 1px 2px rgba(23,23,21,0.04)",
-        }}
-      >
-        {isInProgress && (
-          <div style={{ position: "absolute", inset: 0, borderRadius: "22px", border: `1.5px solid ${C.green}`, pointerEvents: "none", opacity: 0.85 }} />
-        )}
-        {collapsedRow}
-      </div>
-    );
-  }
-
-  // ── expanded body ──
   return (
     <div
       id={`card-${item.id}`}
       className="rounded-[22px] overflow-hidden"
       style={{
         background: isInProgress ? `linear-gradient(180deg, ${C.surface} 0%, ${C.surfaceAlt} 100%)` : C.surface,
-        border: isInProgress ? `1.5px solid ${C.green}` : `1px solid ${C.border}`,
+        border: `${isInProgress && isExpanded ? 1.5 : 1}px solid ${isInProgress && isExpanded ? C.green : C.border}`,
         boxShadow: isInProgress
           ? `0 14px 30px -14px rgba(27,82,56,0.32), 0 1px 0 rgba(255,255,255,0.6) inset`
           : "0 1px 0 rgba(255,255,255,0.7) inset, 0 1px 2px rgba(23,23,21,0.04)",
+        transition: "border-color 280ms ease, box-shadow 280ms ease",
+        position: "relative",
       }}
     >
-      {isInProgress && (
-        <div style={{ position: "absolute", inset: 0, borderRadius: "22px", border: `1.5px solid ${C.green}`, pointerEvents: "none", opacity: 0.85 }} />
-      )}
       {collapsedRow}
 
-      <div style={{ height: 1, background: `linear-gradient(90deg, transparent, ${C.border}, transparent)`, margin: "0" }} />
+      <Expand open={isExpanded}>
+        <div style={{ height: 1, background: `linear-gradient(90deg, transparent, ${C.border}, transparent)`, margin: "0" }} />
 
       <div className="px-[18px] pb-5" style={{ paddingTop: "14px" }}>
         {/* visited state */}
@@ -1305,14 +1283,15 @@ function ScheduleCard({
 
             {editingDone && (
               <div style={{ background: C.cream, borderRadius: 16, padding: 12, marginBottom: 10, border: `1px solid ${C.border}` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <div style={{ fontSize: 10.5, color: C.inkMute, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>
-                    Edit order
+                <Expand open={editingDone}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div style={{ fontSize: 10.5, color: C.inkMute, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>
+                      Edit order
+                    </div>
+                    <div style={{ fontSize: 10, color: C.inkMute, fontFamily: "'DM Sans', sans-serif", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                      <Lock size={10} /> Times &amp; locked
+                    </div>
                   </div>
-                  <div style={{ fontSize: 10, color: C.inkMute, fontFamily: "'DM Sans', sans-serif", display: "inline-flex", alignItems: "center", gap: 3 }}>
-                    <Lock size={10} /> Times &amp; locked
-                  </div>
-                </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.6fr 1fr", gap: 8, marginBottom: 10 }}>
                   {/* PadInput-style inputs */}
                   <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
@@ -1396,6 +1375,7 @@ function ScheduleCard({
                     <Check size={14} /> Save changes
                   </button>
                 </div>
+                </Expand>
               </div>
             )}
           </>
@@ -1705,7 +1685,8 @@ function ScheduleCard({
             </button>
           </div>
         )}
-      </div>
+        </div>
+      </Expand>
     </div>
   );
 }
@@ -3299,8 +3280,9 @@ export default function DailySchedule() {
                   </button>
                 </div>
 
-                {/* Form content */}
-                <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 12 }}>
+                <Expand open={expandedBottomCard === "unscheduled"}>
+                  {/* Form content */}
+                  <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 12 }}>
 
                 <div>
                   <Label className="text-xs" style={{ color: C.textMuted }}>Customer</Label>
@@ -3440,7 +3422,8 @@ export default function DailySchedule() {
                     Start visit
                   </Button>
                 </div>
-                </div>
+                  </div>
+                </Expand>
               </div>
             )}
 
@@ -3479,10 +3462,11 @@ export default function DailySchedule() {
                   </button>
                 </div>
 
-                {/* Form content */}
-                <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 12 }}>
+                <Expand open={expandedBottomCard === "offroute"}>
+                  {/* Form content */}
+                  <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 12 }}>
 
-                <div>
+                  <div>
                   <Label className="text-xs" style={{ color: C.textMuted }}>Customer</Label>
                   <SearchableSelect
                     options={[...adHocCustomers]
@@ -3550,7 +3534,8 @@ export default function DailySchedule() {
                     Log order
                   </Button>
                 </div>
-                </div>
+                  </div>
+                </Expand>
               </div>
             )}
           </div>

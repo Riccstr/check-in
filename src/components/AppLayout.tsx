@@ -32,6 +32,8 @@ export default function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
 
+  const hideChrome = role === "rep" && location.pathname === "/";
+
   // Setup auto-sync for offline visits (rep only)
   useEffect(() => {
     if (role !== "rep") return;
@@ -148,67 +150,69 @@ export default function AppLayout() {
         </div>
       )}
       <PullToRefresh />
-      <header className="sticky top-0 z-50 border-b bg-card">
-        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
-          <Link to="/" className="flex items-center gap-2 font-bold text-foreground">
-            <img src={logoImg} alt="Check-In Tracker" className="h-8 w-8" />
-            <span className="hidden sm:inline">Check-In Tracker</span>
-          </Link>
+      {!hideChrome && (
+        <header className="sticky top-0 z-50 border-b bg-card">
+          <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
+            <Link to="/" className="flex items-center gap-2 font-bold text-foreground">
+              <img src={logoImg} alt="Check-In Tracker" className="h-8 w-8" />
+              <span className="hidden sm:inline">Check-In Tracker</span>
+            </Link>
 
-          {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-1">
-            {links.map((l) => (
-              <Link key={l.to} to={l.to} className={cn("nav-link", isActive(l.to) ? "nav-link-active" : "nav-link-inactive")}>
-                <l.icon className="inline-block h-4 w-4 mr-1" />
-                {l.label}
-              </Link>
-            ))}
-          </nav>
+            {/* Desktop nav */}
+            <nav className="hidden md:flex items-center gap-1">
+              {links.map((l) => (
+                <Link key={l.to} to={l.to} className={cn("nav-link", isActive(l.to) ? "nav-link-active" : "nav-link-inactive")}>
+                  <l.icon className="inline-block h-4 w-4 mr-1" />
+                  {l.label}
+                </Link>
+              ))}
+            </nav>
 
-          <div className="flex items-center gap-2">
-            <OfflineStatusBar />
-            <span className="hidden sm:inline text-xs font-medium uppercase tracking-wide px-2 py-1 rounded-full bg-secondary text-secondary-foreground">
-              {role === "rep" && repName ? repName : role}
-            </span>
-            {/* Logout button visible on desktop, or on mobile for admins (who have no hamburger on desktop) */}
-            <Button variant="ghost" size="icon" onClick={signOut} title="Sign out" className={role === "rep" ? "hidden md:inline-flex" : ""}>
-              <LogOut className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMenuOpen(!menuOpen)}>
-              {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-            </Button>
+            <div className="flex items-center gap-2">
+              <OfflineStatusBar />
+              <span className="hidden sm:inline text-xs font-medium uppercase tracking-wide px-2 py-1 rounded-full bg-secondary text-secondary-foreground">
+                {role === "rep" && repName ? repName : role}
+              </span>
+              {/* Logout button visible on desktop, or on mobile for admins (who have no hamburger on desktop) */}
+              <Button variant="ghost" size="icon" onClick={signOut} title="Sign out" className={role === "rep" ? "hidden md:inline-flex" : ""}>
+                <LogOut className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMenuOpen(!menuOpen)}>
+                {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+              </Button>
+            </div>
           </div>
-        </div>
 
-        {/* Mobile nav */}
-        {menuOpen && (
-          <nav className="md:hidden border-t px-4 py-2 space-y-1 bg-card">
-            {links.map((l) => (
-              <Link
-                key={l.to}
-                to={l.to}
-                onClick={() => setMenuOpen(false)}
-                className={cn("nav-link block", isActive(l.to) ? "nav-link-active" : "nav-link-inactive")}
-              >
-                <l.icon className="inline-block h-4 w-4 mr-2" />
-                {l.label}
-              </Link>
-            ))}
-            {role === "rep" && (
-              <button
-                type="button"
-                onClick={() => { setMenuOpen(false); signOut(); }}
-                className="nav-link block w-full text-left text-red-500 mt-1 pt-2 border-t border-border"
-              >
-                <LogOut className="inline-block h-4 w-4 mr-2" />
-                Logout
-              </button>
-            )}
-          </nav>
-        )}
-      </header>
+          {/* Mobile nav */}
+          {menuOpen && (
+            <nav className="md:hidden border-t px-4 py-2 space-y-1 bg-card">
+              {links.map((l) => (
+                <Link
+                  key={l.to}
+                  to={l.to}
+                  onClick={() => setMenuOpen(false)}
+                  className={cn("nav-link block", isActive(l.to) ? "nav-link-active" : "nav-link-inactive")}
+                >
+                  <l.icon className="inline-block h-4 w-4 mr-2" />
+                  {l.label}
+                </Link>
+              ))}
+              {role === "rep" && (
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); signOut(); }}
+                  className="nav-link block w-full text-left text-red-500 mt-1 pt-2 border-t border-border"
+                >
+                  <LogOut className="inline-block h-4 w-4 mr-2" />
+                  Logout
+                </button>
+              )}
+            </nav>
+          )}
+        </header>
+      )}
 
-      <main className="mx-auto max-w-7xl px-4 py-6">
+      <main className={hideChrome ? "" : "mx-auto max-w-7xl px-4 py-6"}>
         <Outlet />
       </main>
     </div>
