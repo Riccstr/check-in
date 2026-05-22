@@ -52,20 +52,22 @@ function resetMobileZoom() {
 
 // ─── color palette ────────────────────────────────────────────────────────────
 const C = {
-  bg:          "#F4F1EC",
-  card:        "#FEFCF9",
-  green:       "#1D5C3F",
-  greenMid:    "#2D7A50",
-  greenLight:  "#4CAF78",
-  text:        "#1A1A1A",
-  textMuted:   "#6B7280",
-  border:      "#E5E0D8",
-  orange:      "#E65100",
-  orangeBg:    "#FFF3E0",
-  red:         "#C62828",
-  redBg:       "#FFF0F0",
-  greenBg:     "#E8F5EE",
-  header:      "#1A3328",
+  bg:         '#F1ECE0',
+  surface:    '#FFFFFF',
+  surfaceAlt: '#F8F3E6',
+  ink:        '#171715',
+  inkSoft:    '#535048',
+  inkMute:    '#928D81',
+  green:      '#1B5238',
+  greenDeep:  '#0D2E1F',
+  greenMid:   '#2A6F4A',
+  greenSoft:  '#DDE9E1',
+  greenInk:   '#0E3A24',
+  cream:      '#F4ECDB',
+  sun:        '#E6B652',
+  border:     '#E7DEC9',
+  danger:     '#B85A4A',
+  dangerSoft: '#F4DCD4',
 };
 
 // ─── helpers (preserved verbatim) ─────────────────────────────────────────────
@@ -186,95 +188,197 @@ interface SummaryStats {
 function EodSummaryModal({ stats, onClose }: { stats: SummaryStats; onClose: () => void }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.5)" }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 50,
+        display: "flex",
+        alignItems: "flex-end",
+        justifyContent: "center",
+        background: "rgba(13, 46, 31, 0.45)",
+        backdropFilter: "blur(2px)",
+      }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl px-5 pt-6 pb-8 space-y-5"
-        style={{ background: C.card, border: `1px solid ${C.border}` }}
+        style={{
+          width: "100%",
+          maxWidth: 380,
+          background: C.surface,
+          borderTopLeftRadius: 28,
+          borderTopRightRadius: 28,
+          display: "flex",
+          flexDirection: "column",
+          maxHeight: "90vh",
+          overflow: "auto",
+        }}
       >
-        {/* checkmark header */}
-        <div className="flex flex-col items-center gap-2 pb-1">
-          <div
-            className="w-16 h-16 rounded-full flex items-center justify-center"
-            style={{ background: C.greenBg, border: `2px solid ${C.greenLight}` }}
-          >
-            <Check size={30} style={{ color: C.green }} strokeWidth={2.5} />
-          </div>
-          <h2 className="font-syne font-bold text-xl" style={{ color: C.text }}>Day Complete</h2>
-          <p className="text-sm" style={{ color: C.textMuted }}>Here's how today went</p>
-        </div>
-
-        {/* stats grid — 2 columns */}
-        <div className="grid grid-cols-2 gap-2">
-          {/* Scheduled */}
-          <div className="rounded-xl px-4 py-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
-            <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: C.textMuted }}>Scheduled</p>
-            <p className="text-2xl font-bold font-syne leading-tight mt-0.5" style={{ color: C.text }}>{stats.total}</p>
-          </div>
-          {/* Visited */}
-          <div className="rounded-xl px-4 py-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
-            <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: C.textMuted }}>Visited</p>
-            <p className="text-2xl font-bold font-syne leading-tight mt-0.5" style={{ color: C.green }}>{stats.visited}</p>
-          </div>
-          {/* Skipped */}
-          <div className="rounded-xl px-4 py-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
-            <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: C.textMuted }}>Skipped</p>
-            <p className="text-2xl font-bold font-syne leading-tight mt-0.5" style={{ color: C.text }}>{stats.skipped}</p>
-          </div>
-          {/* Orders — with historical comparison */}
-          <div className="rounded-xl px-4 py-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
-            <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: C.textMuted }}>Orders</p>
-            <p className="text-2xl font-bold font-syne leading-tight mt-0.5" style={{ color: C.green }}>{stats.orders}</p>
-            {stats.histAvgOrders !== null && (
-              <p className="text-xs mt-1" style={{
-                color: stats.orders > stats.histAvgOrders ? C.green
-                     : stats.orders < stats.histAvgOrders ? C.orange
-                     : C.textMuted,
-              }}>
-                Avg for this day: {stats.histAvgOrders.toFixed(1)}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* wide stats row */}
-        <div className="grid grid-cols-2 gap-2">
-          {/* Order Value — with historical comparison */}
-          <div className="rounded-xl px-4 py-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
-            <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: C.textMuted }}>Order Value</p>
-            <p className="text-lg font-bold font-syne leading-tight mt-0.5" style={{ color: C.green }}>
-              R {stats.totalOrderValue.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
-            </p>
-            {stats.histAvgOrderValue !== null && (
-              <p className="text-xs mt-1" style={{
-                color: stats.totalOrderValue > stats.histAvgOrderValue ? C.green
-                     : stats.totalOrderValue < stats.histAvgOrderValue ? C.orange
-                     : C.textMuted,
-              }}>
-                Avg for this day: R {stats.histAvgOrderValue.toLocaleString("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-              </p>
-            )}
-          </div>
-          {/* Avg Time */}
-          <div className="rounded-xl px-4 py-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
-            <p className="text-[10px] font-medium uppercase tracking-wide" style={{ color: C.textMuted }}>Avg Time</p>
-            <p className="text-2xl font-bold font-syne leading-tight mt-0.5" style={{ color: C.text }}>
-              {fmtDuration(stats.avgDuration)}
-            </p>
-          </div>
-        </div>
-
-        {/* done button */}
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-full h-11 rounded-xl font-syne font-semibold text-sm"
-          style={{ background: C.green, color: "#fff" }}
+        {/* Radial gradient header */}
+        <div
+          style={{
+            background: `radial-gradient(140% 60% at 50% 0%, ${C.greenSoft} 0%, ${C.surface} 35%, ${C.surface} 100%)`,
+            paddingTop: 32,
+            paddingBottom: 40,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 12,
+            position: "relative",
+          }}
         >
-          Done
-        </button>
+          {/* Grabber */}
+          <div
+            style={{
+              position: "absolute",
+              top: 12,
+              width: 38,
+              height: 4,
+              borderRadius: 999,
+              background: C.cream,
+            }}
+          />
+
+          {/* Hero circle */}
+          <div
+            style={{
+              width: 60,
+              height: 60,
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: `linear-gradient(135deg, ${C.greenMid} 0%, ${C.green} 100%)`,
+              boxShadow: `0 8px 24px rgba(27, 82, 56, 0.25)`,
+            }}
+          >
+            <Check size={32} style={{ color: "#fff", strokeWidth: 2.8 }} />
+          </div>
+
+          {/* Title */}
+          <h2 style={{ fontFamily: "Syne, sans-serif", fontSize: 24, fontWeight: 700, color: C.ink, margin: 0 }}>
+            Day complete
+          </h2>
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: "24px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* 3-col row: Scheduled, Visited, Skipped */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+            {[
+              { label: "Scheduled", value: stats.total, color: C.ink },
+              { label: "Visited", value: stats.visited, color: C.green },
+              { label: "Skipped", value: stats.skipped, color: C.ink },
+            ].map((item, i) => (
+              <div
+                key={i}
+                style={{
+                  padding: "12px 10px",
+                  borderRadius: 12,
+                  background: C.surfaceAlt,
+                  border: `1px solid ${C.border}`,
+                  textAlign: "center",
+                }}
+              >
+                <p style={{ fontSize: 10, fontWeight: 500, color: C.inkMute, textTransform: "uppercase", margin: 0, marginBottom: 6 }}>
+                  {item.label}
+                </p>
+                <p style={{ fontSize: 24, fontWeight: 700, fontFamily: "Syne, sans-serif", color: item.color, margin: 0 }}>
+                  {item.value}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {/* 2-col row: Orders, Avg Time */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
+            {/* Orders */}
+            <div style={{ padding: "12px 10px", borderRadius: 12, background: C.surfaceAlt, border: `1px solid ${C.border}` }}>
+              <p style={{ fontSize: 10, fontWeight: 500, color: C.inkMute, textTransform: "uppercase", margin: 0, marginBottom: 6 }}>
+                Orders
+              </p>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                <p style={{ fontSize: 24, fontWeight: 700, fontFamily: "Syne, sans-serif", color: C.green, margin: 0 }}>
+                  {stats.orders}
+                </p>
+                {stats.histAvgOrders !== null && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: stats.orders > stats.histAvgOrders ? C.green : stats.orders < stats.histAvgOrders ? C.danger : C.inkMute,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 3,
+                    }}
+                  >
+                    {stats.orders > stats.histAvgOrders && <span>▲</span>}
+                    {stats.orders < stats.histAvgOrders && <span>▼</span>}
+                    {stats.histAvgOrders.toFixed(1)}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Avg Time */}
+            <div style={{ padding: "12px 10px", borderRadius: 12, background: C.surfaceAlt, border: `1px solid ${C.border}` }}>
+              <p style={{ fontSize: 10, fontWeight: 500, color: C.inkMute, textTransform: "uppercase", margin: 0, marginBottom: 6 }}>
+                Avg Time
+              </p>
+              <p style={{ fontSize: 24, fontWeight: 700, fontFamily: "Syne, sans-serif", color: C.ink, margin: 0 }}>
+                {fmtDuration(stats.avgDuration)}
+              </p>
+            </div>
+          </div>
+
+          {/* Full-width Order Value with delta */}
+          <div style={{ padding: "12px 10px", borderRadius: 12, background: C.surfaceAlt, border: `1px solid ${C.border}` }}>
+            <p style={{ fontSize: 10, fontWeight: 500, color: C.inkMute, textTransform: "uppercase", margin: 0, marginBottom: 6 }}>
+              Order Value
+            </p>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <p style={{ fontSize: 24, fontWeight: 700, fontFamily: "Syne, sans-serif", color: C.green, margin: 0 }}>
+                R {stats.totalOrderValue.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+              </p>
+              {stats.histAvgOrderValue !== null && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: stats.totalOrderValue > stats.histAvgOrderValue ? C.green : stats.totalOrderValue < stats.histAvgOrderValue ? C.danger : C.inkMute,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  {stats.totalOrderValue > stats.histAvgOrderValue && <span>▲</span>}
+                  {stats.totalOrderValue < stats.histAvgOrderValue && <span>▼</span>}
+                  R {stats.histAvgOrderValue.toLocaleString("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Wrap up button */}
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              height: 56,
+              width: "100%",
+              borderRadius: 16,
+              background: `linear-gradient(135deg, ${C.greenMid} 0%, ${C.green} 100%)`,
+              color: "#fff",
+              border: "none",
+              fontSize: 15,
+              fontWeight: 600,
+              fontFamily: "Syne, sans-serif",
+              cursor: "pointer",
+              marginTop: 8,
+            }}
+          >
+            Wrap up
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -327,6 +431,52 @@ function VisitPhotoOnly({ visitId, repId, customerId, scheduleDate }: { visitId:
   );
 }
 
+// ─── Expand (animated height collapse) ────────────────────────────────────────
+
+function Expand({ open, children, duration = 320 }: { open: boolean; children: React.ReactNode; duration?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [h, setH] = useState<number | "auto">(open ? "auto" : 0);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    if (open) {
+      const target = el.scrollHeight;
+      setH(0);
+      requestAnimationFrame(() => setH(target));
+      const t = setTimeout(() => setH("auto"), duration);
+      return () => clearTimeout(t);
+    } else {
+      const cur = el.scrollHeight;
+      setH(cur);
+      requestAnimationFrame(() => setH(0));
+    }
+  }, [open, duration]);
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        height: typeof h === "number" ? `${h}px` : h,
+        overflow: "hidden",
+        transition: `height ${duration}ms cubic-bezier(0.22,0.61,0.36,1)`,
+        opacity: open ? 1 : 0.001,
+      }}
+    >
+      <div
+        style={{
+          transform: open ? "translateY(0)" : "translateY(-6px)",
+          opacity: open ? 1 : 0,
+          transition: `transform ${duration}ms cubic-bezier(0.22,0.61,0.36,1), opacity ${(duration * 0.7).toFixed(0)}ms ease`,
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 // ─── ScheduleCard ─────────────────────────────────────────────────────────────
 
 function ScheduleCard({
@@ -370,6 +520,10 @@ function ScheduleCard({
   const [activeVisitId, setActiveVisitId] = useState<string | null>(null);
   // Stable UUID for the current visit session — used as conflict key in the arrival upsert.
   const clientGenIdRef = useRef<string | null>(null);
+
+  // Skip flow state — tracks whether skip composer is open and the note being entered
+  const [skipMode, setSkipMode] = useState(false);
+  const [skipNote, setSkipNote] = useState("");
 
   useEffect(() => { setLocalNotes(item.notes || "");     }, [item.notes]);
   useEffect(() => { setLocalArrival(item.arrival_time || ""); }, [item.arrival_time]);
@@ -908,36 +1062,36 @@ function ScheduleCard({
   };
   const markLeft    = () => { const t = nowTime(); setLocalLeaving(t); updateItem({ leaving_time: t, status: "visited", order_number: localOrderNumber || null, order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null, order_amount: localOrderAmount !== "" ? Number(localOrderAmount) : null }); };
 
-  const skipItem = async () => {
+  const skipItem = async (note: string = skipNote) => {
     if (actionInProgress) return;
-    if (!localNotes.trim()) { toast.error("Please provide a reason in the notes before skipping"); return; }
+    if (!note.trim()) { toast.error("Please provide a reason before skipping"); return; }
     setActionInProgress(true);
-    const skippedUpdates = { arrival_time: null, leaving_time: null, duration_minutes: 0, notes: localNotes, status: "skipped" };
+    const skippedUpdates = { arrival_time: null, leaving_time: null, duration_minutes: 0, notes: note, status: "skipped" };
     onLocalUpdate(item.id, skippedUpdates);
     try {
       if (!navigator.onLine) {
         await queueScheduleItemUpdate(skippedUpdates);
-        await saveVisitOffline(repId, item.customer_id, scheduleDate, "00:00", "00:00", 0, localNotes, item.customers?.customer_name, "skipped");
+        await saveVisitOffline(repId, item.customer_id, scheduleDate, "00:00", "00:00", 0, note, item.customers?.customer_name, "skipped");
         toast.success("Saved offline. Will sync when online.");
         return;
       }
-      const { error } = await supabase.from("schedule_items").update({ status: "skipped", notes: localNotes }).eq("id", item.id);
+      const { error } = await supabase.from("schedule_items").update({ status: "skipped", notes: note }).eq("id", item.id);
       if (error) {
         if (isOfflineError(error)) {
           await queueScheduleItemUpdate(skippedUpdates);
-          await saveVisitOffline(repId, item.customer_id, scheduleDate, "00:00", "00:00", 0, localNotes, item.customers?.customer_name, "skipped");
+          await saveVisitOffline(repId, item.customer_id, scheduleDate, "00:00", "00:00", 0, note, item.customers?.customer_name, "skipped");
           toast.success("Saved offline. Will sync when online.");
           return;
         }
         toast.error(error.message); return;
       }
-      await supabase.from("visits").insert({ rep_id: repId, customer_id: item.customer_id, visit_date: scheduleDate, arrival_time: "00:00", leaving_time: "00:00", duration_minutes: 0, notes: localNotes, status: "skipped" } as any);
+      await supabase.from("visits").insert({ rep_id: repId, customer_id: item.customer_id, visit_date: scheduleDate, arrival_time: "00:00", leaving_time: "00:00", duration_minutes: 0, notes: note, status: "skipped" } as any);
       onRefresh();
     } catch (err: any) {
       console.warn("[Schedule] Network error on skip:", err?.message);
       try {
         await queueScheduleItemUpdate(skippedUpdates);
-        await saveVisitOffline(repId, item.customer_id, scheduleDate, "00:00", "00:00", 0, localNotes, item.customers?.customer_name, "skipped");
+        await saveVisitOffline(repId, item.customer_id, scheduleDate, "00:00", "00:00", 0, note, item.customers?.customer_name, "skipped");
         toast.success("Saved offline. Will sync when online.");
       } catch (idbErr) {
         console.error("[Schedule] IndexedDB save failed:", idbErr);
@@ -945,6 +1099,8 @@ function ScheduleCard({
       }
     } finally {
       setActionInProgress(false);
+      setSkipMode(false);
+      setSkipNote("");
       // Clear active card state in case rep arrived then chose to skip
       getActiveCard().then((card) => {
         if (card?.scheduleItemId === item.id) {
@@ -965,36 +1121,49 @@ function ScheduleCard({
     <button
       type="button"
       onClick={onToggle}
-      className="w-full flex items-center gap-3 px-4 py-3 text-left"
-      style={{ background: "transparent" }}
+      className="w-full flex items-center gap-4 px-5 py-4 text-left"
+      style={{ background: "transparent", position: "relative" }}
     >
-      {/* index badge */}
-      <span
-        className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold font-syne"
+      {/* 42×42 avatar with number/icon */}
+      <div
+        className="shrink-0 rounded-[14px] flex items-center justify-center font-syne font-bold text-lg"
         style={{
-          background: item.status === "visited" ? C.greenLight :
-                      item.status === "skipped" ? C.redBg :
-                      isInProgress ? C.orangeBg : C.border,
+          width: 42,
+          height: 42,
+          background: item.status === "visited" ? C.green :
+                      item.status === "skipped" ? C.dangerSoft :
+                      isInProgress ? C.greenDeep : C.cream,
           color: item.status === "visited" ? "#fff" :
-                 item.status === "skipped" ? C.red :
-                 isInProgress ? C.orange : C.textMuted,
+                 item.status === "skipped" ? C.danger :
+                 isInProgress ? C.sun : C.inkSoft,
+          boxShadow: isInProgress ? `0 6px 14px -4px ${C.greenDeep}66` : "none",
         }}
       >
-        {index + 1}
-      </span>
-
-      {/* name */}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold truncate font-syne" style={{ color: C.text }}>{customerName}</p>
-        {accountNum && <p className="text-[11px]" style={{ color: C.textMuted }}>#{accountNum}</p>}
+        {item.status === "visited" ? <Check size={18} /> :
+         item.status === "skipped" ? <X size={16} /> :
+         index + 1}
       </div>
 
-      {/* status pill */}
-      <StatusPill status={item.status} isInProgress={!!isInProgress} />
+      {/* name and details */}
+      <div className="flex-1 min-w-0">
+        <p className="font-syne font-600 text-base" style={{ color: C.ink, letterSpacing: "-0.2px", lineHeight: 1.1 }}>{customerName}</p>
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
+          <StatusPill status={item.status} isInProgress={!!isInProgress} />
+          <span className="text-[11px]" style={{ color: C.inkMute, fontFamily: "'DM Sans', sans-serif" }}>· {accountNum || "—"}</span>
+          {item.status === "visited" && item.duration_minutes > 0 && (
+            <span className="text-[11px] font-semibold inline-flex items-center gap-1" style={{ color: C.inkSoft, fontFamily: "'DM Sans', sans-serif" }}>
+              · <Clock size={11} /> {item.duration_minutes}m
+            </span>
+          )}
+          {item.status === "visited" && item.order && (
+            <span className="text-[11px]" style={{ color: C.inkMute, fontFamily: "'DM Sans', sans-serif" }}>· R {parseFloat(String(item.order.order_amount || 0)).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          )}
+        </div>
+      </div>
 
       {/* expand chevron */}
-      <span style={{ color: C.textMuted }}>
-        {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+      <span style={{ color: C.inkMute, transform: isExpanded ? "rotate(180deg)" : "rotate(0)", transition: "transform 320ms cubic-bezier(0.22,0.61,0.36,1)" }}>
+        <ChevronDown size={18} />
       </span>
     </button>
   );
@@ -1003,9 +1172,18 @@ function ScheduleCard({
     return (
       <div
         id={`card-${item.id}`}
-        className="rounded-2xl overflow-hidden"
-        style={{ background: C.card, border: `1px solid ${C.border}` }}
+        className="rounded-[22px] overflow-hidden"
+        style={{
+          background: isInProgress ? `linear-gradient(180deg, ${C.surface} 0%, ${C.surfaceAlt} 100%)` : C.surface,
+          border: `1px solid ${C.border}`,
+          boxShadow: isInProgress
+            ? `0 14px 30px -14px rgba(27,82,56,0.32), 0 1px 0 rgba(255,255,255,0.6) inset`
+            : "0 1px 0 rgba(255,255,255,0.7) inset, 0 1px 2px rgba(23,23,21,0.04)",
+        }}
       >
+        {isInProgress && (
+          <div style={{ position: "absolute", inset: 0, borderRadius: "22px", border: `1.5px solid ${C.green}`, pointerEvents: "none", opacity: 0.85 }} />
+        )}
         {collapsedRow}
       </div>
     );
@@ -1015,287 +1193,516 @@ function ScheduleCard({
   return (
     <div
       id={`card-${item.id}`}
-      className="rounded-2xl overflow-hidden"
-      style={{ background: C.card, border: `1.5px solid ${isInProgress ? C.orange : item.status === "visited" ? C.greenLight : C.border}` }}
+      className="rounded-[22px] overflow-hidden"
+      style={{
+        background: isInProgress ? `linear-gradient(180deg, ${C.surface} 0%, ${C.surfaceAlt} 100%)` : C.surface,
+        border: isInProgress ? `1.5px solid ${C.green}` : `1px solid ${C.border}`,
+        boxShadow: isInProgress
+          ? `0 14px 30px -14px rgba(27,82,56,0.32), 0 1px 0 rgba(255,255,255,0.6) inset`
+          : "0 1px 0 rgba(255,255,255,0.7) inset, 0 1px 2px rgba(23,23,21,0.04)",
+      }}
     >
+      {isInProgress && (
+        <div style={{ position: "absolute", inset: 0, borderRadius: "22px", border: `1.5px solid ${C.green}`, pointerEvents: "none", opacity: 0.85 }} />
+      )}
       {collapsedRow}
 
-      <div className="px-4 pb-4 space-y-3" style={{ borderTop: `1px solid ${C.border}` }}>
-        {/* visited / skipped summary */}
+      <div style={{ height: 1, background: `linear-gradient(90deg, transparent, ${C.border}, transparent)`, margin: "0" }} />
+
+      <div className="px-[18px] pb-5" style={{ paddingTop: "14px" }}>
+        {/* visited state */}
         {item.status === "visited" && (
-          <div className="pt-3">
-            <div className="flex gap-3 items-start">
-              {/* Left side: all text details */}
-              <div className="flex-1 space-y-1.5">
-                {/* Times and duration */}
-                {item.arrival_time && item.leaving_time && (
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>In:</span>
-                      <span className="text-sm font-medium" style={{ color: C.text }}>{item.arrival_time?.slice(0, 5)}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Out:</span>
-                      <span className="text-sm font-medium" style={{ color: C.text }}>{item.leaving_time?.slice(0, 5)}</span>
-                    </div>
-                    {item.duration_minutes > 0 && (
-                      <div className="flex items-center gap-1">
-                        <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Dur:</span>
-                        <span className="text-sm font-medium" style={{ color: C.text }}>{item.duration_minutes}m</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Order details — rendered inline from VisitDetailsText */}
-                <VisitDetailsText visitId={item.visit_id} repId={repId} customerId={item.customer_id} scheduleDate={scheduleDate} />
-
-                {/* Notes */}
-                {item.notes && (
-                  <p className="text-xs italic" style={{ color: C.textMuted }}>"{item.notes}"</p>
-                )}
-
-                {/* Edit Order section */}
-                {!editingDone && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      let visitId = item.visit_id;
-                      let visitData: any = null;
-                      if (visitId) {
-                        const res = await supabase.from("visits").select("order_number, order_quantity, order_amount").eq("id", visitId).maybeSingle();
-                        visitData = res.data;
-                      }
-                      if (!visitData) {
-                        const res = await (supabase.from("visits").select("order_number, order_quantity, order_amount")
-                          .eq("rep_id", repId).eq("customer_id", item.customer_id).eq("visit_date", scheduleDate)
-                          .order("created_at", { ascending: false }).limit(1).maybeSingle() as any);
-                        visitData = res.data;
-                      }
-                      setDoneOrderNumber(visitData?.order_number || "");
-                      setDoneOrderQty(visitData?.order_quantity != null ? String(visitData.order_quantity) : "");
-                      setDoneOrderAmount(visitData?.order_amount != null ? String(visitData.order_amount) : "");
-                      setEditingDone(true);
-                    }}
-                    className="text-xs font-medium mt-2 px-3 py-1.5 rounded-lg"
-                    style={{ color: C.green, border: `1px solid ${C.border}`, background: C.bg }}
-                  >
-                    <Pencil size={11} className="inline mr-1" /> Edit Order
-                  </button>
-                )}
-
-                {editingDone && (
-                  <div className="mt-2 space-y-2">
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className="text-[10px] font-medium" style={{ color: C.textMuted }}>Order No.</label>
-                        <Input value={doneOrderNumber} onChange={(e) => setDoneOrderNumber(e.target.value)}
-                          onBlur={resetMobileZoom}
-                          className="h-8 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="Order #" />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-medium" style={{ color: C.textMuted }}>Qty</label>
-                        <Input type="number" min="0" step="1" value={doneOrderQty} onChange={(e) => setDoneOrderQty(e.target.value)}
-                          onBlur={resetMobileZoom}
-                          className="h-8 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0" />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-medium" style={{ color: C.textMuted }}>Amount</label>
-                        <Input type="number" min="0" step="0.01" value={doneOrderAmount} onChange={(e) => setDoneOrderAmount(e.target.value)}
-                          onBlur={resetMobileZoom}
-                          className="h-8 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0.00" />
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setEditingDone(false)}
-                        className="text-xs px-3 py-1.5 rounded-lg"
-                        style={{ color: C.textMuted, border: `1px solid ${C.border}` }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={saveDoneOrder}
-                        disabled={actionInProgress}
-                        className="text-xs px-3 py-1.5 rounded-lg font-medium"
-                        style={{ background: C.green, color: "#fff" }}
-                      >
-                        {actionInProgress ? "Saving..." : "Update"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Right side: photo thumbnail */}
-              <VisitPhotoOnly visitId={item.visit_id} repId={repId} customerId={item.customer_id} scheduleDate={scheduleDate} />
-            </div>
-          </div>
-        )}
-
-        {item.status === "skipped" && (
-          <div className="pt-3">
-            {item.notes && <p className="text-sm italic" style={{ color: C.textMuted }}>Reason: "{item.notes}"</p>}
-          </div>
-        )}
-
-        {/* pending / in-progress form */}
-        {item.status === "pending" && (
-          <div className="pt-3 space-y-3">
-            {/* time row */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs" style={{ color: C.textMuted }}>Arrival</Label>
-                <div className="flex gap-1">
-                  <Input
-                    type="time"
-                    value={localArrival}
-                    onChange={(e) => setLocalArrival(e.target.value)}
-                    onBlur={() => { commitArrival(); resetMobileZoom(); }}
-                    className="h-9 text-sm time-input-clean"
-                    style={{ borderColor: C.border, background: C.bg }}
-                  />
-                  <Button type="button" variant="outline" size="sm" className="h-9 px-2 shrink-0"
-                    onClick={markArrived} style={{ borderColor: C.border }}>
-                    <Clock size={13} />
-                  </Button>
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs" style={{ color: C.textMuted }}>Leaving</Label>
-                <div className="flex gap-1">
-                  <Input
-                    type="time"
-                    value={localLeaving}
-                    onChange={(e) => setLocalLeaving(e.target.value)}
-                    onBlur={() => { commitLeaving(); resetMobileZoom(); }}
-                    className="h-9 text-sm time-input-clean"
-                    style={{ borderColor: C.border, background: C.bg }}
-                  />
-                  <Button type="button" variant="outline" size="sm" className="h-9 px-2 shrink-0"
-                    onClick={markLeft} style={{ borderColor: C.border }}>
-                    <Clock size={13} />
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* duration */}
-            {localArrival && localLeaving && calcDuration(localArrival, localLeaving) > 0 && (
-              <p className="text-xs" style={{ color: C.textMuted }}>
-                Duration: {calcDuration(localArrival, localLeaving)} min
-              </p>
-            )}
-
-            {/* photo */}
-            {localArrival && (
-              <div>
-                {photoPreview ? (
-                  <div className="relative inline-block">
-                    <img src={photoPreview} alt="Store photo" className="h-20 w-20 object-cover rounded-xl" style={{ border: `1px solid ${C.border}` }} />
-                    <button type="button" onClick={clearPhoto}
-                      className="absolute -top-1 -right-1 rounded-full p-0.5"
-                      style={{ background: C.red, color: "#fff" }}>
-                      <X size={12} />
-                    </button>
-                  </div>
-                ) : (
-                  <CameraCapture onCapture={handleCameraCapture} triggerClassName="h-8 text-xs" />
-                )}
-              </div>
-            )}
-
-            {/* order fields */}
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <Label className="text-xs" style={{ color: C.textMuted }}>Order No.</Label>
-                <Input
-                  value={localOrderNumber}
-                  onChange={(e) => setLocalOrderNumber(e.target.value)}
-                  onBlur={resetMobileZoom}
-                  className="h-9 text-sm"
-                  style={{ borderColor: C.border, background: C.bg }}
-                  placeholder="Order #"
-                />
-              </div>
-              <div>
-                <Label className="text-xs" style={{ color: C.textMuted }}>Qty</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={localOrderQty}
-                  onChange={(e) => setLocalOrderQty(e.target.value)}
-                  onBlur={resetMobileZoom}
-                  className="h-9 text-sm"
-                  style={{ borderColor: C.border, background: C.bg }}
-                  placeholder="0"
-                />
-              </div>
-              <div>
-                <Label className="text-xs" style={{ color: C.textMuted }}>Amount</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={localOrderAmount}
-                  onChange={(e) => setLocalOrderAmount(e.target.value)}
-                  onBlur={resetMobileZoom}
-                  className="h-9 text-sm"
-                  style={{ borderColor: C.border, background: C.bg }}
-                  placeholder="0.00"
-                />
-              </div>
-            </div>
-
-            {/* notes */}
-            <div>
-              <Label className="text-xs" style={{ color: C.textMuted }}>Notes</Label>
-              <Textarea
-                placeholder="Notes (required to skip)..."
-                value={localNotes}
-                onChange={(e) => setLocalNotes(e.target.value)}
-                onBlur={() => { commitNotes(); resetMobileZoom(); }}
-                rows={2}
-                className="text-sm resize-none"
-                style={{ borderColor: C.border, background: C.bg }}
-              />
-            </div>
-
-            {/* actions */}
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={skipItem}
-                disabled={actionInProgress}
-                className="text-xs h-8"
-                style={{ borderColor: C.border, color: C.textMuted }}
+          <>
+            {/* Time at stop & Order cards (2-col grid) */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+              <div
+                style={{
+                  background: C.surfaceAlt,
+                  borderRadius: 16,
+                  padding: "12px 14px",
+                  position: "relative",
+                }}
               >
-                <SkipForward size={12} className="mr-1" /> Skip
-              </Button>
-              {localArrival && localLeaving && calcDuration(localArrival, localLeaving) > 0 && (
-                <Button
-                  size="sm"
-                  onClick={markVisited}
-                  disabled={actionInProgress}
-                  className="text-xs h-8 flex-1"
-                  style={actionInProgress ? {
-                    background: `linear-gradient(90deg, ${C.green} 25%, ${C.greenMid} 50%, ${C.green} 75%)`,
-                    backgroundSize: "200% 100%",
-                    animationName: "btn-shimmer",
-                    animationDuration: "1.2s",
-                    animationIterationCount: "infinite",
-                    animationTimingFunction: "linear",
-                    color: "#fff",
-                  } : { background: C.green, color: "#fff" }}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontSize: 10.5, color: C.inkMute, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 700, fontFamily: "'DM Sans', sans-serif", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <Clock size={13} />Time at stop
+                  </div>
+                  <Lock size={11} color={C.inkMute} />
+                </div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, color: C.ink, fontWeight: 700, letterSpacing: "-0.4px", marginTop: 4, lineHeight: 1 }}>
+                  {item.duration_minutes > 0 ? (item.duration_minutes < 60 ? `${item.duration_minutes}m` : `${Math.floor(item.duration_minutes / 60)}h ${item.duration_minutes % 60}m`) : "—"}
+                </div>
+                {item.arrival_time && item.leaving_time && (
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11.5, color: C.inkSoft, marginTop: 4 }}>
+                    {item.arrival_time.slice(0, 5)} → {item.leaving_time.slice(0, 5)}
+                  </div>
+                )}
+              </div>
+
+              {item.order && (
+                <div
+                  style={{
+                    background: C.surfaceAlt,
+                    borderRadius: 16,
+                    padding: "12px 14px",
+                  }}
                 >
-                  <Check size={12} className="mr-1" /> Mark Visited
-                </Button>
+                  <div style={{ fontSize: 10.5, color: C.inkMute, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>
+                    Order {item.order.order_number}
+                  </div>
+                  <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, color: C.ink, fontWeight: 700, letterSpacing: "-0.4px", marginTop: 4, lineHeight: 1 }}>
+                    R {parseFloat(String(item.order.order_amount || 0)).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11.5, color: C.inkSoft, marginTop: 4 }}>
+                    {item.order.order_quantity} units
+                  </div>
+                </div>
               )}
             </div>
+
+            {/* Edit Order button or form */}
+            {!editingDone && (
+              <button
+                type="button"
+                onClick={async () => {
+                  let visitId = item.visit_id;
+                  let visitData: any = null;
+                  if (visitId) {
+                    const res = await supabase.from("visits").select("order_number, order_quantity, order_amount").eq("id", visitId).maybeSingle();
+                    visitData = res.data;
+                  }
+                  if (!visitData) {
+                    const res = await (supabase.from("visits").select("order_number, order_quantity, order_amount")
+                      .eq("rep_id", repId).eq("customer_id", item.customer_id).eq("visit_date", scheduleDate)
+                      .order("created_at", { ascending: false }).limit(1).maybeSingle() as any);
+                    visitData = res.data;
+                  }
+                  setDoneOrderNumber(visitData?.order_number || "");
+                  setDoneOrderQty(visitData?.order_quantity != null ? String(visitData.order_quantity) : "");
+                  setDoneOrderAmount(visitData?.order_amount != null ? String(visitData.order_amount) : "");
+                  setEditingDone(true);
+                }}
+                style={{
+                  width: "100%",
+                  height: 38,
+                  borderRadius: 12,
+                  border: `1px solid ${C.border}`,
+                  background: C.surface,
+                  color: C.inkSoft,
+                  cursor: "pointer",
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontWeight: 600,
+                  fontSize: 12.5,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                }}
+              >
+                <Pencil size={13} /> Edit order details
+              </button>
+            )}
+
+            {editingDone && (
+              <div style={{ background: C.cream, borderRadius: 16, padding: 12, marginBottom: 10, border: `1px solid ${C.border}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ fontSize: 10.5, color: C.inkMute, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>
+                    Edit order
+                  </div>
+                  <div style={{ fontSize: 10, color: C.inkMute, fontFamily: "'DM Sans', sans-serif", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                    <Lock size={10} /> Times &amp; locked
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.6fr 1fr", gap: 8, marginBottom: 10 }}>
+                  {/* PadInput-style inputs */}
+                  <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                    <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>№</div>
+                    <input
+                      type="text"
+                      value={doneOrderNumber}
+                      onChange={(e) => setDoneOrderNumber(e.target.value)}
+                      onBlur={resetMobileZoom}
+                      placeholder="PO-0000"
+                      style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }}
+                    />
+                  </label>
+                  <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                    <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Qty</div>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={doneOrderQty}
+                      onChange={(e) => setDoneOrderQty(e.target.value)}
+                      onBlur={resetMobileZoom}
+                      placeholder="0"
+                      style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }}
+                    />
+                  </label>
+                  <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                    <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Value</div>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={doneOrderAmount}
+                      onChange={(e) => setDoneOrderAmount(e.target.value)}
+                      onBlur={resetMobileZoom}
+                      placeholder="R 0,00"
+                      style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }}
+                    />
+                  </label>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => setEditingDone(false)}
+                    style={{
+                      height: 40,
+                      borderRadius: 12,
+                      border: "none",
+                      cursor: "pointer",
+                      background: "transparent",
+                      color: C.inkSoft,
+                      fontFamily: "'DM Sans', sans-serif",
+                      fontWeight: 600,
+                      fontSize: 13,
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveDoneOrder}
+                    disabled={actionInProgress}
+                    style={{
+                      height: 40,
+                      borderRadius: 12,
+                      border: "none",
+                      cursor: "pointer",
+                      background: `linear-gradient(180deg, ${C.greenMid} 0%, ${C.green} 100%)`,
+                      color: "#fff",
+                      fontFamily: "'Syne', sans-serif",
+                      fontWeight: 700,
+                      fontSize: 13,
+                      letterSpacing: 0.2,
+                      boxShadow: `0 8px 16px -8px ${C.green}aa, 0 1px 0 rgba(255,255,255,0.2) inset`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Check size={14} /> Save changes
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* skipped state */}
+        {item.status === "skipped" && item.notes && (
+          <div style={{ background: C.dangerSoft, borderRadius: 16, padding: 14, marginBottom: 6, border: `1px solid ${C.danger}22` }}>
+            <div style={{ fontSize: 10.5, color: C.danger, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 700, fontFamily: "'DM Sans', sans-serif", marginBottom: 4 }}>
+              Skip reason
+            </div>
+            <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: C.ink, lineHeight: 1.45 }}>
+              {item.notes}
+            </div>
+          </div>
+        )}
+
+        {/* pending / active state */}
+        {item.status === "pending" && !skipMode && (
+          <>
+            {/* Stepper pills */}
+            <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px", background: C.cream, borderRadius: 999, marginBottom: 14 }}>
+              <div style={{ flex: 1, textAlign: "center", padding: "7px 4px", borderRadius: 999, background: localArrival ? C.surface : "transparent", boxShadow: localArrival ? "0 2px 6px rgba(23,23,21,0.06)" : "none" }}>
+                <div style={{ fontSize: 9.5, color: C.inkMute, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", fontWeight: 700 }}>Arrived</div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 12, color: localArrival ? C.greenInk : C.inkMute, marginTop: 1, fontWeight: 600 }}>
+                  {localArrival || "—"}
+                </div>
+              </div>
+              <div style={{ flex: 1, textAlign: "center", padding: "7px 4px", borderRadius: 999, background: photoBlob ? C.surface : "transparent", boxShadow: photoBlob ? "0 2px 6px rgba(23,23,21,0.06)" : "none" }}>
+                <div style={{ fontSize: 9.5, color: C.inkMute, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", fontWeight: 700 }}>Photo</div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 12, color: photoBlob ? C.greenInk : C.inkMute, marginTop: 1, fontWeight: 600 }}>
+                  {photoBlob ? "✓" : "—"}
+                </div>
+              </div>
+              <div style={{ flex: 1, textAlign: "center", padding: "7px 4px", borderRadius: 999, background: "transparent" }}>
+                <div style={{ fontSize: 9.5, color: C.inkMute, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", fontWeight: 700 }}>Order</div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 12, color: C.inkMute, marginTop: 1, fontWeight: 600 }}>
+                  —
+                </div>
+              </div>
+              <div style={{ flex: 1, textAlign: "center", padding: "7px 4px", borderRadius: 999, background: "transparent" }}>
+                <div style={{ fontSize: 9.5, color: C.inkMute, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", fontWeight: 700 }}>Left</div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 12, color: C.inkMute, marginTop: 1, fontWeight: 600 }}>
+                  —
+                </div>
+              </div>
+            </div>
+
+            {!isInProgress ? (
+              /* Pending state — show arrive button */
+              <>
+                <button
+                  type="button"
+                  onClick={markArrived}
+                  style={{
+                    width: "100%",
+                    height: 56,
+                    borderRadius: 18,
+                    border: "none",
+                    cursor: "pointer",
+                    background: `linear-gradient(180deg, ${C.greenMid} 0%, ${C.green} 100%)`,
+                    color: "#fff",
+                    fontFamily: "'Syne', sans-serif",
+                    fontWeight: 700,
+                    fontSize: 16,
+                    letterSpacing: 0.2,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 10,
+                    boxShadow: `0 12px 24px -10px ${C.green}88`,
+                    marginBottom: 6,
+                  }}
+                >
+                  <MapPin size={18} /> Tap to check in
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSkipMode(true); setSkipNote(""); }}
+                  style={{
+                    width: "100%",
+                    height: 40,
+                    borderRadius: 12,
+                    border: "none",
+                    cursor: "pointer",
+                    background: "transparent",
+                    color: C.inkSoft,
+                    fontFamily: "'DM Sans', sans-serif",
+                    fontWeight: 600,
+                    fontSize: 13,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                  }}
+                >
+                  <SkipForward size={14} /> Mark as skipped
+                </button>
+              </>
+            ) : (
+              /* Active state — show order, photo, checkout */
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+                  <button
+                    type="button"
+                    onClick={handleCameraCapture}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      height: 44,
+                      borderRadius: 14,
+                      cursor: "pointer",
+                      background: photoBlob ? C.greenInk : C.cream,
+                      color: photoBlob ? "#fff" : C.inkSoft,
+                      border: "none",
+                      fontFamily: "'DM Sans', sans-serif",
+                      fontWeight: 600,
+                      fontSize: 13,
+                    }}
+                  >
+                    <Camera size={15} /> {photoBlob ? "Photo ready" : "Take photo"}
+                  </button>
+                  <button
+                    type="button"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      height: 44,
+                      borderRadius: 14,
+                      cursor: "pointer",
+                      background: C.cream,
+                      color: C.inkSoft,
+                      border: "none",
+                      fontFamily: "'DM Sans', sans-serif",
+                      fontWeight: 600,
+                      fontSize: 13,
+                    }}
+                  >
+                    <FileText size={15} /> Add note
+                  </button>
+                </div>
+
+                <div style={{ background: C.cream, borderRadius: 16, padding: 12, marginBottom: 14 }}>
+                  <div style={{ fontSize: 10.5, color: C.inkMute, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 600, fontFamily: "'DM Sans', sans-serif", marginBottom: 8 }}>
+                    Order
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.6fr 1fr", gap: 8 }}>
+                    <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                      <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>№</div>
+                      <input type="text" value={localOrderNumber} onChange={(e) => setLocalOrderNumber(e.target.value)} onBlur={resetMobileZoom} placeholder="PO-0000" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                    </label>
+                    <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                      <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Qty</div>
+                      <input type="number" min="0" step="1" value={localOrderQty} onChange={(e) => setLocalOrderQty(e.target.value)} onBlur={resetMobileZoom} placeholder="0" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                    </label>
+                    <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                      <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Value</div>
+                      <input type="number" min="0" step="0.01" value={localOrderAmount} onChange={(e) => setLocalOrderAmount(e.target.value)} onBlur={resetMobileZoom} placeholder="R 0,00" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                    </label>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={markLeft}
+                  style={{
+                    width: "100%",
+                    height: 60,
+                    borderRadius: 18,
+                    border: "none",
+                    cursor: "pointer",
+                    background: `linear-gradient(180deg, ${C.greenMid} 0%, ${C.green} 100%)`,
+                    color: "#fff",
+                    fontFamily: "'Syne', sans-serif",
+                    fontWeight: 700,
+                    fontSize: 17,
+                    letterSpacing: 0.3,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 10,
+                    boxShadow: `0 12px 28px -10px ${C.green}aa, 0 1px 0 rgba(255,255,255,0.2) inset, 0 -1px 0 ${C.greenDeep}88 inset`,
+                    marginBottom: 6,
+                  }}
+                >
+                  <Check size={20} /> Tap to check out
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSkipMode(true); setSkipNote(""); }}
+                  style={{
+                    width: "100%",
+                    height: 40,
+                    borderRadius: 12,
+                    border: "none",
+                    cursor: "pointer",
+                    background: "transparent",
+                    color: C.inkSoft,
+                    fontFamily: "'DM Sans', sans-serif",
+                    fontWeight: 600,
+                    fontSize: 13,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                  }}
+                >
+                  <SkipForward size={14} /> Mark as skipped
+                </button>
+              </>
+            )}
+          </>
+        )}
+
+        {/* Skip composer — shows when skipMode = true */}
+        {item.status === "pending" && skipMode && (
+          <div style={{ background: `linear-gradient(180deg, ${C.dangerSoft} 0%, #FBEFE9 100%)`, borderRadius: 18, padding: 14, border: `1px solid ${C.danger}33` }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 10, background: C.danger, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <SkipForward size={14} />
+                </div>
+                <div>
+                  <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, letterSpacing: "-0.1px" }}>Skip this stop</div>
+                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, color: C.inkSoft }}>A note is required.</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setSkipMode(false); setSkipNote(""); }}
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,0.6)",
+                  border: "none",
+                  color: C.inkSoft,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div style={{ background: "#fff", borderRadius: 14, padding: 12, border: `1px solid ${C.danger}22`, boxShadow: "inset 0 1px 0 rgba(255,255,255,0.6)", marginBottom: 12 }}>
+              <textarea
+                value={skipNote}
+                onChange={(e) => setSkipNote(e.target.value.slice(0, 240))}
+                placeholder="Why are you skipping this stop?"
+                rows={3}
+                style={{
+                  width: "100%",
+                  resize: "none",
+                  border: "none",
+                  outline: "none",
+                  background: "transparent",
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontSize: 13.5,
+                  color: C.ink,
+                  lineHeight: 1.45,
+                }}
+              />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                <div style={{ fontSize: 10.5, color: C.inkMute, fontFamily: "'DM Sans', sans-serif", letterSpacing: 0.8, textTransform: "uppercase", fontWeight: 600 }}>
+                  {skipNote.trim().length >= 3 ? "Looks good" : "Required"}
+                </div>
+                <div style={{ fontSize: 11, color: C.inkMute, fontFamily: "'DM Sans', sans-serif" }}>
+                  {skipNote.length}/240
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => skipItem(skipNote)}
+              disabled={skipNote.trim().length < 3 || actionInProgress}
+              style={{
+                width: "100%",
+                height: 52,
+                borderRadius: 16,
+                border: "none",
+                cursor: skipNote.trim().length >= 3 ? "pointer" : "not-allowed",
+                marginTop: 0,
+                background: skipNote.trim().length >= 3 ? `linear-gradient(180deg, #C46A57 0%, ${C.danger} 100%)` : "rgba(184,90,74,0.25)",
+                color: "#fff",
+                fontFamily: "'Syne', sans-serif",
+                fontWeight: 700,
+                fontSize: 15,
+                letterSpacing: 0.2,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                boxShadow: skipNote.trim().length >= 3 ? `0 10px 22px -10px ${C.danger}aa, 0 1px 0 rgba(255,255,255,0.15) inset` : "none",
+                opacity: skipNote.trim().length >= 3 ? 1 : 0.85,
+                transition: "background 200ms, box-shadow 200ms",
+              }}
+            >
+              <SkipForward size={16} /> Confirm skip
+            </button>
           </div>
         )}
       </div>
@@ -2240,30 +2647,62 @@ export default function DailySchedule() {
       {!isOnline && <OfflineBanner />}
 
       {/* header */}
-      <div className="px-4 pt-5 pb-3" style={{ background: C.header }}>
+      <div
+        style={{
+          background: `radial-gradient(120% 80% at 50% 0%, ${C.greenMid} 0%, ${C.green} 38%, ${C.greenDeep} 100%)`,
+          padding: "20px 16px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+        }}
+      >
         {/* date navigation */}
-        <div className="flex items-center justify-between mb-1">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <button
             type="button"
             onClick={() => changeDay(-1)}
-            className="w-8 h-8 flex items-center justify-center rounded-full"
-            style={{ background: "rgba(255,255,255,0.1)", color: "#fff" }}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.14)",
+              color: "#fff",
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+            }}
           >
             <ChevronLeft size={18} />
           </button>
 
-          <div className="text-center">
-            <p className="font-syne font-bold text-lg leading-tight" style={{ color: "#fff" }}>{dateLabel}</p>
+          <div style={{ textAlign: "center" }}>
             {currentWeekName && (
-              <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.6)" }}>{currentWeekName}</p>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", margin: 0, marginBottom: 4, textTransform: "uppercase", fontWeight: 500, letterSpacing: "0.5px" }}>
+                {currentWeekName}
+              </p>
             )}
+            <p style={{ fontFamily: "Syne, sans-serif", fontSize: 20, fontWeight: 700, color: "#fff", margin: 0, lineHeight: 1.2 }}>
+              {dateLabel}
+            </p>
           </div>
 
           <button
             type="button"
             onClick={() => changeDay(1)}
-            className="w-8 h-8 flex items-center justify-center rounded-full"
-            style={{ background: "rgba(255,255,255,0.1)", color: "#fff" }}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.14)",
+              color: "#fff",
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+            }}
           >
             <ChevronRight size={18} />
           </button>
@@ -2271,28 +2710,48 @@ export default function DailySchedule() {
 
         {/* stats strip */}
         {!loading && !generating && items.length > 0 && (
-          <div className="flex items-center justify-center gap-6 mt-3 mb-2">
-            <div className="text-center">
-              <p className="font-syne font-bold text-2xl leading-none" style={{ color: C.greenLight }}>{visitedCount}</p>
-              <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.55)" }}>Done</p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <div style={{ flex: 1, textAlign: "center" }}>
+              <p style={{ fontFamily: "Syne, sans-serif", fontSize: 24, fontWeight: 700, color: "#fff", margin: 0, lineHeight: 1 }}>
+                {visitedCount}
+              </p>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", margin: 0, marginTop: 4 }}>Done</p>
             </div>
-            <div className="text-center">
-              <p className="font-syne font-bold text-2xl leading-none" style={{ color: "#fff" }}>{activeItems.length}</p>
-              <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.55)" }}>Remaining</p>
+            <div style={{ width: "1px", height: 28, background: "rgba(255,255,255,0.15)" }} />
+            <div style={{ flex: 1, textAlign: "center" }}>
+              <p style={{ fontFamily: "Syne, sans-serif", fontSize: 24, fontWeight: 700, color: "rgba(255,255,255,0.85)", margin: 0, lineHeight: 1 }}>
+                {activeItems.length}
+              </p>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", margin: 0, marginTop: 4 }}>Remaining</p>
             </div>
-            <div className="text-center">
-              <p className="font-syne font-bold text-2xl leading-none" style={{ color: "rgba(255,255,255,0.7)" }}>{totalCount}</p>
-              <p className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.55)" }}>Total</p>
+            <div style={{ width: "1px", height: 28, background: "rgba(255,255,255,0.15)" }} />
+            <div style={{ flex: 1, textAlign: "center" }}>
+              <p style={{ fontFamily: "Syne, sans-serif", fontSize: 24, fontWeight: 700, color: "rgba(255,255,255,0.7)", margin: 0, lineHeight: 1 }}>
+                {totalCount}
+              </p>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", margin: 0, marginTop: 4 }}>Total</p>
             </div>
           </div>
         )}
 
-        {/* progress bar */}
+        {/* progress pill */}
         {items.length > 0 && (
-          <div className="h-[3px] rounded-full mt-2" style={{ background: "rgba(255,255,255,0.15)" }}>
+          <div
+            style={{
+              height: 6,
+              borderRadius: 999,
+              background: "rgba(255,255,255,0.14)",
+              overflow: "hidden",
+            }}
+          >
             <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${progress * 100}%`, background: C.greenLight }}
+              style={{
+                height: "100%",
+                width: `${progress * 100}%`,
+                background: `linear-gradient(90deg, ${C.sun} 0%, #fff 100%)`,
+                transition: "width 500ms cubic-bezier(0.22, 0.61, 0.36, 1)",
+                borderRadius: 999,
+              }}
             />
           </div>
         )}
@@ -2300,17 +2759,35 @@ export default function DailySchedule() {
 
       {/* tab bar */}
       {!loading && !generating && schedule && (
-        <div className="flex px-4 pt-3 gap-2">
+        <div
+          style={{
+            padding: "12px 16px",
+            display: "flex",
+            gap: 0,
+            borderRadius: 999,
+            background: "#E2D9C6",
+            margin: "12px 16px",
+            width: "calc(100% - 32px)",
+          }}
+        >
           {(["active", "done"] as const).map((tab) => (
             <button
               key={tab}
               type="button"
               onClick={() => setActiveTab(tab)}
-              className="flex-1 py-2 rounded-xl text-sm font-semibold font-syne transition-colors"
               style={{
-                background: activeTab === tab ? C.green : C.card,
-                color: activeTab === tab ? "#fff" : C.textMuted,
-                border: `1px solid ${activeTab === tab ? C.green : C.border}`,
+                flex: 1,
+                padding: "8px 12px",
+                borderRadius: 999,
+                fontSize: 13,
+                fontWeight: 700,
+                fontFamily: "Syne, sans-serif",
+                border: "none",
+                cursor: "pointer",
+                background: activeTab === tab ? "#fff" : "transparent",
+                color: activeTab === tab ? C.ink : C.inkSoft,
+                transition: "all 200ms ease",
+                boxShadow: activeTab === tab ? "0 2px 8px rgba(23, 23, 21, 0.12)" : "none",
               }}
             >
               {tab === "active"
@@ -2357,9 +2834,65 @@ export default function DailySchedule() {
             </p>
           </div>
         ) : activeTab === "active" ? (
-          activeItems.length === 0 ? (
-            allDone ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: C.textMuted }}>
+          <>
+            {allDone && (
+              <div
+                style={{
+                  borderRadius: 12,
+                  padding: "12px 16px",
+                  background: `linear-gradient(135deg, ${C.greenSoft} 0%, rgba(221, 233, 225, 0.5) 100%)`,
+                  border: `1px solid ${C.greenSoft}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: "50%",
+                      background: C.green,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#fff",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Check size={16} strokeWidth={3} />
+                  </div>
+                  <div>
+                    <p style={{ fontFamily: "Syne, sans-serif", fontSize: 14, fontWeight: 600, color: C.greenInk, margin: 0 }}>
+                      Day complete
+                    </p>
+                    <p style={{ fontSize: 12, color: C.inkMute, margin: 0, marginTop: 2 }}>All visits accounted for</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleViewSummary}
+                  disabled={isLoadingSummary}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 999,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background: C.green,
+                    color: "#fff",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  View summary
+                </button>
+              </div>
+            )}
+            {activeItems.length === 0 ? (
+              allDone ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: C.textMuted }}>
                 <div
                   className="w-14 h-14 rounded-full flex items-center justify-center"
                   style={{ background: C.greenBg, border: `2px solid ${C.greenLight}` }}
@@ -2402,6 +2935,8 @@ export default function DailySchedule() {
               />
             ))
           )
+            }
+          </>
         ) : (
           completedItems.length === 0 && unscheduledVisits.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-2" style={{ color: C.textMuted }}>
@@ -2409,6 +2944,47 @@ export default function DailySchedule() {
             </div>
           ) : (
             <>
+              {(completedItems.length > 0 || unscheduledVisits.length > 0) && (
+                <div
+                  style={{
+                    margin: "16px",
+                    padding: "12px 16px",
+                    borderRadius: 12,
+                    background: C.surface,
+                    border: `1px solid ${C.border}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-around",
+                    gap: 16,
+                  }}
+                >
+                  <div style={{ flex: 1, textAlign: "center", borderRight: `1px solid ${C.border}` }}>
+                    <p style={{ fontSize: 11, color: C.inkMute, textTransform: "uppercase", fontWeight: 500, margin: 0, marginBottom: 6 }}>
+                      Avg per stop
+                    </p>
+                    <p style={{ fontSize: 16, fontFamily: "Syne, sans-serif", fontWeight: 600, color: C.ink, margin: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                      <Clock size={14} />
+                      {visitedCount > 0 ? fmtDuration(Math.round(items.filter(i => i.status === "visited").reduce((sum, i) => sum + (i.duration_minutes || 0), 0) / visitedCount * 60)) : "—"}
+                    </p>
+                  </div>
+                  <div style={{ flex: 1, textAlign: "center", borderRight: `1px solid ${C.border}` }}>
+                    <p style={{ fontSize: 11, color: C.inkMute, textTransform: "uppercase", fontWeight: 500, margin: 0, marginBottom: 6 }}>
+                      Visited
+                    </p>
+                    <p style={{ fontSize: 16, fontFamily: "Syne, sans-serif", fontWeight: 600, color: C.green, margin: 0 }}>
+                      {visitedCount}
+                    </p>
+                  </div>
+                  <div style={{ flex: 1, textAlign: "center" }}>
+                    <p style={{ fontSize: 11, color: C.inkMute, textTransform: "uppercase", fontWeight: 500, margin: 0, marginBottom: 6 }}>
+                      Skipped
+                    </p>
+                    <p style={{ fontSize: 16, fontFamily: "Syne, sans-serif", fontWeight: 600, color: C.danger, margin: 0 }}>
+                      {completedItems.filter(i => i.status === "skipped").length}
+                    </p>
+                  </div>
+                </div>
+              )}
               {completedItems.map((item, i) => (
                 <ScheduleCard
                   key={item.id}
@@ -2638,39 +3214,93 @@ export default function DailySchedule() {
 
         {/* bottom action cards — side by side when collapsed, full-width when expanded */}
         {schedule && (
-          <div className="pt-2">
+          <div style={{ padding: "8px 16px" }}>
 
             {/* collapsed: two cards sitting side by side */}
             {expandedBottomCard === null && (
-              <div className="flex gap-2">
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <button
                   type="button"
                   onClick={() => setExpandedBottomCard("unscheduled")}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-2xl text-sm font-medium min-w-0"
-                  style={{ background: C.card, border: `1.5px dashed ${C.border}`, color: C.textMuted }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    padding: "12px 16px",
+                    borderRadius: 16,
+                    fontSize: 14,
+                    fontWeight: 500,
+                    border: `1.5px dashed ${C.border}`,
+                    background: C.surface,
+                    color: C.inkMute,
+                    cursor: "pointer",
+                  }}
                 >
-                  <Plus size={15} className="shrink-0" />
-                  <span className="truncate">Unscheduled</span>
+                  <Plus size={16} />
+                  <span>Unscheduled</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setExpandedBottomCard("offroute")}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-2xl text-sm font-medium min-w-0"
-                  style={{ background: C.card, border: `1.5px dashed ${C.border}`, color: C.textMuted }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    padding: "12px 16px",
+                    borderRadius: 16,
+                    fontSize: 14,
+                    fontWeight: 500,
+                    border: `1.5px dashed ${C.border}`,
+                    background: C.surface,
+                    color: C.inkMute,
+                    cursor: "pointer",
+                  }}
                 >
-                  <Plus size={15} className="shrink-0" />
-                  <span className="truncate">Off-Route Order</span>
+                  <Plus size={16} />
+                  <span>Off-Route Order</span>
                 </button>
               </div>
             )}
 
             {/* expanded: unscheduled visit form */}
             {expandedBottomCard === "unscheduled" && (
-              <div className="rounded-2xl p-4 space-y-3" style={{ background: C.card, border: `1.5px solid ${C.border}` }}>
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold font-syne" style={{ color: C.text }}>Unscheduled Visit</p>
-                  <button type="button" onClick={resetAdHoc} style={{ color: C.textMuted }}><X size={16} /></button>
+              <div style={{ borderRadius: 16, overflow: "hidden", background: C.surface, border: `1.5px solid ${C.greenSoft}` }}>
+                {/* Green gradient top bar */}
+                <div style={{ height: 3, background: `linear-gradient(90deg, ${C.greenMid} 0%, ${C.green} 100%)` }} />
+
+                {/* Header */}
+                <div style={{ padding: "16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 8,
+                        background: C.greenSoft,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: C.green,
+                      }}
+                    >
+                      <Pin size={14} />
+                    </div>
+                    <div>
+                      <p style={{ fontFamily: "Syne, sans-serif", fontSize: 14, fontWeight: 600, color: C.ink, margin: 0 }}>
+                        Unscheduled visit
+                      </p>
+                      <p style={{ fontSize: 11, color: C.inkMute, margin: 0, marginTop: 2 }}>Add a customer visit off your route</p>
+                    </div>
+                  </div>
+                  <button type="button" onClick={resetAdHoc} style={{ background: "none", border: "none", color: C.inkMute, cursor: "pointer", padding: 0 }}>
+                    <X size={16} />
+                  </button>
                 </div>
+
+                {/* Form content */}
+                <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 12 }}>
 
                 <div>
                   <Label className="text-xs" style={{ color: C.textMuted }}>Customer</Label>
@@ -2751,7 +3381,7 @@ export default function DailySchedule() {
                         setAdHocPhoto(null);
                       }}
                         className="absolute -top-1 -right-1 rounded-full p-0.5"
-                        style={{ background: C.red, color: "#fff" }}>
+                        style={{ background: C.danger, color: "#fff" }}>
                         <X size={12} />
                       </button>
                     </div>
@@ -2768,32 +3398,89 @@ export default function DailySchedule() {
                   )}
                 </div>
 
-                <Button
-                  onClick={submitAdHoc}
-                  disabled={adHocSubmitting || !adHocCustomerId || !adHocArrival || !adHocLeaving}
-                  className="w-full h-10 font-syne font-semibold"
-                  style={adHocSubmitting ? {
-                    background: `linear-gradient(90deg, ${C.green} 25%, ${C.greenMid} 50%, ${C.green} 75%)`,
-                    backgroundSize: "200% 100%",
-                    animationName: "btn-shimmer",
-                    animationDuration: "1.2s",
-                    animationIterationCount: "infinite",
-                    animationTimingFunction: "linear",
-                    color: "#fff",
-                  } : { background: C.green, color: "#fff" }}
-                >
-                  Log Visit
-                </Button>
+                {/* What happens next stepper */}
+                <div style={{ padding: "12px", borderRadius: 12, background: C.cream, display: "flex", alignItems: "center", gap: 6 }}>
+                  {[
+                    { icon: "→", label: "Arrive" },
+                    { icon: "📷", label: "Photo" },
+                    { icon: "📋", label: "Order" },
+                    { icon: "←", label: "Leave" },
+                  ].map((step, idx) => (
+                    <div key={idx} style={{ flex: 1, textAlign: "center" }}>
+                      <div style={{ fontSize: 12, marginBottom: 4 }}>{step.icon}</div>
+                      <p style={{ fontSize: 10, fontWeight: 500, color: C.inkMute, margin: 0 }}>{step.label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                  <Button
+                    type="button"
+                    onClick={resetAdHoc}
+                    className="flex-1 h-11 font-syne font-semibold"
+                    style={{ background: "transparent", color: C.inkSoft, border: `1px solid ${C.border}` }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={submitAdHoc}
+                    disabled={adHocSubmitting || !adHocCustomerId || !adHocArrival || !adHocLeaving}
+                    className="flex-1 h-11 font-syne font-semibold"
+                    style={adHocSubmitting ? {
+                      background: `linear-gradient(90deg, ${C.greenMid} 25%, ${C.green} 50%, ${C.greenMid} 75%)`,
+                      backgroundSize: "200% 100%",
+                      animationName: "btn-shimmer",
+                      animationDuration: "1.2s",
+                      animationIterationCount: "infinite",
+                      animationTimingFunction: "linear",
+                      color: "#fff",
+                    } : { background: `linear-gradient(135deg, ${C.greenMid} 0%, ${C.green} 100%)`, color: "#fff" }}
+                  >
+                    <Pin size={14} style={{ marginRight: 4 }} />
+                    Start visit
+                  </Button>
+                </div>
+                </div>
               </div>
             )}
 
             {/* expanded: off-route order form */}
             {expandedBottomCard === "offroute" && (
-              <div className="rounded-2xl p-4 space-y-3" style={{ background: C.card, border: `1.5px solid ${C.border}` }}>
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold font-syne" style={{ color: C.text }}>Off-Route Order</p>
-                  <button type="button" onClick={resetOffRoute} style={{ color: C.textMuted }}><X size={16} /></button>
+              <div style={{ borderRadius: 16, overflow: "hidden", background: C.surface, border: `1.5px solid rgba(230, 182, 82, 0.35)` }}>
+                {/* Sun gradient top bar */}
+                <div style={{ height: 3, background: `linear-gradient(90deg, ${C.sun} 0%, #FFD966 100%)` }} />
+
+                {/* Header */}
+                <div style={{ padding: "16px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 8,
+                        background: "rgba(230, 182, 82, 0.15)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: C.sun,
+                      }}
+                    >
+                      <Plus size={14} />
+                    </div>
+                    <div>
+                      <p style={{ fontFamily: "Syne, sans-serif", fontSize: 14, fontWeight: 600, color: C.ink, margin: 0 }}>
+                        Off-Route order
+                      </p>
+                      <p style={{ fontSize: 11, color: C.inkMute, margin: 0, marginTop: 2 }}>Log a sale outside your route</p>
+                    </div>
+                  </div>
+                  <button type="button" onClick={resetOffRoute} style={{ background: "none", border: "none", color: C.inkMute, cursor: "pointer", padding: 0 }}>
+                    <X size={16} />
+                  </button>
                 </div>
+
+                {/* Form content */}
+                <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 12 }}>
 
                 <div>
                   <Label className="text-xs" style={{ color: C.textMuted }}>Customer</Label>
@@ -2837,22 +3524,33 @@ export default function DailySchedule() {
                     className="text-sm resize-none" style={{ borderColor: C.border, background: C.bg }} />
                 </div>
 
-                <Button
-                  onClick={submitOffRoute}
-                  disabled={offRouteSubmitting || !offRouteCustomerId}
-                  className="w-full h-10 font-syne font-semibold"
-                  style={offRouteSubmitting ? {
-                    background: `linear-gradient(90deg, ${C.green} 25%, ${C.greenMid} 50%, ${C.green} 75%)`,
-                    backgroundSize: "200% 100%",
-                    animationName: "btn-shimmer",
-                    animationDuration: "1.2s",
-                    animationIterationCount: "infinite",
-                    animationTimingFunction: "linear",
-                    color: "#fff",
-                  } : { background: C.green, color: "#fff" }}
-                >
-                  Log Order
-                </Button>
+                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                  <Button
+                    type="button"
+                    onClick={resetOffRoute}
+                    className="flex-1 h-11 font-syne font-semibold"
+                    style={{ background: "transparent", color: C.inkSoft, border: `1px solid ${C.border}` }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={submitOffRoute}
+                    disabled={offRouteSubmitting || !offRouteCustomerId}
+                    className="flex-1 h-11 font-syne font-semibold"
+                    style={offRouteSubmitting ? {
+                      background: `linear-gradient(90deg, ${C.greenMid} 25%, ${C.green} 50%, ${C.greenMid} 75%)`,
+                      backgroundSize: "200% 100%",
+                      animationName: "btn-shimmer",
+                      animationDuration: "1.2s",
+                      animationIterationCount: "infinite",
+                      animationTimingFunction: "linear",
+                      color: "#fff",
+                    } : { background: `linear-gradient(135deg, ${C.greenMid} 0%, ${C.green} 100%)`, color: "#fff" }}
+                  >
+                    Log order
+                  </Button>
+                </div>
+                </div>
               </div>
             )}
           </div>
