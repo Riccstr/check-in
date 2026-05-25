@@ -2615,7 +2615,7 @@ export default function DailySchedule() {
   const displayDate = new Date(scheduleDate + "T00:00:00");
   const dateLabel = isToday
     ? "Today"
-    : displayDate.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+    : displayDate.toLocaleDateString("en-GB", { day: "numeric", month: "long" });
 
   // ─── render ─────────────────────────────────────────────────────────────────
 
@@ -2691,11 +2691,10 @@ export default function DailySchedule() {
           </button>
 
           <div style={{ textAlign: "center" }}>
-            {currentWeekName && (
-              <p style={{ fontSize: 10.5, color: "rgba(255,255,255,0.5)", margin: 0, marginBottom: 4, textTransform: "uppercase", fontWeight: 500, letterSpacing: "0.5px" }}>
-                {currentWeekName}
-              </p>
-            )}
+            <p style={{ fontSize: 10.5, color: "rgba(255,255,255,0.5)", margin: 0, marginBottom: 4, textTransform: "uppercase", fontWeight: 500, letterSpacing: "0.5px" }}>
+              {displayDate.toLocaleDateString("en-GB", { weekday: "long" }).toUpperCase()}
+              {currentWeekName ? ` · ${currentWeekName}` : ""}
+            </p>
             <p style={{ fontFamily: "Syne, sans-serif", fontSize: 26, fontWeight: 700, color: "#fff", margin: 0, lineHeight: 1.2 }}>
               {dateLabel}
             </p>
