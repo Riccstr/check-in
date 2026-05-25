@@ -2631,12 +2631,25 @@ export default function DailySchedule() {
       <div
         style={{
           background: `radial-gradient(120% 80% at 50% 0%, ${C.greenMid} 0%, ${C.green} 38%, ${C.greenDeep} 100%)`,
-          padding: "20px 16px",
+          padding: "12px 16px 16px",
           display: "flex",
           flexDirection: "column",
           gap: 16,
         }}
       >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <img src="/logo.png" alt="Check-In" style={{ width: 28, height: 28, borderRadius: 6 }} />
+            <span style={{ fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: 15, color: "#fff", letterSpacing: "-0.2px" }}>Check-In</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, background: "rgba(255,255,255,0.14)", fontSize: 11.5, fontWeight: 600, color: "#fff" }}>
+              <span style={{ width: 6, height: 6, borderRadius: 999, background: isOnline ? "#7DDDA5" : "#E65100", boxShadow: isOnline ? "0 0 0 3px rgba(125,221,165,0.25)" : "none" }} />
+              {isOnline ? "Online" : "Offline"}
+            </div>
+          </div>
+        </div>
+
         {/* date navigation */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <button
