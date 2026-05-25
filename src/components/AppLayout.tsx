@@ -212,7 +212,7 @@ export default function AppLayout() {
         </header>
       )}
 
-      <main className={hideChrome ? "" : "mx-auto max-w-7xl px-4 py-6"}>
+      <main className={hideChrome ? "h-screen flex flex-col overflow-hidden" : "mx-auto max-w-7xl px-4 py-6"}>
         <Outlet />
       </main>
     </div>

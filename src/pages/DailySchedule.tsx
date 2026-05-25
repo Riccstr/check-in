@@ -2621,8 +2621,8 @@ export default function DailySchedule() {
 
   return (
     <div
-      className="schedule-screen flex flex-col -mx-4 -mt-6 -mb-6"
-      style={{ background: C.bg, minHeight: "calc(100dvh - 56px)" }}
+      className="schedule-screen flex flex-col flex-1"
+      style={{ background: C.bg, minHeight: "100dvh" }}
     >
       {/* offline banner */}
       {!isOnline && <OfflineBanner />}
