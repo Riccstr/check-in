@@ -2698,14 +2698,14 @@ export default function DailySchedule() {
               </p>
               <p style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", margin: 0, marginTop: 4 }}>Done</p>
             </div>
-            <div style={{ width: "1px", height: 28, background: "rgba(255,255,255,0.15)" }} />
+            <div style={{ fontFamily: "Syne, sans-serif", fontSize: 22, fontWeight: 300, color: "rgba(255,255,255,0.25)", lineHeight: 1 }}>/</div>
             <div style={{ flex: 1, textAlign: "center" }}>
               <p style={{ fontFamily: "Syne, sans-serif", fontSize: 24, fontWeight: 700, color: "rgba(255,255,255,0.85)", margin: 0, lineHeight: 1 }}>
                 {activeItems.length}
               </p>
               <p style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", margin: 0, marginTop: 4 }}>Remaining</p>
             </div>
-            <div style={{ width: "1px", height: 28, background: "rgba(255,255,255,0.15)" }} />
+            <div style={{ fontFamily: "Syne, sans-serif", fontSize: 22, fontWeight: 300, color: "rgba(255,255,255,0.25)", lineHeight: 1 }}>/</div>
             <div style={{ flex: 1, textAlign: "center" }}>
               <p style={{ fontFamily: "Syne, sans-serif", fontSize: 24, fontWeight: 700, color: "rgba(255,255,255,0.7)", margin: 0, lineHeight: 1 }}>
                 {totalCount}
@@ -2742,12 +2742,12 @@ export default function DailySchedule() {
       {!loading && !generating && schedule && (
         <div
           style={{
-            padding: "12px 16px",
+            padding: "4px",
             display: "flex",
             gap: 0,
             borderRadius: 999,
             background: "#E2D9C6",
-            margin: "12px 16px",
+            margin: "8px 16px",
             width: "calc(100% - 32px)",
           }}
         >
@@ -3213,7 +3213,7 @@ export default function DailySchedule() {
                     fontSize: 14,
                     fontWeight: 500,
                     border: `1.5px dashed ${C.border}`,
-                    background: C.surface,
+                    background: "transparent",
                     color: C.inkMute,
                     cursor: "pointer",
                   }}
@@ -3234,7 +3234,7 @@ export default function DailySchedule() {
                     fontSize: 14,
                     fontWeight: 500,
                     border: `1.5px dashed ${C.border}`,
-                    background: C.surface,
+                    background: "transparent",
                     color: C.inkMute,
                     cursor: "pointer",
                   }}

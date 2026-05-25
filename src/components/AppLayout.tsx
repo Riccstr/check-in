@@ -32,7 +32,7 @@ export default function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
 
-  const hideChrome = role === "rep" && location.pathname === "/";
+  const hideChrome = role === "rep" && location.pathname === "/schedule";
 
   // Setup auto-sync for offline visits (rep only)
   useEffect(() => {
