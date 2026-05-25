@@ -2723,21 +2723,21 @@ export default function DailySchedule() {
 
         {/* stats strip */}
         {!loading && !generating && items.length > 0 && (
-          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "center", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "center", gap: 6 }}>
             <div style={{ flex: 1, textAlign: "center" }}>
               <p style={{ fontFamily: "Syne, sans-serif", fontSize: 30, fontWeight: 700, color: "#fff", margin: 0, lineHeight: 1, letterSpacing: "-0.8px" }}>
                 {visitedCount}
               </p>
               <p style={{ fontFamily: "DM Sans, sans-serif", fontSize: 9.5, color: "rgba(255,255,255,0.55)", margin: 0, marginTop: 4, letterSpacing: "1.3px", textTransform: "uppercase" }}>Done</p>
             </div>
-            <div style={{ fontFamily: "Syne, sans-serif", fontSize: 22, fontWeight: 300, color: "rgba(255,255,255,0.25)", lineHeight: 1, transform: "translateY(-3px)" }}>/</div>
+            <div style={{ fontFamily: "Syne, sans-serif", fontSize: 18, fontWeight: 300, color: "rgba(255,255,255,0.25)", lineHeight: 1, transform: "translateY(-3px)" }}>/</div>
             <div style={{ flex: 1, textAlign: "center" }}>
               <p style={{ fontFamily: "Syne, sans-serif", fontSize: 20, fontWeight: 700, color: "rgba(255,255,255,0.65)", margin: 0, lineHeight: 1, transform: "translateY(4px)" }}>
                 {activeItems.length}
               </p>
               <p style={{ fontFamily: "DM Sans, sans-serif", fontSize: 9.5, color: "rgba(255,255,255,0.55)", margin: 0, marginTop: 4, letterSpacing: "1.3px", textTransform: "uppercase" }}>Remaining</p>
             </div>
-            <div style={{ fontFamily: "Syne, sans-serif", fontSize: 22, fontWeight: 300, color: "rgba(255,255,255,0.25)", lineHeight: 1, transform: "translateY(-3px)" }}>/</div>
+            <div style={{ fontFamily: "Syne, sans-serif", fontSize: 18, fontWeight: 300, color: "rgba(255,255,255,0.25)", lineHeight: 1, transform: "translateY(-3px)" }}>/</div>
             <div style={{ flex: 1, textAlign: "center" }}>
               <p style={{ fontFamily: "Syne, sans-serif", fontSize: 30, fontWeight: 700, color: "rgba(255,255,255,0.7)", margin: 0, lineHeight: 1, letterSpacing: "-0.8px" }}>
                 {totalCount}
