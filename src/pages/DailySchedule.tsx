@@ -2631,13 +2631,13 @@ export default function DailySchedule() {
       <div
         style={{
           background: `radial-gradient(120% 80% at 50% 0%, ${C.greenMid} 0%, ${C.green} 38%, ${C.greenDeep} 100%)`,
-          padding: "12px 16px 16px",
+          padding: "10px 16px 12px",
           display: "flex",
           flexDirection: "column",
-          gap: 16,
+          gap: 10,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <img src="/logo.png" alt="Check-In" style={{ width: 28, height: 28, borderRadius: 6 }} />
             <span style={{ fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: 15, color: "#fff", letterSpacing: "-0.2px" }}>Check-In</span>
@@ -2723,26 +2723,26 @@ export default function DailySchedule() {
 
         {/* stats strip */}
         {!loading && !generating && items.length > 0 && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "center", gap: 14 }}>
             <div style={{ flex: 1, textAlign: "center" }}>
-              <p style={{ fontFamily: "Syne, sans-serif", fontSize: 24, fontWeight: 700, color: "#fff", margin: 0, lineHeight: 1 }}>
+              <p style={{ fontFamily: "Syne, sans-serif", fontSize: 30, fontWeight: 700, color: "#fff", margin: 0, lineHeight: 1, letterSpacing: "-0.8px" }}>
                 {visitedCount}
               </p>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", margin: 0, marginTop: 4 }}>Done</p>
+              <p style={{ fontFamily: "DM Sans, sans-serif", fontSize: 9.5, color: "rgba(255,255,255,0.55)", margin: 0, marginTop: 4, letterSpacing: "1.3px", textTransform: "uppercase" }}>Done</p>
             </div>
-            <div style={{ fontFamily: "Syne, sans-serif", fontSize: 22, fontWeight: 300, color: "rgba(255,255,255,0.25)", lineHeight: 1 }}>/</div>
+            <div style={{ fontFamily: "Syne, sans-serif", fontSize: 22, fontWeight: 300, color: "rgba(255,255,255,0.25)", lineHeight: 1, transform: "translateY(-3px)" }}>/</div>
             <div style={{ flex: 1, textAlign: "center" }}>
-              <p style={{ fontFamily: "Syne, sans-serif", fontSize: 24, fontWeight: 700, color: "rgba(255,255,255,0.85)", margin: 0, lineHeight: 1 }}>
+              <p style={{ fontFamily: "Syne, sans-serif", fontSize: 20, fontWeight: 700, color: "rgba(255,255,255,0.65)", margin: 0, lineHeight: 1, transform: "translateY(4px)" }}>
                 {activeItems.length}
               </p>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", margin: 0, marginTop: 4 }}>Remaining</p>
+              <p style={{ fontFamily: "DM Sans, sans-serif", fontSize: 9.5, color: "rgba(255,255,255,0.55)", margin: 0, marginTop: 4, letterSpacing: "1.3px", textTransform: "uppercase" }}>Remaining</p>
             </div>
-            <div style={{ fontFamily: "Syne, sans-serif", fontSize: 22, fontWeight: 300, color: "rgba(255,255,255,0.25)", lineHeight: 1 }}>/</div>
+            <div style={{ fontFamily: "Syne, sans-serif", fontSize: 22, fontWeight: 300, color: "rgba(255,255,255,0.25)", lineHeight: 1, transform: "translateY(-3px)" }}>/</div>
             <div style={{ flex: 1, textAlign: "center" }}>
-              <p style={{ fontFamily: "Syne, sans-serif", fontSize: 24, fontWeight: 700, color: "rgba(255,255,255,0.7)", margin: 0, lineHeight: 1 }}>
+              <p style={{ fontFamily: "Syne, sans-serif", fontSize: 30, fontWeight: 700, color: "rgba(255,255,255,0.7)", margin: 0, lineHeight: 1, letterSpacing: "-0.8px" }}>
                 {totalCount}
               </p>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", margin: 0, marginTop: 4 }}>Total</p>
+              <p style={{ fontFamily: "DM Sans, sans-serif", fontSize: 9.5, color: "rgba(255,255,255,0.55)", margin: 0, marginTop: 4, letterSpacing: "1.3px", textTransform: "uppercase" }}>Total</p>
             </div>
           </div>
         )}
