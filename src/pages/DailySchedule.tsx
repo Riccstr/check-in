@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import {
   CalendarDays, Clock, Check, SkipForward, Plus, Loader2, X, Pencil,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
-  Home, ClipboardList, User, Wifi, WifiOff, MapPin, Camera, FileText, Lock, Pin,
+  Home, ClipboardList, User, Wifi, WifiOff, MapPin, Camera, FileText, Lock, Pin, LogOut,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { compressImage, blobToBase64 } from "@/lib/imageCompressor";
@@ -1694,7 +1694,7 @@ function ScheduleCard({
 // ─── DailySchedule ────────────────────────────────────────────────────────────
 
 export default function DailySchedule() {
-  const { repId } = useAuth();
+  const { repId, signOut } = useAuth();
   if (!repId) return null;
   const navigate  = useNavigate();
   const location  = useLocation();
@@ -2647,6 +2647,25 @@ export default function DailySchedule() {
               <span style={{ width: 6, height: 6, borderRadius: 999, background: isOnline ? "#7DDDA5" : "#E65100", boxShadow: isOnline ? "0 0 0 3px rgba(125,221,165,0.25)" : "none" }} />
               {isOnline ? "Online" : "Offline"}
             </div>
+            <button
+              type="button"
+              onClick={signOut}
+              title="Sign out"
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 10,
+                background: "rgba(255,255,255,0.14)",
+                border: "none",
+                color: "#fff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              <LogOut size={15} />
+            </button>
           </div>
         </div>
 
