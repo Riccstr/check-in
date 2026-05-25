@@ -2692,11 +2692,11 @@ export default function DailySchedule() {
 
           <div style={{ textAlign: "center" }}>
             {currentWeekName && (
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", margin: 0, marginBottom: 4, textTransform: "uppercase", fontWeight: 500, letterSpacing: "0.5px" }}>
+              <p style={{ fontSize: 10.5, color: "rgba(255,255,255,0.5)", margin: 0, marginBottom: 4, textTransform: "uppercase", fontWeight: 500, letterSpacing: "0.5px" }}>
                 {currentWeekName}
               </p>
             )}
-            <p style={{ fontFamily: "Syne, sans-serif", fontSize: 20, fontWeight: 700, color: "#fff", margin: 0, lineHeight: 1.2 }}>
+            <p style={{ fontFamily: "Syne, sans-serif", fontSize: 26, fontWeight: 700, color: "#fff", margin: 0, lineHeight: 1.2 }}>
               {dateLabel}
             </p>
           </div>
@@ -2724,21 +2724,21 @@ export default function DailySchedule() {
         {!loading && !generating && items.length > 0 && (
   <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "center", gap: 0 }}>
     <div style={{ textAlign: "center", paddingRight: 8 }}>
-      <p style={{ fontFamily: "Syne, sans-serif", fontSize: 30, fontWeight: 700, color: "#fff", margin: 0, lineHeight: 1, letterSpacing: "-0.8px" }}>
+      <p style={{ fontFamily: "Syne, sans-serif", fontSize: 36, fontWeight: 700, color: "#fff", margin: 0, lineHeight: 1, letterSpacing: "-0.8px" }}>
         {visitedCount}
       </p>
-      <p style={{ fontSize: 9.5, color: "rgba(255,255,255,0.7)", margin: 0, marginTop: 3, textTransform: "uppercase", letterSpacing: "1.3px", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>Done</p>
+      <p style={{ fontSize: 9, color: "rgba(255,255,255,0.7)", margin: 0, marginTop: 3, textTransform: "uppercase", letterSpacing: "1.5px", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>Done</p>
     </div>
     <div style={{ fontFamily: "Syne, sans-serif", fontWeight: 300, fontSize: 18, color: "rgba(255,255,255,0.25)", lineHeight: 1, paddingBottom: 16 }}>/</div>
     <div style={{ textAlign: "center", paddingLeft: 8, paddingRight: 8, paddingTop: 4 }}>
-      <p style={{ fontFamily: "Syne, sans-serif", fontSize: 24, fontWeight: 700, color: "rgba(255,255,255,0.55)", margin: 0, lineHeight: 1, letterSpacing: "-0.6px" }}>
+      <p style={{ fontFamily: "Syne, sans-serif", fontSize: 22, fontWeight: 700, color: "rgba(255,255,255,0.55)", margin: 0, lineHeight: 1, letterSpacing: "-0.6px" }}>
         {activeItems.length}
       </p>
       <p style={{ fontSize: 9.5, color: "rgba(255,255,255,0.55)", margin: 0, marginTop: 3, textTransform: "uppercase", letterSpacing: "1.3px", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>Remaining</p>
     </div>
     <div style={{ fontFamily: "Syne, sans-serif", fontWeight: 300, fontSize: 18, color: "rgba(255,255,255,0.25)", lineHeight: 1, paddingBottom: 16 }}>/</div>
     <div style={{ textAlign: "center", paddingLeft: 8 }}>
-      <p style={{ fontFamily: "Syne, sans-serif", fontSize: 30, fontWeight: 700, color: "rgba(255,255,255,0.7)", margin: 0, lineHeight: 1, letterSpacing: "-0.8px" }}>
+      <p style={{ fontFamily: "Syne, sans-serif", fontSize: 28, fontWeight: 700, color: "rgba(255,255,255,0.7)", margin: 0, lineHeight: 1, letterSpacing: "-0.8px" }}>
         {totalCount}
       </p>
       <p style={{ fontSize: 9.5, color: "rgba(255,255,255,0.7)", margin: 0, marginTop: 3, textTransform: "uppercase", letterSpacing: "1.3px", fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>Total</p>
