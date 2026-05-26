@@ -6,10 +6,13 @@ interface CameraCaptureProps {
   onCapture: (blob: Blob) => void;
   /** Extra classes applied to the trigger button (e.g. to match the calling component's sizing). */
   triggerClassName?: string;
+  buttonLabel?: React.ReactNode;
+  buttonStyle?: React.CSSProperties;
+  buttonClassName?: string;
 }
 
 export const CameraCapture = forwardRef<HTMLButtonElement, CameraCaptureProps>(
-  function CameraCapture({ onCapture, triggerClassName }, ref) {
+  function CameraCapture({ onCapture, triggerClassName, buttonLabel, buttonStyle, buttonClassName }, ref) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -143,16 +146,15 @@ export const CameraCapture = forwardRef<HTMLButtonElement, CameraCaptureProps>(
   return (
     <>
       {/* Trigger button — this is where the user gesture originates */}
-      <Button
+      <button
         ref={ref}
         type="button"
-        variant="outline"
-        size="sm"
-        className={triggerClassName}
+        style={buttonStyle}
+        className={buttonClassName}
         onClick={openCamera}
       >
-        <Camera className="h-4 w-4 mr-1" /> Take Photo
-      </Button>
+        {buttonLabel ?? <><Camera className="h-4 w-4 mr-1" /> Take Photo</>}
+      </button>
 
       {/*
        * The overlay div (and the <video> inside it) is ALWAYS in the DOM.
