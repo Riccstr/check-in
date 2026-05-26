@@ -1217,7 +1217,7 @@ function ScheduleCard({
         {item.status === "visited" && (
           <>
             {/* 4-chip row: Arrived / Photo / Order / Left */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 10 }}>
+            <div style={{ background: C.cream, borderRadius: 14, padding: "6px", display: "flex", gap: 4, marginBottom: 10 }}>
               {[
                 { label: "ARRIVED", value: item.arrival_time ? item.arrival_time.slice(0, 5) : null },
                 { label: "PHOTO", value: (Array.isArray(item.visits) ? item.visits[0]?.photo_url : item.visits?.photo_url) ? "✓" : null },
@@ -1227,9 +1227,10 @@ function ScheduleCard({
                 <div
                   key={label}
                   style={{
-                    background: C.surfaceAlt,
-                    borderRadius: 12,
-                    padding: "8px 6px",
+                    flex: 1,
+                    background: C.surface,
+                    borderRadius: 10,
+                    padding: "7px 4px",
                     textAlign: "center",
                   }}
                 >
