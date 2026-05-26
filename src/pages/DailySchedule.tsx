@@ -3060,7 +3060,6 @@ export default function DailySchedule() {
               {(completedItems.length > 0 || unscheduledVisits.length > 0) && (
                 <div
                   style={{
-                    margin: "16px",
                     padding: "12px 16px",
                     borderRadius: 12,
                     background: C.surface,
