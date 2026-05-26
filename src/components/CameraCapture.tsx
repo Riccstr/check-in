@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, forwardRef } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Camera, X } from "lucide-react";
 
@@ -162,56 +163,59 @@ export const CameraCapture = forwardRef<HTMLButtonElement, CameraCaptureProps>(
        * never null when we need to assign srcObject.
        * iOS Safari requires playsinline on any video that plays inline.
        */}
-      <div
-        className={
-          isOpen
-            ? "fixed inset-0 z-50 bg-black flex flex-col"
-            : "fixed -left-[200vw] -top-[200vh] w-px h-px overflow-hidden"
-        }
-      >
-        <div className="flex justify-end p-3">
-          <button
-            type="button"
-            onClick={closeCamera}
-            className="text-white bg-black/40 rounded-full p-1"
-            aria-label="Close camera"
-          >
-            <X className="h-6 w-6" />
-          </button>
-        </div>
-
-        {error ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-white text-center px-6 gap-4">
-            <p>{error}</p>
-            <Button variant="secondary" onClick={closeCamera}>
-              Close
-            </Button>
+      {createPortal(
+        <div
+          className={
+            isOpen
+              ? "fixed inset-0 z-50 bg-black flex flex-col"
+              : "fixed -left-[200vw] -top-[200vh] w-px h-px overflow-hidden"
+          }
+        >
+          <div className="flex justify-end p-3">
+            <button
+              type="button"
+              onClick={closeCamera}
+              className="text-white bg-black/40 rounded-full p-1"
+              aria-label="Close camera"
+            >
+              <X className="h-6 w-6" />
+            </button>
           </div>
-        ) : (
-          <>
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <video
-              ref={videoRef}
-              className="flex-1 w-full object-cover"
-              playsInline
-              muted
-              autoPlay
-            />
-            <div className="p-4 flex justify-center bg-black">
-              <Button
-                type="button"
-                size="lg"
-                disabled={!ready}
-                onClick={capture}
-                className="px-8"
-              >
-                <Camera className="h-5 w-5 mr-2" />
-                {ready ? "Capture Photo" : "Starting camera…"}
+
+          {error ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-white text-center px-6 gap-4">
+              <p>{error}</p>
+              <Button variant="secondary" onClick={closeCamera}>
+                Close
               </Button>
             </div>
-          </>
-        )}
-      </div>
+          ) : (
+            <>
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <video
+                ref={videoRef}
+                className="flex-1 w-full object-cover"
+                playsInline
+                muted
+                autoPlay
+              />
+              <div className="p-4 flex justify-center bg-black">
+                <Button
+                  type="button"
+                  size="lg"
+                  disabled={!ready}
+                  onClick={capture}
+                  className="px-8"
+                >
+                  <Camera className="h-5 w-5 mr-2" />
+                  {ready ? "Capture Photo" : "Starting camera…"}
+                </Button>
+              </div>
+            </>
+          )}
+        </div>,
+        document.body
+      )}
     </>
   );
   }
