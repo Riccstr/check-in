@@ -2851,8 +2851,8 @@ export default function DailySchedule() {
               }}
             >
               {tab === "active"
-                ? `Active${activeItems.length > 0 ? ` (${activeItems.length})` : ""}`
-                : `Done${completedItems.length + unscheduledVisits.length > 0 ? ` (${completedItems.length + unscheduledVisits.length})` : ""}`}
+                ? `Active${activeItems.length > 0 ? ` ${activeItems.length}` : ""}`
+                : `Done${completedItems.length + unscheduledVisits.length > 0 ? ` ${completedItems.length + unscheduledVisits.length}` : ""}`}
             </button>
           ))}
         </div>
