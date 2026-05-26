@@ -21,7 +21,24 @@ export function PullToRefresh() {
     if (!window.matchMedia("(display-mode: standalone)").matches) return;
 
     const onTouchStart = (e: TouchEvent) => {
+      // Check window scroll position
       if (window.scrollY !== 0) return;
+
+      // Also check if the touch target is inside a scrollable container
+      // that is itself scrolled down — if so, PTR should not activate
+      let el = e.target as HTMLElement | null;
+      while (el) {
+        if (el === document.body) break;
+        const style = window.getComputedStyle(el);
+        const overflowY = style.overflowY;
+        const isScrollable = overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay";
+        if (isScrollable && el.scrollTop > 0) {
+          startYRef.current = null;
+          return;
+        }
+        el = el.parentElement;
+      }
+
       startYRef.current = e.touches[0].clientY;
       activeRef.current = false;
       firedRef.current  = false;
