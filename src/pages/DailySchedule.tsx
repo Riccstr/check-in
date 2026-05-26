@@ -3072,11 +3072,11 @@ export default function DailySchedule() {
                   }}
                 >
                   <div style={{ flex: 1, textAlign: "center", borderRight: `1px solid ${C.border}` }}>
-                    <p style={{ fontSize: 11, color: C.inkMute, textTransform: "uppercase", fontWeight: 500, margin: 0, marginBottom: 6 }}>
+                    <p style={{ fontSize: 11, color: C.inkMute, textTransform: "uppercase", fontWeight: 500, margin: 0, marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                      <Clock size={14} />
                       Avg per stop
                     </p>
-                    <p style={{ fontSize: 16, fontFamily: "Syne, sans-serif", fontWeight: 600, color: C.ink, margin: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                      <Clock size={14} />
+                    <p style={{ fontSize: 16, fontFamily: "Syne, sans-serif", fontWeight: 600, color: C.ink, margin: 0 }}>
                       {visitedCount > 0 ? fmtDuration(Math.round(items.filter(i => i.status === "visited").reduce((sum, i) => sum + (i.duration_minutes || 0), 0) / visitedCount)) : "—"}
                     </p>
                   </div>
@@ -3084,7 +3084,7 @@ export default function DailySchedule() {
                     <p style={{ fontSize: 11, color: C.inkMute, textTransform: "uppercase", fontWeight: 500, margin: 0, marginBottom: 6 }}>
                       Visited
                     </p>
-                    <p style={{ fontSize: 16, fontFamily: "Syne, sans-serif", fontWeight: 600, color: C.green, margin: 0 }}>
+                    <p style={{ fontSize: 16, fontFamily: "Syne, sans-serif", fontWeight: 600, color: C.ink, margin: 0 }}>
                       {visitedCount}
                     </p>
                   </div>
@@ -3092,7 +3092,7 @@ export default function DailySchedule() {
                     <p style={{ fontSize: 11, color: C.inkMute, textTransform: "uppercase", fontWeight: 500, margin: 0, marginBottom: 6 }}>
                       Skipped
                     </p>
-                    <p style={{ fontSize: 16, fontFamily: "Syne, sans-serif", fontWeight: 600, color: C.danger, margin: 0 }}>
+                    <p style={{ fontSize: 16, fontFamily: "Syne, sans-serif", fontWeight: 600, color: completedItems.filter(i => i.status === "skipped").length > 0 ? C.danger : C.inkMute, margin: 0 }}>
                       {completedItems.filter(i => i.status === "skipped").length}
                     </p>
                   </div>
