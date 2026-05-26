@@ -6,10 +6,10 @@
 /** Convert a minutes value to a human-readable duration string, e.g. "2h 30m" */
 export function fmtDuration(mins: number): string {
   if (mins <= 0) return "—";
-  if (mins < 60) return `${mins}m`;
+  if (mins < 60) return `${mins} min`;
   const h = Math.floor(mins / 60);
   const m = mins % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  return m > 0 ? `${h}h ${m}min` : `${h}h`;
 }
 
 /** Format a PostgreSQL time string (HH:MM or HH:MM:SS) to "10:22 AM" */
