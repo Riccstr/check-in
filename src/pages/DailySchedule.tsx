@@ -2596,12 +2596,12 @@ export default function DailySchedule() {
         if (weeklyTemplateId) {
           const targetDow = new Date(scheduleDate + "T12:00:00").getDay();
 
-          const { data: histSchedules } = await supabase
+          const { data: histSchedules } = await (supabase
             .from("daily_schedules")
             .select("schedule_date")
             .eq("rep_id", repId)
             .eq("weekly_template_id", weeklyTemplateId)
-            .lt("schedule_date", scheduleDate);
+            .lt("schedule_date", scheduleDate) as unknown as any);
 
           if (histSchedules) {
             // Filter to same day-of-week client-side (PostgREST has no EXTRACT filter)
