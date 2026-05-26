@@ -515,6 +515,8 @@ function ScheduleCard({
 
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBlob, setPhotoBlob]       = useState<Blob | null>(null);
+  const [showCamera, setShowCamera]     = useState(false);
+  const [showNotes, setShowNotes]       = useState(false);
 
   // Tracks the Supabase visits.id created at online arrival so checkout can PATCH it.
   const [activeVisitId, setActiveVisitId] = useState<string | null>(null);
@@ -1481,7 +1483,7 @@ function ScheduleCard({
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
                   <button
                     type="button"
-                    onClick={handleCameraCapture}
+                    onClick={() => setShowCamera(true)}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -1500,8 +1502,17 @@ function ScheduleCard({
                   >
                     <Camera size={15} /> {photoBlob ? "Photo ready" : "Take photo"}
                   </button>
+                  {showCamera && (
+                    <CameraCapture
+                      onCapture={async (blob) => {
+                        await handleCameraCapture(blob);
+                        setShowCamera(false);
+                      }}
+                    />
+                  )}
                   <button
                     type="button"
+                    onClick={() => setShowNotes((v) => !v)}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -1521,6 +1532,32 @@ function ScheduleCard({
                     <FileText size={15} /> Add note
                   </button>
                 </div>
+
+                {showNotes && (
+                  <div style={{ marginBottom: 12 }}>
+                    <textarea
+                      value={localNotes}
+                      onChange={(e) => setLocalNotes(e.target.value)}
+                      onBlur={resetMobileZoom}
+                      placeholder="Add a note…"
+                      rows={3}
+                      style={{
+                        width: "100%",
+                        resize: "none",
+                        border: `1px solid ${C.border}`,
+                        borderRadius: 12,
+                        outline: "none",
+                        background: C.surface,
+                        fontFamily: "'DM Sans', sans-serif",
+                        fontSize: 13.5,
+                        color: C.ink,
+                        lineHeight: 1.45,
+                        padding: "10px 12px",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                )}
 
                 <div style={{ background: C.cream, borderRadius: 16, padding: 12, marginBottom: 14 }}>
                   <div style={{ fontSize: 10.5, color: C.inkMute, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 600, fontFamily: "'DM Sans', sans-serif", marginBottom: 8 }}>
