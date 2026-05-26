@@ -1229,7 +1229,7 @@ function ScheduleCard({
                   style={{
                     flex: 1,
                     background: C.surface,
-                    borderRadius: 10,
+                    borderRadius: 999,
                     padding: "7px 4px",
                     textAlign: "center",
                   }}
