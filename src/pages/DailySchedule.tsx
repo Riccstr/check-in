@@ -1218,8 +1218,8 @@ function ScheduleCard({
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 10 }}>
               {[
                 { label: "ARRIVED", value: item.arrival_time ? item.arrival_time.slice(0, 5) : null },
-                { label: "PHOTO", value: (item.visits && item.visits.length > 0 && item.visits[0].photo_url) ? "✓" : null },
-                { label: "ORDER", value: (item.visits && item.visits.length > 0 && item.visits[0].order_number) ? "✓" : null },
+                { label: "PHOTO", value: item.visits?.photo_url ? "✓" : null },
+                { label: "ORDER", value: item.visits?.order_number ? "✓" : null },
                 { label: "LEFT", value: item.leaving_time ? item.leaving_time.slice(0, 5) : null },
               ].map(({ label, value }) => (
                 <div
