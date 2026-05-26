@@ -2850,9 +2850,25 @@ export default function DailySchedule() {
                 boxShadow: activeTab === tab ? "0 2px 8px rgba(23, 23, 21, 0.12)" : "none",
               }}
             >
-              {tab === "active"
-                ? `Active${activeItems.length > 0 ? ` ${activeItems.length}` : ""}`
-                : `Done${completedItems.length + unscheduledVisits.length > 0 ? ` ${completedItems.length + unscheduledVisits.length}` : ""}`}
+              {tab === "active" ? (
+                  <>
+                    Active
+                    {activeItems.length > 0 && (
+                      <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.5, marginLeft: 4 }}>
+                        {activeItems.length}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    Done
+                    {completedItems.length + unscheduledVisits.length > 0 && (
+                      <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.5, marginLeft: 4 }}>
+                        {completedItems.length + unscheduledVisits.length}
+                      </span>
+                    )}
+                  </>
+                )}
             </button>
           ))}
         </div>
