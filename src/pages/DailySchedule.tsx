@@ -2585,7 +2585,7 @@ export default function DailySchedule() {
           .select("order_number, order_amount")
           .eq("rep_id", repId)
           .eq("visit_date", scheduleDate)
-          .eq("status", "visited");
+          .eq("status", "visited") as any;
         if (todayVisits) {
           orders = todayVisits.filter((v) => v.order_number != null && v.order_number !== "").length;
           totalOrderValue = todayVisits.reduce((sum, v) => sum + (Number(v.order_amount) || 0), 0);
@@ -2615,7 +2615,7 @@ export default function DailySchedule() {
                 .select("visit_date, order_number, order_amount")
                 .eq("rep_id", repId)
                 .eq("status", "visited")
-                .in("visit_date", sameDowDates);
+                .in("visit_date", sameDowDates) as any;
 
               if (histVisits) {
                 // Per-day totals
