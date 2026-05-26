@@ -2658,8 +2658,8 @@ export default function DailySchedule() {
 
   return (
     <div
-      className="schedule-screen flex flex-col flex-1"
-      style={{ background: C.bg, minHeight: "100dvh" }}
+      className="schedule-screen"
+      style={{ background: C.bg, height: "100dvh", display: "flex", flexDirection: "column", overflow: "hidden" }}
     >
       {/* offline banner */}
       {!isOnline && <OfflineBanner />}
@@ -2866,7 +2866,16 @@ export default function DailySchedule() {
       )}
 
       {/* main scrollable area */}
-      <div className="flex-1 overflow-y-auto scrollbar-hidden px-4 pb-6 pt-3 space-y-2" style={{ overscrollBehaviorY: "contain", WebkitOverflowScrolling: "touch" }}>
+      <div
+        className="scrollbar-hidden px-4 pb-6 pt-3 space-y-2"
+        style={{
+          overscrollBehaviorY: "contain",
+          WebkitOverflowScrolling: "touch",
+          overflowY: "auto",
+          flex: 1,
+          minHeight: 0,
+        }}
+      >
         {loading || generating ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: C.textMuted }}>
             <Loader2 className="animate-spin" size={28} />
