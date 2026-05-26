@@ -2829,7 +2829,7 @@ export default function DailySchedule() {
       )}
 
       {/* main scrollable area */}
-      <div className="flex-1 overflow-y-auto scrollbar-hidden px-4 pb-6 pt-3 space-y-2">
+      <div className="flex-1 overflow-y-auto scrollbar-hidden px-4 pb-6 pt-3 space-y-2" style={{ overscrollBehaviorY: "contain", WebkitOverflowScrolling: "touch" }}>
         {loading || generating ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: C.textMuted }}>
             <Loader2 className="animate-spin" size={28} />
