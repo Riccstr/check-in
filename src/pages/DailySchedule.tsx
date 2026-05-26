@@ -1178,9 +1178,11 @@ function ScheduleCard({
               · <Clock size={11} /> {item.duration_minutes}m
             </span>
           )}
-          {item.status === "visited" && item.order && (
-            <span className="text-[11px]" style={{ color: C.inkMute, fontFamily: "'DM Sans', sans-serif" }}>· R {parseFloat(String(item.order.order_amount || 0)).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-          )}
+          {item.status === "visited" && (() => {
+            const v = Array.isArray(item.visits) ? item.visits[0] : item.visits;
+            if (!v?.order_amount) return null;
+            return <span className="text-[11px]" style={{ color: C.inkMute, fontFamily: "'DM Sans', sans-serif" }}>· R {parseFloat(String(v.order_amount)).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+          })()}
         </div>
       </div>
 
@@ -1218,8 +1220,8 @@ function ScheduleCard({
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 10 }}>
               {[
                 { label: "ARRIVED", value: item.arrival_time ? item.arrival_time.slice(0, 5) : null },
-                { label: "PHOTO", value: item.visits?.photo_url ? "✓" : null },
-                { label: "ORDER", value: item.visits?.order_number ? "✓" : null },
+                { label: "PHOTO", value: (Array.isArray(item.visits) ? item.visits[0]?.photo_url : item.visits?.photo_url) ? "✓" : null },
+                { label: "ORDER", value: (Array.isArray(item.visits) ? item.visits[0]?.order_number : item.visits?.order_number) ? "✓" : null },
                 { label: "LEFT", value: item.leaving_time ? item.leaving_time.slice(0, 5) : null },
               ].map(({ label, value }) => (
                 <div
@@ -1267,25 +1269,23 @@ function ScheduleCard({
                 )}
               </div>
 
-              {item.order && (
-                <div
-                  style={{
-                    background: C.surfaceAlt,
-                    borderRadius: 16,
-                    padding: "12px 14px",
-                  }}
-                >
-                  <div style={{ fontSize: 10.5, color: C.inkMute, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>
-                    Order {item.order.order_number}
+              {(() => {
+                const v = Array.isArray(item.visits) ? item.visits[0] : item.visits;
+                if (!v?.order_number && v?.order_amount == null) return null;
+                return (
+                  <div style={{ background: C.surfaceAlt, borderRadius: 16, padding: "12px 14px" }}>
+                    <div style={{ fontSize: 10.5, color: C.inkMute, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>
+                      Order {v.order_number}
+                    </div>
+                    <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, color: C.ink, fontWeight: 700, letterSpacing: "-0.4px", marginTop: 4, lineHeight: 1 }}>
+                      R {parseFloat(String(v.order_amount || 0)).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                    <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11.5, color: C.inkSoft, marginTop: 4 }}>
+                      {v.order_quantity} units
+                    </div>
                   </div>
-                  <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, color: C.ink, fontWeight: 700, letterSpacing: "-0.4px", marginTop: 4, lineHeight: 1 }}>
-                    R {parseFloat(String(item.order.order_amount || 0)).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11.5, color: C.inkSoft, marginTop: 4 }}>
-                    {item.order.order_quantity} units
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             {/* Edit Order button or form */}
