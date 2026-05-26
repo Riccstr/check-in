@@ -140,24 +140,24 @@ function calcDuration(arr: string, lv: string): number {
 function StatusPill({ status, isInProgress }: { status: string; isInProgress: boolean }) {
   if (status === "visited")
     return (
-      <span style={{ background: C.greenBg, color: C.green }} className="text-[11px] font-semibold px-2 py-0.5 rounded-full font-syne flex items-center gap-1">
+      <span style={{ background: C.greenSoft, color: C.greenInk }} className="text-[11px] font-semibold px-2 py-0.5 rounded-full font-syne flex items-center gap-1">
         <Check size={11} /> Visited
       </span>
     );
   if (status === "skipped")
     return (
-      <span style={{ background: C.redBg, color: C.red }} className="text-[11px] font-semibold px-2 py-0.5 rounded-full font-syne flex items-center gap-1">
+      <span style={{ background: C.dangerSoft, color: C.danger }} className="text-[11px] font-semibold px-2 py-0.5 rounded-full font-syne flex items-center gap-1">
         <SkipForward size={11} /> Skipped
       </span>
     );
   if (isInProgress)
     return (
-      <span style={{ background: C.orangeBg, color: C.orange }} className="text-[11px] font-semibold px-2 py-0.5 rounded-full font-syne">
+      <span style={{ background: C.surfaceAlt, color: C.inkSoft }} className="text-[11px] font-semibold px-2 py-0.5 rounded-full font-syne">
         Arriving
       </span>
     );
   return (
-    <span style={{ background: C.border, color: C.textMuted }} className="text-[11px] font-medium px-2 py-0.5 rounded-full font-syne">
+    <span style={{ background: C.cream, color: C.inkMute }} className="text-[11px] font-medium px-2 py-0.5 rounded-full font-syne">
       Pending
     </span>
   );
@@ -165,7 +165,7 @@ function StatusPill({ status, isInProgress }: { status: string; isInProgress: bo
 
 function OfflineBanner() {
   return (
-    <div style={{ background: "#FFF3E0", color: C.orange, borderColor: "#FFB74D" }}
+    <div style={{ background: "#FFF3E0", color: C.sun, borderColor: "#FFB74D" }}
       className="flex items-center gap-2 text-xs font-medium px-3 py-2 border-b">
       <WifiOff size={13} /> You're offline — changes will sync when reconnected
     </div>
@@ -399,20 +399,20 @@ function VisitDetailsText({ visitId, repId, customerId, scheduleDate }: { visitI
     <div className="flex items-center gap-3 flex-wrap">
       {visitData.order_number && (
         <div className="flex items-center gap-1">
-          <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Order:</span>
-          <span className="text-sm" style={{ color: C.text }}>{visitData.order_number}</span>
+          <span className="text-[10px] font-medium" style={{ color: C.inkMute }}>Order:</span>
+          <span className="text-sm" style={{ color: C.ink }}>{visitData.order_number}</span>
         </div>
       )}
       {visitData.order_quantity != null && (
         <div className="flex items-center gap-1">
-          <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Qty:</span>
-          <span className="text-sm" style={{ color: C.text }}>{visitData.order_quantity}</span>
+          <span className="text-[10px] font-medium" style={{ color: C.inkMute }}>Qty:</span>
+          <span className="text-sm" style={{ color: C.ink }}>{visitData.order_quantity}</span>
         </div>
       )}
       {visitData.order_amount != null && (
         <div className="flex items-center gap-1">
-          <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Amt:</span>
-          <span className="text-sm" style={{ color: C.text }}>R {Number(visitData.order_amount).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
+          <span className="text-[10px] font-medium" style={{ color: C.inkMute }}>Amt:</span>
+          <span className="text-sm" style={{ color: C.ink }}>R {Number(visitData.order_amount).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
         </div>
       )}
     </div>
@@ -1218,8 +1218,8 @@ function ScheduleCard({
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 10 }}>
               {[
                 { label: "ARRIVED", value: item.arrival_time ? item.arrival_time.slice(0, 5) : null },
-                { label: "PHOTO", value: item.photo_url ? "✓" : null },
-                { label: "ORDER", value: item.order ? "✓" : null },
+                { label: "PHOTO", value: (item.visits && item.visits.length > 0 && item.visits[0].photo_url) ? "✓" : null },
+                { label: "ORDER", value: (item.visits && item.visits.length > 0 && item.visits[0].order_number) ? "✓" : null },
                 { label: "LEFT", value: item.leaving_time ? item.leaving_time.slice(0, 5) : null },
               ].map(({ label, value }) => (
                 <div
@@ -2090,7 +2090,7 @@ export default function DailySchedule() {
     try {
       const { data } = await supabase
         .from("daily_schedules")
-        .select("*, schedule_items(*, customers(customer_name, account_number))")
+        .select("*, schedule_items(*, customers(customer_name, account_number), visits(photo_url, order_number, order_quantity, order_amount))")
         .eq("rep_id", repId)
         .eq("schedule_date", scheduleDate)
         .maybeSingle();
@@ -2932,12 +2932,12 @@ export default function DailySchedule() {
         }}
       >
         {loading || generating ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: C.textMuted }}>
+          <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: C.inkMute }}>
             <Loader2 className="animate-spin" size={28} />
             <p className="text-sm">{generating ? "Generating schedule…" : "Loading…"}</p>
           </div>
         ) : !schedule ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-2" style={{ color: C.textMuted }}>
+          <div className="flex flex-col items-center justify-center py-16 gap-2" style={{ color: C.inkMute }}>
             <CalendarDays size={40} style={{ opacity: 0.3 }} />
             <p className="text-sm">
               {scheduleDate > new Date().toISOString().split("T")[0]
@@ -3004,30 +3004,30 @@ export default function DailySchedule() {
             )}
             {activeItems.length === 0 ? (
               allDone ? (
-                <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: C.textMuted }}>
+                <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: C.inkMute }}>
                 <div
                   className="w-14 h-14 rounded-full flex items-center justify-center"
-                  style={{ background: C.greenBg, border: `2px solid ${C.greenLight}` }}
+                  style={{ background: C.greenSoft, border: `2px solid ${C.greenMid}` }}
                 >
                   <Check size={26} style={{ color: C.green }} strokeWidth={2.5} />
                 </div>
                 <div className="text-center space-y-1">
-                  <p className="text-sm font-bold font-syne" style={{ color: C.text }}>Day complete</p>
-                  <p className="text-xs" style={{ color: C.textMuted }}>All visits accounted for</p>
+                  <p className="text-sm font-bold font-syne" style={{ color: C.ink }}>Day complete</p>
+                  <p className="text-xs" style={{ color: C.inkMute }}>All visits accounted for</p>
                 </div>
                 <button
                   type="button"
                   onClick={handleViewSummary}
                   disabled={isLoadingSummary}
                   className={`text-xs font-medium px-4 py-2 rounded-xl mt-1${isLoadingSummary ? " btn-shimmer" : ""}`}
-                  style={isLoadingSummary ? undefined : { color: C.green, border: `1px solid ${C.border}`, background: C.card }}
+                  style={isLoadingSummary ? undefined : { color: C.green, border: `1px solid ${C.border}`, background: C.surface }}
                 >
                   View {isToday ? "today's" : "day's"} summary
                 </button>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-16 gap-2" style={{ color: C.textMuted }}>
-                <Check size={40} style={{ color: C.greenLight, opacity: 0.7 }} />
+              <div className="flex flex-col items-center justify-center py-16 gap-2" style={{ color: C.inkMute }}>
+                <Check size={40} style={{ color: C.greenMid, opacity: 0.7 }} />
                 <p className="text-sm font-semibold font-syne">All visits done!</p>
               </div>
             )
@@ -3051,7 +3051,7 @@ export default function DailySchedule() {
           </>
         ) : (
           completedItems.length === 0 && unscheduledVisits.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-2" style={{ color: C.textMuted }}>
+            <div className="flex flex-col items-center justify-center py-16 gap-2" style={{ color: C.inkMute }}>
               <p className="text-sm">No completed visits yet</p>
             </div>
           ) : (
@@ -3120,12 +3120,12 @@ export default function DailySchedule() {
                   <div
                     key={visit.id}
                     className="rounded-2xl overflow-hidden"
-                    style={{ background: C.card, border: `1.5px solid ${C.greenLight}` }}
+                    style={{ background: C.surface, border: `1.5px solid ${C.greenMid}` }}
                   >
                     {/* header row */}
                     <div className="w-full flex items-center gap-3 px-4 py-3">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold truncate font-syne" style={{ color: C.text }}>{customerName}</p>
+                        <p className="text-sm font-semibold truncate font-syne" style={{ color: C.ink }}>{customerName}</p>
                       </div>
                       {isOffRoute ? (
                         <span
@@ -3137,7 +3137,7 @@ export default function DailySchedule() {
                       ) : (
                         <span
                           className="text-[11px] font-semibold px-2 py-0.5 rounded-full font-syne shrink-0"
-                          style={{ background: C.orangeBg, color: C.orange }}
+                          style={{ background: "#FFF3E0", color: "#B45309" }}
                         >
                           Unscheduled
                         </span>
@@ -3154,17 +3154,17 @@ export default function DailySchedule() {
                             {!isOffRoute && visit.arrival_time && visit.leaving_time && (
                               <div className="flex items-center gap-3">
                                 <div className="flex items-center gap-1">
-                                  <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>In:</span>
-                                  <span className="text-sm font-medium" style={{ color: C.text }}>{visit.arrival_time?.slice(0, 5)}</span>
+                                  <span className="text-[10px] font-medium" style={{ color: C.inkMute }}>In:</span>
+                                  <span className="text-sm font-medium" style={{ color: C.ink }}>{visit.arrival_time?.slice(0, 5)}</span>
                                 </div>
                                 <div className="flex items-center gap-1">
-                                  <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Out:</span>
-                                  <span className="text-sm font-medium" style={{ color: C.text }}>{visit.leaving_time?.slice(0, 5)}</span>
+                                  <span className="text-[10px] font-medium" style={{ color: C.inkMute }}>Out:</span>
+                                  <span className="text-sm font-medium" style={{ color: C.ink }}>{visit.leaving_time?.slice(0, 5)}</span>
                                 </div>
                                 {visit.duration_minutes > 0 && (
                                   <div className="flex items-center gap-1">
-                                    <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Dur:</span>
-                                    <span className="text-sm font-medium" style={{ color: C.text }}>{visit.duration_minutes}m</span>
+                                    <span className="text-[10px] font-medium" style={{ color: C.inkMute }}>Dur:</span>
+                                    <span className="text-sm font-medium" style={{ color: C.ink }}>{visit.duration_minutes}m</span>
                                   </div>
                                 )}
                               </div>
@@ -3175,20 +3175,20 @@ export default function DailySchedule() {
                               <div className="flex items-center gap-3 flex-wrap">
                                 {visit.order_number && (
                                   <div className="flex items-center gap-1">
-                                    <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Order:</span>
-                                    <span className="text-sm" style={{ color: C.text }}>{visit.order_number}</span>
+                                    <span className="text-[10px] font-medium" style={{ color: C.inkMute }}>Order:</span>
+                                    <span className="text-sm" style={{ color: C.ink }}>{visit.order_number}</span>
                                   </div>
                                 )}
                                 {visit.order_quantity != null && (
                                   <div className="flex items-center gap-1">
-                                    <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Qty:</span>
-                                    <span className="text-sm" style={{ color: C.text }}>{visit.order_quantity}</span>
+                                    <span className="text-[10px] font-medium" style={{ color: C.inkMute }}>Qty:</span>
+                                    <span className="text-sm" style={{ color: C.ink }}>{visit.order_quantity}</span>
                                   </div>
                                 )}
                                 {visit.order_amount != null && (
                                   <div className="flex items-center gap-1">
-                                    <span className="text-[10px] font-medium" style={{ color: C.textMuted }}>Amt:</span>
-                                    <span className="text-sm" style={{ color: C.text }}>R {Number(visit.order_amount).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
+                                    <span className="text-[10px] font-medium" style={{ color: C.inkMute }}>Amt:</span>
+                                    <span className="text-sm" style={{ color: C.ink }}>R {Number(visit.order_amount).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
                                   </div>
                                 )}
                               </div>
@@ -3196,7 +3196,7 @@ export default function DailySchedule() {
 
                             {/* notes */}
                             {visit.notes && (
-                              <p className="text-xs italic" style={{ color: C.textMuted }}>"{visit.notes}"</p>
+                              <p className="text-xs italic" style={{ color: C.inkMute }}>"{visit.notes}"</p>
                             )}
 
                             {/* Edit Order button / inline form */}
@@ -3220,7 +3220,7 @@ export default function DailySchedule() {
                               <div className="mt-2 space-y-2">
                                 <div className="grid grid-cols-3 gap-2">
                                   <div>
-                                    <label className="text-[10px] font-medium" style={{ color: C.textMuted }}>Order No.</label>
+                                    <label className="text-[10px] font-medium" style={{ color: C.inkMute }}>Order No.</label>
                                     <Input
                                       value={unscheduledOrderNumber}
                                       onChange={(e) => setUnscheduledOrderNumber(e.target.value)}
@@ -3231,7 +3231,7 @@ export default function DailySchedule() {
                                     />
                                   </div>
                                   <div>
-                                    <label className="text-[10px] font-medium" style={{ color: C.textMuted }}>Qty</label>
+                                    <label className="text-[10px] font-medium" style={{ color: C.inkMute }}>Qty</label>
                                     <Input
                                       type="number" min="0" step="1"
                                       value={unscheduledOrderQty}
@@ -3243,7 +3243,7 @@ export default function DailySchedule() {
                                     />
                                   </div>
                                   <div>
-                                    <label className="text-[10px] font-medium" style={{ color: C.textMuted }}>Amount</label>
+                                    <label className="text-[10px] font-medium" style={{ color: C.inkMute }}>Amount</label>
                                     <Input
                                       type="number" min="0" step="0.01"
                                       value={unscheduledOrderAmount}
@@ -3260,7 +3260,7 @@ export default function DailySchedule() {
                                     type="button"
                                     onClick={() => setUnscheduledEditingId(null)}
                                     className="text-xs px-3 py-1.5 rounded-lg"
-                                    style={{ color: C.textMuted, border: `1px solid ${C.border}` }}
+                                    style={{ color: C.inkMute, border: `1px solid ${C.border}` }}
                                   >
                                     Cancel
                                   </button>
@@ -3416,7 +3416,7 @@ export default function DailySchedule() {
                   <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 12 }}>
 
                 <div>
-                  <Label className="text-xs" style={{ color: C.textMuted }}>Customer</Label>
+                  <Label className="text-xs" style={{ color: C.inkMute }}>Customer</Label>
                   <SearchableSelect
                     options={[...adHocCustomers]
                       .sort((a, b) => a.customer_name.localeCompare(b.customer_name))
@@ -3431,7 +3431,7 @@ export default function DailySchedule() {
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <Label className="text-xs" style={{ color: C.textMuted }}>Arrival</Label>
+                    <Label className="text-xs" style={{ color: C.inkMute }}>Arrival</Label>
                     <div className="flex gap-1">
                       <Input type="time" value={adHocArrival} onChange={(e) => setAdHocArrival(e.target.value)}
                         onBlur={resetMobileZoom}
@@ -3443,7 +3443,7 @@ export default function DailySchedule() {
                     </div>
                   </div>
                   <div>
-                    <Label className="text-xs" style={{ color: C.textMuted }}>Leaving</Label>
+                    <Label className="text-xs" style={{ color: C.inkMute }}>Leaving</Label>
                     <div className="flex gap-1">
                       <Input type="time" value={adHocLeaving} onChange={(e) => setAdHocLeaving(e.target.value)}
                         onBlur={resetMobileZoom}
@@ -3458,19 +3458,19 @@ export default function DailySchedule() {
 
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <Label className="text-xs" style={{ color: C.textMuted }}>Order No.</Label>
+                    <Label className="text-xs" style={{ color: C.inkMute }}>Order No.</Label>
                     <Input value={adHocOrderNumber} onChange={(e) => setAdHocOrderNumber(e.target.value)}
                       onBlur={resetMobileZoom}
                       className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="Order #" />
                   </div>
                   <div>
-                    <Label className="text-xs" style={{ color: C.textMuted }}>Qty</Label>
+                    <Label className="text-xs" style={{ color: C.inkMute }}>Qty</Label>
                     <Input type="number" min="0" step="1" value={adHocOrderQty} onChange={(e) => setAdHocOrderQty(e.target.value)}
                       onBlur={resetMobileZoom}
                       className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0" />
                   </div>
                   <div>
-                    <Label className="text-xs" style={{ color: C.textMuted }}>Amount</Label>
+                    <Label className="text-xs" style={{ color: C.inkMute }}>Amount</Label>
                     <Input type="number" min="0" step="0.01" value={adHocOrderAmount} onChange={(e) => setAdHocOrderAmount(e.target.value)}
                       onBlur={resetMobileZoom}
                       className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0.00" />
@@ -3478,7 +3478,7 @@ export default function DailySchedule() {
                 </div>
 
                 <div>
-                  <Label className="text-xs" style={{ color: C.textMuted }}>Notes</Label>
+                  <Label className="text-xs" style={{ color: C.inkMute }}>Notes</Label>
                   <Textarea value={adHocNotes} onChange={(e) => setAdHocNotes(e.target.value)}
                     onBlur={resetMobileZoom} rows={2}
                     className="text-sm resize-none" style={{ borderColor: C.border, background: C.bg }} />
@@ -3598,7 +3598,7 @@ export default function DailySchedule() {
                   <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 12 }}>
 
                   <div>
-                  <Label className="text-xs" style={{ color: C.textMuted }}>Customer</Label>
+                  <Label className="text-xs" style={{ color: C.inkMute }}>Customer</Label>
                   <SearchableSelect
                     options={[...adHocCustomers]
                       .sort((a, b) => a.customer_name.localeCompare(b.customer_name))
@@ -3613,19 +3613,19 @@ export default function DailySchedule() {
 
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <Label className="text-xs" style={{ color: C.textMuted }}>Order No.</Label>
+                    <Label className="text-xs" style={{ color: C.inkMute }}>Order No.</Label>
                     <Input value={offRouteOrderNumber} onChange={(e) => setOffRouteOrderNumber(e.target.value)}
                       onBlur={resetMobileZoom}
                       className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="Order #" />
                   </div>
                   <div>
-                    <Label className="text-xs" style={{ color: C.textMuted }}>Qty</Label>
+                    <Label className="text-xs" style={{ color: C.inkMute }}>Qty</Label>
                     <Input type="number" min="0" step="1" value={offRouteOrderQty} onChange={(e) => setOffRouteOrderQty(e.target.value)}
                       onBlur={resetMobileZoom}
                       className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0" />
                   </div>
                   <div>
-                    <Label className="text-xs" style={{ color: C.textMuted }}>Amount</Label>
+                    <Label className="text-xs" style={{ color: C.inkMute }}>Amount</Label>
                     <Input type="number" min="0" step="0.01" value={offRouteOrderAmount} onChange={(e) => setOffRouteOrderAmount(e.target.value)}
                       onBlur={resetMobileZoom}
                       className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0.00" />
@@ -3633,7 +3633,7 @@ export default function DailySchedule() {
                 </div>
 
                 <div>
-                  <Label className="text-xs" style={{ color: C.textMuted }}>Notes</Label>
+                  <Label className="text-xs" style={{ color: C.inkMute }}>Notes</Label>
                   <Textarea value={offRouteNotes} onChange={(e) => setOffRouteNotes(e.target.value)}
                     onBlur={resetMobileZoom} rows={2}
                     className="text-sm resize-none" style={{ borderColor: C.border, background: C.bg }} />
