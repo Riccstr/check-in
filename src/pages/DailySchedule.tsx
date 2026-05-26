@@ -3077,7 +3077,7 @@ export default function DailySchedule() {
                     </p>
                     <p style={{ fontSize: 16, fontFamily: "Syne, sans-serif", fontWeight: 600, color: C.ink, margin: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
                       <Clock size={14} />
-                      {visitedCount > 0 ? fmtDuration(Math.round(items.filter(i => i.status === "visited").reduce((sum, i) => sum + (i.duration_minutes || 0), 0) / visitedCount * 60)) : "—"}
+                      {visitedCount > 0 ? fmtDuration(Math.round(items.filter(i => i.status === "visited").reduce((sum, i) => sum + (i.duration_minutes || 0), 0) / visitedCount)) : "—"}
                     </p>
                   </div>
                   <div style={{ flex: 1, textAlign: "center", borderRight: `1px solid ${C.border}` }}>
