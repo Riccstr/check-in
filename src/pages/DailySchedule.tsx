@@ -1214,6 +1214,33 @@ function ScheduleCard({
         {/* visited state */}
         {item.status === "visited" && (
           <>
+            {/* 4-chip row: Arrived / Photo / Order / Left */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 10 }}>
+              {[
+                { label: "ARRIVED", value: item.arrival_time ? item.arrival_time.slice(0, 5) : null },
+                { label: "PHOTO", value: item.photo_url ? "✓" : null },
+                { label: "ORDER", value: item.order ? "✓" : null },
+                { label: "LEFT", value: item.leaving_time ? item.leaving_time.slice(0, 5) : null },
+              ].map(({ label, value }) => (
+                <div
+                  key={label}
+                  style={{
+                    background: C.surfaceAlt,
+                    borderRadius: 12,
+                    padding: "8px 6px",
+                    textAlign: "center",
+                  }}
+                >
+                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: C.inkMute, fontFamily: "'DM Sans', sans-serif" }}>
+                    {label}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: value ? C.ink : C.inkMute, fontFamily: "'Syne', sans-serif", marginTop: 3, opacity: value ? 1 : 0.3 }}>
+                    {value ?? "—"}
+                  </div>
+                </div>
+              ))}
+            </div>
+
             {/* Time at stop & Order cards (2-col grid) */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
               <div
