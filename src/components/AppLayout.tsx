@@ -116,7 +116,6 @@ export default function AppLayout() {
 
   const repLinks = [
     { to: "/schedule", label: "Schedule", icon: CalendarDays },
-    { to: "/my-visits", label: "My Visits", icon: Eye },
   ];
 
   const adminLinks = [
