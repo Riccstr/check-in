@@ -1149,7 +1149,29 @@ function ScheduleCard({
       <div className="flex-1 min-w-0">
         <p className="font-syne font-600 text-base" style={{ color: C.ink, letterSpacing: "-0.2px", lineHeight: 1.1 }}>{customerName}</p>
         <div className="flex items-center gap-2 mt-1 flex-wrap">
-          <StatusPill status={item.status} isInProgress={!!isInProgress} />
+          <span
+            className="inline-flex items-center gap-1 text-[11px] font-semibold"
+            style={{
+              color: item.status === "visited" ? C.green :
+                     item.status === "skipped" ? C.danger :
+                     isInProgress ? C.sun : C.inkSoft,
+              fontFamily: "'DM Sans', sans-serif",
+            }}
+          >
+            <span style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: item.status === "visited" ? C.green :
+                          item.status === "skipped" ? C.danger :
+                          isInProgress ? C.sun : C.inkSoft,
+              display: "inline-block",
+              flexShrink: 0,
+            }} />
+            {item.status === "visited" ? "Visited" :
+             item.status === "skipped" ? "Skipped" :
+             isInProgress ? "In Progress" : item.status}
+          </span>
           <span className="text-[11px]" style={{ color: C.inkMute, fontFamily: "'DM Sans', sans-serif" }}>· {accountNum || "—"}</span>
           {item.status === "visited" && item.duration_minutes > 0 && (
             <span className="text-[11px] font-semibold inline-flex items-center gap-1" style={{ color: C.inkSoft, fontFamily: "'DM Sans', sans-serif" }}>
