@@ -515,8 +515,9 @@ function ScheduleCard({
 
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBlob, setPhotoBlob]       = useState<Blob | null>(null);
-  const [showCamera, setShowCamera]     = useState(false);
   const [showNotes, setShowNotes]       = useState(false);
+
+  const cameraButtonRef = useRef<HTMLButtonElement>(null);
 
   // Tracks the Supabase visits.id created at online arrival so checkout can PATCH it.
   const [activeVisitId, setActiveVisitId] = useState<string | null>(null);
@@ -1483,7 +1484,7 @@ function ScheduleCard({
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
                   <button
                     type="button"
-                    onClick={() => setShowCamera(true)}
+                    onClick={() => cameraButtonRef.current?.click()}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -1502,14 +1503,6 @@ function ScheduleCard({
                   >
                     <Camera size={15} /> {photoBlob ? "Photo ready" : "Take photo"}
                   </button>
-                  {showCamera && (
-                    <CameraCapture
-                      onCapture={async (blob) => {
-                        await handleCameraCapture(blob);
-                        setShowCamera(false);
-                      }}
-                    />
-                  )}
                   <button
                     type="button"
                     onClick={() => setShowNotes((v) => !v)}
@@ -1531,6 +1524,16 @@ function ScheduleCard({
                   >
                     <FileText size={15} /> Add note
                   </button>
+                </div>
+
+                <div style={{ position: "absolute", width: 0, height: 0, overflow: "hidden", opacity: 0, pointerEvents: "none" }}>
+                  <CameraCapture
+                    ref={cameraButtonRef}
+                    onCapture={async (blob) => {
+                      await handleCameraCapture(blob);
+                    }}
+                    triggerClassName="sr-only"
+                  />
                 </div>
 
                 {showNotes && (

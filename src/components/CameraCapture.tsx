@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, forwardRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Camera, X } from "lucide-react";
 
@@ -8,7 +8,8 @@ interface CameraCaptureProps {
   triggerClassName?: string;
 }
 
-export function CameraCapture({ onCapture, triggerClassName }: CameraCaptureProps) {
+export const CameraCapture = forwardRef<HTMLButtonElement, CameraCaptureProps>(
+  function CameraCapture({ onCapture, triggerClassName }, ref) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -143,6 +144,7 @@ export function CameraCapture({ onCapture, triggerClassName }: CameraCaptureProp
     <>
       {/* Trigger button — this is where the user gesture originates */}
       <Button
+        ref={ref}
         type="button"
         variant="outline"
         size="sm"
@@ -210,4 +212,5 @@ export function CameraCapture({ onCapture, triggerClassName }: CameraCaptureProp
       </div>
     </>
   );
-}
+  }
+);
