@@ -2711,7 +2711,7 @@ export default function DailySchedule() {
           padding: "10px 16px 12px",
           display: "flex",
           flexDirection: "column",
-          gap: 10,
+          gap: 6,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
