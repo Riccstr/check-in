@@ -3416,17 +3416,37 @@ export default function DailySchedule() {
                   <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 12 }}>
 
                 <div>
-                  <Label className="text-xs" style={{ color: C.inkMute }}>Customer</Label>
-                  <SearchableSelect
-                    options={[...adHocCustomers]
-                      .sort((a, b) => a.customer_name.localeCompare(b.customer_name))
-                      .map((c) => ({ value: c.id, label: c.customer_name }))}
-                    value={adHocCustomerId}
-                    onValueChange={setAdHocCustomerId}
-                    placeholder="Search customers..."
-                    searchPlaceholder="Search customers..."
-                    emptyMessage="No customers found"
-                  />
+                  {!adHocCustomerId ? (
+                    <>
+                      <div style={{ fontSize: 10, color: C.inkMute, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 8 }}>Customer</div>
+                      <SearchableSelect
+                        options={[...adHocCustomers]
+                          .sort((a, b) => a.customer_name.localeCompare(b.customer_name))
+                          .map((c) => ({ value: c.id, label: c.customer_name }))}
+                        value={adHocCustomerId}
+                        onValueChange={setAdHocCustomerId}
+                        placeholder="Search customers..."
+                        searchPlaceholder="Search customers..."
+                        emptyMessage="No customers found"
+                      />
+                    </>
+                  ) : (() => {
+                    const customer = adHocCustomers.find(c => c.id === adHocCustomerId);
+                    return customer ? (
+                      <div style={{ background: C.cream, borderRadius: 14, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, border: `1px solid ${C.border}` }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 10, background: C.green, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
+                          {customer.customer_name.charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: 13, color: C.ink, lineHeight: 1.2 }}>{customer.customer_name}</div>
+                          <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, color: C.inkMute, marginTop: 2 }}>{customer.account_number}</div>
+                        </div>
+                        <button type="button" onClick={() => setAdHocCustomerId("")} style={{ background: "none", border: "none", color: C.inkMute, cursor: "pointer", padding: 0 }}>
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -3456,29 +3476,31 @@ export default function DailySchedule() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <Label className="text-xs" style={{ color: C.inkMute }}>Order No.</Label>
-                    <Input value={adHocOrderNumber} onChange={(e) => setAdHocOrderNumber(e.target.value)}
+                <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.6fr 1fr", gap: 8 }}>
+                  <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                    <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>№</div>
+                    <input value={adHocOrderNumber} onChange={(e) => setAdHocOrderNumber(e.target.value)}
                       onBlur={resetMobileZoom}
-                      className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="Order #" />
-                  </div>
-                  <div>
-                    <Label className="text-xs" style={{ color: C.inkMute }}>Qty</Label>
-                    <Input type="number" min="0" step="1" value={adHocOrderQty} onChange={(e) => setAdHocOrderQty(e.target.value)}
+                      type="text" placeholder="Order #" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                  </label>
+                  <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                    <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>QTY</div>
+                    <input type="number" min="0" step="1" value={adHocOrderQty} onChange={(e) => setAdHocOrderQty(e.target.value)}
                       onBlur={resetMobileZoom}
-                      className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0" />
-                  </div>
-                  <div>
-                    <Label className="text-xs" style={{ color: C.inkMute }}>Amount</Label>
-                    <Input type="number" min="0" step="0.01" value={adHocOrderAmount} onChange={(e) => setAdHocOrderAmount(e.target.value)}
+                      placeholder="0" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                  </label>
+                  <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                    <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>VALUE</div>
+                    <input type="number" min="0" step="0.01" value={adHocOrderAmount} onChange={(e) => setAdHocOrderAmount(e.target.value)}
                       onBlur={resetMobileZoom}
-                      className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0.00" />
-                  </div>
+                      placeholder="0.00" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                  </label>
                 </div>
 
                 <div>
-                  <Label className="text-xs" style={{ color: C.inkMute }}>Notes</Label>
+                  <div style={{ fontSize: 10, color: C.inkMute, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 6 }}>
+                    NOTES · OPTIONAL
+                  </div>
                   <Textarea value={adHocNotes} onChange={(e) => setAdHocNotes(e.target.value)}
                     onBlur={resetMobileZoom} rows={2}
                     className="text-sm resize-none" style={{ borderColor: C.border, background: C.bg }} />
@@ -3512,18 +3534,18 @@ export default function DailySchedule() {
                 </div>
 
                 {/* What happens next stepper */}
-                <div style={{ padding: "12px", borderRadius: 12, background: C.cream, display: "flex", alignItems: "center", gap: 6 }}>
-                  {[
-                    { icon: "→", label: "Arrive" },
-                    { icon: "📷", label: "Photo" },
-                    { icon: "📋", label: "Order" },
-                    { icon: "←", label: "Leave" },
-                  ].map((step, idx) => (
-                    <div key={idx} style={{ flex: 1, textAlign: "center" }}>
-                      <div style={{ fontSize: 12, marginBottom: 4 }}>{step.icon}</div>
-                      <p style={{ fontSize: 10, fontWeight: 500, color: C.inkMute, margin: 0 }}>{step.label}</p>
-                    </div>
-                  ))}
+                <div style={{ background: C.cream, borderRadius: 14, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 10 }}>What happens next</div>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                    {["Arrive", "Photo", "Order", "Leave"].map((step) => (
+                      <div key={step} style={{ flex: 1, background: C.surface, borderRadius: 999, padding: "6px 4px", textAlign: "center", fontSize: 11, fontWeight: 600, color: C.inkSoft, fontFamily: "'DM Sans', sans-serif" }}>
+                        {step}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.inkMute, fontFamily: "'DM Sans', sans-serif" }}>
+                    Adds the stop to your day. Times start when you tap arrive.
+                  </div>
                 </div>
 
                 <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
@@ -3598,42 +3620,64 @@ export default function DailySchedule() {
                   <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 12 }}>
 
                   <div>
-                  <Label className="text-xs" style={{ color: C.inkMute }}>Customer</Label>
-                  <SearchableSelect
-                    options={[...adHocCustomers]
-                      .sort((a, b) => a.customer_name.localeCompare(b.customer_name))
-                      .map((c) => ({ value: c.id, label: c.customer_name }))}
-                    value={offRouteCustomerId}
-                    onValueChange={setOffRouteCustomerId}
-                    placeholder="Search customers..."
-                    searchPlaceholder="Search customers..."
-                    emptyMessage="No customers found"
-                  />
+                  {!offRouteCustomerId ? (
+                    <>
+                      <div style={{ fontSize: 10, color: C.inkMute, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 8 }}>Customer</div>
+                      <SearchableSelect
+                        options={[...adHocCustomers]
+                          .sort((a, b) => a.customer_name.localeCompare(b.customer_name))
+                          .map((c) => ({ value: c.id, label: c.customer_name }))}
+                        value={offRouteCustomerId}
+                        onValueChange={setOffRouteCustomerId}
+                        placeholder="Search customers..."
+                        searchPlaceholder="Search customers..."
+                        emptyMessage="No customers found"
+                      />
+                    </>
+                  ) : (() => {
+                    const customer = adHocCustomers.find(c => c.id === offRouteCustomerId);
+                    return customer ? (
+                      <div style={{ background: C.cream, borderRadius: 14, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, border: `1px solid ${C.border}` }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 10, background: C.green, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
+                          {customer.customer_name.charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: 13, color: C.ink, lineHeight: 1.2 }}>{customer.customer_name}</div>
+                          <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, color: C.inkMute, marginTop: 2 }}>{customer.account_number}</div>
+                        </div>
+                        <button type="button" onClick={() => setOffRouteCustomerId("")} style={{ background: "none", border: "none", color: C.inkMute, cursor: "pointer", padding: 0 }}>
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <Label className="text-xs" style={{ color: C.inkMute }}>Order No.</Label>
-                    <Input value={offRouteOrderNumber} onChange={(e) => setOffRouteOrderNumber(e.target.value)}
+                <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.6fr 1fr", gap: 8 }}>
+                  <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                    <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>№</div>
+                    <input value={offRouteOrderNumber} onChange={(e) => setOffRouteOrderNumber(e.target.value)}
                       onBlur={resetMobileZoom}
-                      className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="Order #" />
-                  </div>
-                  <div>
-                    <Label className="text-xs" style={{ color: C.inkMute }}>Qty</Label>
-                    <Input type="number" min="0" step="1" value={offRouteOrderQty} onChange={(e) => setOffRouteOrderQty(e.target.value)}
+                      type="text" placeholder="Order #" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                  </label>
+                  <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                    <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>QTY</div>
+                    <input type="number" min="0" step="1" value={offRouteOrderQty} onChange={(e) => setOffRouteOrderQty(e.target.value)}
                       onBlur={resetMobileZoom}
-                      className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0" />
-                  </div>
-                  <div>
-                    <Label className="text-xs" style={{ color: C.inkMute }}>Amount</Label>
-                    <Input type="number" min="0" step="0.01" value={offRouteOrderAmount} onChange={(e) => setOffRouteOrderAmount(e.target.value)}
+                      placeholder="0" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                  </label>
+                  <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                    <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>VALUE</div>
+                    <input type="number" min="0" step="0.01" value={offRouteOrderAmount} onChange={(e) => setOffRouteOrderAmount(e.target.value)}
                       onBlur={resetMobileZoom}
-                      className="h-9 text-sm" style={{ borderColor: C.border, background: C.bg }} placeholder="0.00" />
-                  </div>
+                      placeholder="0.00" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                  </label>
                 </div>
 
                 <div>
-                  <Label className="text-xs" style={{ color: C.inkMute }}>Notes</Label>
+                  <div style={{ fontSize: 10, color: C.inkMute, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 6 }}>
+                    NOTES · OPTIONAL
+                  </div>
                   <Textarea value={offRouteNotes} onChange={(e) => setOffRouteNotes(e.target.value)}
                     onBlur={resetMobileZoom} rows={2}
                     className="text-sm resize-none" style={{ borderColor: C.border, background: C.bg }} />
