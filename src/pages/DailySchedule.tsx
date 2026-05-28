@@ -2974,61 +2974,6 @@ export default function DailySchedule() {
           </div>
         ) : activeTab === "active" ? (
           <>
-            {allDone && (
-              <div
-                style={{
-                  borderRadius: 12,
-                  padding: "12px 16px",
-                  background: `linear-gradient(135deg, ${C.greenSoft} 0%, rgba(221, 233, 225, 0.5) 100%)`,
-                  border: `1px solid ${C.greenSoft}`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: "50%",
-                      background: C.green,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#fff",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Check size={16} strokeWidth={3} />
-                  </div>
-                  <div>
-                    <p style={{ fontFamily: "Syne, sans-serif", fontSize: 14, fontWeight: 600, color: C.greenInk, margin: 0 }}>
-                      Day complete
-                    </p>
-                    <p style={{ fontSize: 12, color: C.inkMute, margin: 0, marginTop: 2 }}>All visits accounted for</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleViewSummary}
-                  disabled={isLoadingSummary}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 999,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    background: C.green,
-                    color: "#fff",
-                    border: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  View summary
-                </button>
-              </div>
-            )}
             {activeItems.length === 0 ? (
               allDone ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: C.inkMute }}>
