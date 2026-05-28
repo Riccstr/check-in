@@ -2752,7 +2752,7 @@ export default function DailySchedule() {
             </div>
             <button
               type="button"
-              onClick={signOut}
+              onClick={() => { if (window.confirm("Are you sure you want to sign out?")) signOut(); }}
               title="Sign out"
               style={{
                 width: 32,
