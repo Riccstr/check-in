@@ -1833,6 +1833,7 @@ export default function DailySchedule() {
   const [adHocArrivalTime, setAdHocArrivalTime] = useState("");
   const [adHocShowNotes, setAdHocShowNotes] = useState(false);
   const [adHocSearch, setAdHocSearch] = useState("");
+  const [adHocSearchOpen, setAdHocSearchOpen] = useState(false);
 
   // off-route order state
   const [offRouteCustomerId,  setOffRouteCustomerId]  = useState("");
@@ -2436,6 +2437,7 @@ export default function DailySchedule() {
     setAdHocArrivalTime("");
     setAdHocShowNotes(false);
     setAdHocSearch("");
+    setAdHocSearchOpen(false);
     if (adHocPhoto) URL.revokeObjectURL(adHocPhoto.preview);
     setAdHocPhoto(null);
   };
@@ -3429,7 +3431,27 @@ export default function DailySchedule() {
                     <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 12 }}>
                       {/* Customer section */}
                       <div>
-                        {!adHocCustomerId ? (
+                        {adHocCustomerId ? (
+                          // Customer is selected: show styled card
+                          (() => {
+                            const customer = adHocCustomers.find(c => c.id === adHocCustomerId);
+                            return customer ? (
+                              <div style={{ background: C.cream, borderRadius: 14, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, border: `1px solid ${C.border}` }}>
+                                <div style={{ width: 32, height: 32, borderRadius: 10, background: C.green, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
+                                  {customer.customer_name.charAt(0).toUpperCase()}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: 13, color: C.ink, lineHeight: 1.2 }}>{customer.customer_name}</div>
+                                  <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, color: C.inkMute, marginTop: 2 }}>{customer.account_number}</div>
+                                </div>
+                                <button type="button" onClick={() => setAdHocCustomerId("")} style={{ background: "none", border: "none", color: C.inkMute, cursor: "pointer", padding: 0 }}>
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            ) : null;
+                          })()
+                        ) : adHocSearchOpen ? (
+                          // Search is open: show inline search+list with close button
                           <div style={{ background: C.surface, borderRadius: 14, border: `1px solid ${C.border}`, overflow: "hidden" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderBottom: `1px solid ${C.border}` }}>
                               <Search size={14} style={{ color: C.inkMute, flexShrink: 0 }} />
@@ -3440,13 +3462,17 @@ export default function DailySchedule() {
                                 placeholder="Search customer..."
                                 style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: C.ink }}
                               />
+                              <button type="button" onClick={() => { setAdHocSearchOpen(false); setAdHocSearch(""); }}
+                                style={{ background: "none", border: "none", color: C.inkMute, cursor: "pointer", padding: 0, flexShrink: 0 }}>
+                                <X size={14} />
+                              </button>
                             </div>
                             <div style={{ maxHeight: 200, overflowY: "auto" }}>
                               {[...adHocCustomers]
                                 .filter(c => c.customer_name.toLowerCase().includes(adHocSearch.toLowerCase()))
                                 .sort((a, b) => a.customer_name.localeCompare(b.customer_name))
                                 .map(c => (
-                                  <button key={c.id} type="button" onClick={() => { setAdHocCustomerId(c.id); setAdHocSearch(""); }}
+                                  <button key={c.id} type="button" onClick={() => { setAdHocCustomerId(c.id); setAdHocSearch(""); setAdHocSearchOpen(false); }}
                                     style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "none", border: "none", borderBottom: `1px solid ${C.border}`, cursor: "pointer", textAlign: "left" }}>
                                     <div style={{ width: 28, height: 28, borderRadius: 8, background: C.greenSoft, color: C.green, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
                                       {c.customer_name.charAt(0).toUpperCase()}
@@ -3459,23 +3485,14 @@ export default function DailySchedule() {
                                 ))}
                             </div>
                           </div>
-                        ) : (() => {
-                          const customer = adHocCustomers.find(c => c.id === adHocCustomerId);
-                          return customer ? (
-                            <div style={{ background: C.cream, borderRadius: 14, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, border: `1px solid ${C.border}` }}>
-                              <div style={{ width: 32, height: 32, borderRadius: 10, background: C.green, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
-                                {customer.customer_name.charAt(0).toUpperCase()}
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: 13, color: C.ink, lineHeight: 1.2 }}>{customer.customer_name}</div>
-                                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, color: C.inkMute, marginTop: 2 }}>{customer.account_number}</div>
-                              </div>
-                              <button type="button" onClick={() => setAdHocCustomerId("")} style={{ background: "none", border: "none", color: C.inkMute, cursor: "pointer", padding: 0 }}>
-                                <X size={14} />
-                              </button>
-                            </div>
-                          ) : null;
-                        })()}
+                        ) : (
+                          // Search is closed: show collapsed search pill
+                          <button type="button" onClick={() => setAdHocSearchOpen(true)}
+                            style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 14, border: `1px solid ${C.border}`, background: C.surface, cursor: "pointer" }}>
+                            <Search size={14} style={{ color: C.inkMute, flexShrink: 0 }} />
+                            <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: C.inkMute }}>Search customer...</span>
+                          </button>
+                        )}
                       </div>
 
                       {/* Tap to check in button */}
