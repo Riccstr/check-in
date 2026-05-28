@@ -3548,66 +3548,70 @@ export default function DailySchedule() {
 
                       {/* Photo + Notes toggle buttons */}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                        <div>
-                          {adHocPhoto ? (
-                            <div className="relative inline-block">
-                              <img src={adHocPhoto.preview} alt="Store photo" className="h-20 w-20 object-cover rounded-xl" style={{ border: `1px solid ${C.border}` }} />
-                              <button type="button" onClick={() => {
-                                URL.revokeObjectURL(adHocPhoto.preview);
-                                setAdHocPhoto(null);
-                              }}
-                                className="absolute -top-1 -right-1 rounded-full p-0.5"
-                                style={{ background: C.danger, color: "#fff" }}>
-                                <X size={12} />
-                              </button>
-                            </div>
-                          ) : (
-                            <CameraCapture onCapture={async (blob) => {
-                              try {
-                                const compressed = await compressImage(blob);
-                                const preview = URL.createObjectURL(compressed);
-                                setAdHocPhoto({ blob: compressed, preview });
-                              } catch {
-                                toast.error("Failed to process photo");
-                              }
-                            }} buttonLabel={<><Camera size={14} /> Photo</>} triggerClassName="h-9 text-xs w-full" />
-                          )}
-                        </div>
-                        <button type="button" onClick={() => setAdHocShowNotes(!adHocShowNotes)}
-                          style={{ height: 40, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surface, color: C.inkSoft, cursor: "pointer", fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                          <MessageCircle size={14} /> Notes
+                        <CameraCapture
+                          onCapture={async (blob) => {
+                            try {
+                              const compressed = await compressImage(blob);
+                              const preview = URL.createObjectURL(compressed);
+                              setAdHocPhoto({ blob: compressed, preview });
+                            } catch {
+                              toast.error("Failed to process photo");
+                            }
+                          }}
+                          buttonStyle={{
+                            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                            height: 44, borderRadius: 14, cursor: "pointer",
+                            background: adHocPhoto ? C.greenInk : C.cream,
+                            color: adHocPhoto ? "#fff" : C.inkSoft,
+                            border: "none", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, width: "100%",
+                          }}
+                          buttonLabel={<><Camera size={15} /> {adHocPhoto ? "Photo ready" : "Take photo"}</>}
+                        />
+                        <button type="button" onClick={() => setAdHocShowNotes(v => !v)}
+                          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, height: 44, borderRadius: 14, cursor: "pointer", background: C.cream, color: C.inkSoft, border: "none", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13 }}>
+                          <FileText size={15} /> Add note
                         </button>
                       </div>
 
                       {/* Notes textarea - shown if adHocShowNotes */}
                       {adHocShowNotes && (
-                        <div>
-                          <Textarea value={adHocNotes} onChange={(e) => setAdHocNotes(e.target.value)}
-                            onBlur={resetMobileZoom} rows={2}
-                            className="text-sm resize-none" style={{ borderColor: C.border, background: C.bg }} />
+                        <div style={{ marginBottom: 0 }}>
+                          <textarea
+                            value={adHocNotes}
+                            onChange={(e) => setAdHocNotes(e.target.value)}
+                            onBlur={resetMobileZoom}
+                            placeholder="Add a note…"
+                            rows={3}
+                            style={{ width: "100%", resize: "none", border: `1px solid ${C.border}`, borderRadius: 12, outline: "none", background: C.surface, fontFamily: "'DM Sans', sans-serif", fontSize: 13.5, color: C.ink, lineHeight: 1.45, padding: "10px 12px", boxSizing: "border-box" }}
+                          />
                         </div>
                       )}
 
                       {/* Order fields */}
-                      <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.6fr 1fr", gap: 8 }}>
-                        <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
-                          <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>№</div>
-                          <input value={adHocOrderNumber} onChange={(e) => setAdHocOrderNumber(e.target.value)}
-                            onBlur={resetMobileZoom}
-                            type="text" placeholder="Order #" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
-                        </label>
-                        <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
-                          <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>QTY</div>
-                          <input type="number" min="0" step="1" value={adHocOrderQty} onChange={(e) => setAdHocOrderQty(e.target.value)}
-                            onBlur={resetMobileZoom}
-                            placeholder="0" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
-                        </label>
-                        <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
-                          <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>VALUE</div>
-                          <input type="number" min="0" step="0.01" value={adHocOrderAmount} onChange={(e) => setAdHocOrderAmount(e.target.value)}
-                            onBlur={resetMobileZoom}
-                            placeholder="0.00" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
-                        </label>
+                      <div style={{ background: C.cream, borderRadius: 16, padding: 12 }}>
+                        <div style={{ fontSize: 10.5, color: C.inkMute, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 600, fontFamily: "'DM Sans', sans-serif", marginBottom: 8 }}>
+                          Order
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.6fr 1fr", gap: 8 }}>
+                          <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                            <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>№</div>
+                            <input value={adHocOrderNumber} onChange={(e) => setAdHocOrderNumber(e.target.value)}
+                              onBlur={resetMobileZoom}
+                              type="text" placeholder="Order #" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                          </label>
+                          <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                            <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>QTY</div>
+                            <input type="number" min="0" step="1" value={adHocOrderQty} onChange={(e) => setAdHocOrderQty(e.target.value)}
+                              onBlur={resetMobileZoom}
+                              placeholder="0" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                          </label>
+                          <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                            <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>VALUE</div>
+                            <input type="number" min="0" step="0.01" value={adHocOrderAmount} onChange={(e) => setAdHocOrderAmount(e.target.value)}
+                              onBlur={resetMobileZoom}
+                              placeholder="0.00" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                          </label>
+                        </div>
                       </div>
 
                       {/* Tap to check out button */}
