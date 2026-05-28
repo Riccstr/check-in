@@ -2491,6 +2491,7 @@ export default function DailySchedule() {
           if (isOfflineError(error)) {
             await saveOffline();
             toast.success("Saved offline. Will sync when online.");
+            setActiveTab("done");
           } else {
             toast.error(error.message);
             setOffRouteSubmitting(false);
@@ -2498,10 +2499,12 @@ export default function DailySchedule() {
           }
         } else {
           toast.success("Off-route order logged");
+          setActiveTab("done");
         }
       } else {
         await saveOffline();
         toast.success("Saved offline. Will sync when online.");
+        setActiveTab("done");
       }
       resetOffRoute();
       fetchUnscheduledVisits();
@@ -2510,6 +2513,7 @@ export default function DailySchedule() {
       try {
         await saveOffline();
         toast.success("Saved offline. Will sync when online.");
+        setActiveTab("done");
         resetOffRoute();
       } catch {
         toast.error("Failed to save. Please try again.");
