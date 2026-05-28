@@ -3338,7 +3338,7 @@ export default function DailySchedule() {
 
         {/* bottom action cards — side by side when collapsed, full-width when expanded */}
         {schedule && (
-          <div style={{ padding: "8px 16px" }}>
+          <div style={{ padding: expandedBottomCard === null ? "8px 16px" : "8px 0" }}>
 
             {/* collapsed: two cards sitting side by side */}
             {expandedBottomCard === null && (
