@@ -1230,7 +1230,7 @@ function ScheduleCard({
                     flex: 1,
                     background: value ? C.surface : C.cream,
                     borderRadius: 999,
-                    padding: "7px 4px",
+                    padding: "10px 4px",
                     textAlign: "center",
                   }}
                 >
@@ -3197,7 +3197,7 @@ export default function DailySchedule() {
                             { label: "ORDER", value: visit.order_number ? "✓" : null },
                             { label: "LEFT", value: !isOffRoute && visit.leaving_time ? visit.leaving_time.slice(0, 5) : null },
                           ].map(({ label, value }) => (
-                            <div key={label} style={{ flex: 1, background: C.surface, borderRadius: 999, padding: "7px 4px", textAlign: "center" }}>
+                            <div key={label} style={{ flex: 1, background: value ? C.surface : C.cream, borderRadius: 999, padding: "10px 4px", textAlign: "center" }}>
                               <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: C.inkMute, fontFamily: "'DM Sans', sans-serif" }}>{label}</div>
                               <div style={{ fontSize: 13, fontWeight: 700, color: value ? C.ink : C.inkMute, fontFamily: "'Syne', sans-serif", marginTop: 3, opacity: value ? 1 : 0.3 }}>{value ?? "—"}</div>
                             </div>
