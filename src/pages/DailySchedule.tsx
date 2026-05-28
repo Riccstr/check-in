@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import {
   CalendarDays, Clock, Check, SkipForward, Plus, Loader2, X, Pencil,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
-  Home, ClipboardList, User, Wifi, WifiOff, MapPin, Camera, FileText, Lock, Pin, LogOut, MessageCircle,
+  Home, ClipboardList, User, Wifi, WifiOff, MapPin, Camera, FileText, Lock, Pin, LogOut, MessageCircle, Search,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { compressImage, blobToBase64 } from "@/lib/imageCompressor";
@@ -1832,6 +1832,7 @@ export default function DailySchedule() {
   const [adHocCheckedIn, setAdHocCheckedIn] = useState(false);
   const [adHocArrivalTime, setAdHocArrivalTime] = useState("");
   const [adHocShowNotes, setAdHocShowNotes] = useState(false);
+  const [adHocSearch, setAdHocSearch] = useState("");
 
   // off-route order state
   const [offRouteCustomerId,  setOffRouteCustomerId]  = useState("");
@@ -2434,6 +2435,7 @@ export default function DailySchedule() {
     setAdHocCheckedIn(false);
     setAdHocArrivalTime("");
     setAdHocShowNotes(false);
+    setAdHocSearch("");
     if (adHocPhoto) URL.revokeObjectURL(adHocPhoto.preview);
     setAdHocPhoto(null);
   };
@@ -3388,7 +3390,7 @@ export default function DailySchedule() {
 
             {/* expanded: unscheduled visit form */}
             {expandedBottomCard === "unscheduled" && (
-              <div style={{ borderRadius: 16, overflow: "hidden", background: C.surface, border: `1.5px solid ${C.greenSoft}` }}>
+              <div style={{ borderRadius: 22, overflow: "hidden", background: C.surface, border: `1.5px solid ${C.greenSoft}` }}>
                 {/* Green gradient top bar */}
                 <div style={{ height: 3, background: `linear-gradient(90deg, ${C.greenMid} 0%, ${C.green} 100%)` }} />
 
@@ -3428,19 +3430,35 @@ export default function DailySchedule() {
                       {/* Customer section */}
                       <div>
                         {!adHocCustomerId ? (
-                          <>
-                            <div style={{ fontSize: 10, color: C.inkMute, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 8 }}>Customer</div>
-                            <SearchableSelect
-                              options={[...adHocCustomers]
+                          <div style={{ background: C.surface, borderRadius: 14, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderBottom: `1px solid ${C.border}` }}>
+                              <Search size={14} style={{ color: C.inkMute, flexShrink: 0 }} />
+                              <input
+                                type="text"
+                                value={adHocSearch}
+                                onChange={(e) => setAdHocSearch(e.target.value)}
+                                placeholder="Search customer..."
+                                style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: C.ink }}
+                              />
+                            </div>
+                            <div style={{ maxHeight: 200, overflowY: "auto" }}>
+                              {[...adHocCustomers]
+                                .filter(c => c.customer_name.toLowerCase().includes(adHocSearch.toLowerCase()))
                                 .sort((a, b) => a.customer_name.localeCompare(b.customer_name))
-                                .map((c) => ({ value: c.id, label: c.customer_name }))}
-                              value={adHocCustomerId}
-                              onValueChange={setAdHocCustomerId}
-                              placeholder="Search customers..."
-                              searchPlaceholder="Search customers..."
-                              emptyMessage="No customers found"
-                            />
-                          </>
+                                .map(c => (
+                                  <button key={c.id} type="button" onClick={() => { setAdHocCustomerId(c.id); setAdHocSearch(""); }}
+                                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "none", border: "none", borderBottom: `1px solid ${C.border}`, cursor: "pointer", textAlign: "left" }}>
+                                    <div style={{ width: 28, height: 28, borderRadius: 8, background: C.greenSoft, color: C.green, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Syne, sans-serif", fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
+                                      {c.customer_name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13, color: C.ink }}>{c.customer_name}</div>
+                                      <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, color: C.inkMute }}>{c.area || c.account_number || ""}</div>
+                                    </div>
+                                  </button>
+                                ))}
+                            </div>
+                          </div>
                         ) : (() => {
                           const customer = adHocCustomers.find(c => c.id === adHocCustomerId);
                           return customer ? (
@@ -3466,21 +3484,6 @@ export default function DailySchedule() {
                         style={{ width: "100%", height: 56, borderRadius: 18, border: "none", cursor: adHocCustomerId ? "pointer" : "not-allowed", background: adHocCustomerId ? `linear-gradient(180deg, ${C.greenMid} 0%, ${C.green} 100%)` : C.cream, color: adHocCustomerId ? "#fff" : C.inkMute, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 16, letterSpacing: 0.2, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, boxShadow: adHocCustomerId ? `0 12px 24px -10px ${C.green}88` : "none" }}>
                         <MapPin size={18} /> Tap to check in
                       </button>
-
-                      {/* What happens next stepper */}
-                      <div style={{ background: C.cream, borderRadius: 14, padding: "12px 14px" }}>
-                        <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", marginBottom: 10 }}>What happens next</div>
-                        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                          {["Arrive", "Photo", "Order", "Leave"].map((step) => (
-                            <div key={step} style={{ flex: 1, background: C.surface, borderRadius: 999, padding: "6px 4px", textAlign: "center", fontSize: 11, fontWeight: 600, color: C.inkSoft, fontFamily: "'DM Sans', sans-serif" }}>
-                              {step}
-                            </div>
-                          ))}
-                        </div>
-                        <div style={{ fontSize: 11, color: C.inkMute, fontFamily: "'DM Sans', sans-serif" }}>
-                          Adds the stop to your day. Times start when you tap arrive.
-                        </div>
-                      </div>
 
                       {/* Cancel button */}
                       <Button
@@ -3511,20 +3514,19 @@ export default function DailySchedule() {
                         ) : null;
                       })()}
 
-                      {/* Stepper pills row */}
-                      <div style={{ background: C.cream, borderRadius: 12, padding: "8px 8px", display: "flex", alignItems: "center", gap: 6 }}>
-                        <div style={{ flex: 1, background: "#fff", borderRadius: 999, padding: "6px", textAlign: "center", fontSize: 10, fontWeight: 600, color: C.green, fontFamily: "'Syne', sans-serif", boxShadow: `0 1px 2px rgba(0,0,0,0.05)` }}>
-                          {adHocArrivalTime.slice(0, 5)}
-                        </div>
-                        <div style={{ flex: 1, background: adHocPhoto ? "#fff" : C.border, borderRadius: 999, padding: "6px", textAlign: "center", fontSize: 11, fontWeight: 600, color: adHocPhoto ? C.green : C.inkMute, fontFamily: "'Syne', sans-serif", boxShadow: adHocPhoto ? `0 1px 2px rgba(0,0,0,0.05)` : "none" }}>
-                          {adHocPhoto ? "✓" : "—"}
-                        </div>
-                        <div style={{ flex: 1, background: adHocOrderNumber ? "#fff" : C.border, borderRadius: 999, padding: "6px", textAlign: "center", fontSize: 11, fontWeight: 600, color: adHocOrderNumber ? C.green : C.inkMute, fontFamily: "'Syne', sans-serif", boxShadow: adHocOrderNumber ? `0 1px 2px rgba(0,0,0,0.05)` : "none" }}>
-                          {adHocOrderNumber ? "✓" : "—"}
-                        </div>
-                        <div style={{ flex: 1, background: C.border, borderRadius: 999, padding: "6px", textAlign: "center", fontSize: 11, fontWeight: 600, color: C.inkMute, fontFamily: "'Syne', sans-serif" }}>
-                          —
-                        </div>
+                      {/* Stepper pills row - Done card style */}
+                      <div style={{ background: C.cream, borderRadius: 14, padding: "6px", display: "flex", gap: 4 }}>
+                        {[
+                          { label: "ARRIVED", value: adHocArrivalTime ? adHocArrivalTime.slice(0, 5) : null },
+                          { label: "PHOTO", value: adHocPhoto ? "✓" : null },
+                          { label: "ORDER", value: adHocOrderNumber ? "✓" : null },
+                          { label: "LEFT", value: null },
+                        ].map(({ label, value }) => (
+                          <div key={label} style={{ flex: 1, background: C.surface, borderRadius: 999, padding: "7px 4px", textAlign: "center" }}>
+                            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: C.inkMute, fontFamily: "'DM Sans', sans-serif" }}>{label}</div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: value ? C.ink : C.inkMute, fontFamily: "'Syne', sans-serif", marginTop: 3, opacity: value ? 1 : 0.3 }}>{value ?? "—"}</div>
+                          </div>
+                        ))}
                       </div>
 
                       {/* Photo + Notes toggle buttons */}
