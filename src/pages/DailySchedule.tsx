@@ -3133,199 +3133,158 @@ export default function DailySchedule() {
                 return (
                   <div
                     key={visit.id}
-                    className="rounded-2xl overflow-hidden"
-                    style={{ background: C.surface, border: `1.5px solid ${C.greenMid}` }}
+                    className="rounded-[22px] overflow-hidden"
+                    style={{ background: C.surface, border: `1px solid ${C.border}`, boxShadow: "0 1px 0 rgba(255,255,255,0.7) inset, 0 1px 2px rgba(23,23,21,0.04)" }}
                   >
-                    {/* header row */}
-                    <div className="w-full flex items-center gap-3 px-4 py-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold truncate font-syne" style={{ color: C.ink }}>{customerName}</p>
+                    {/* Collapsed header row */}
+                    <button
+                      type="button"
+                      onClick={() => setOpenCompletedId(prev => prev === visit.id ? null : visit.id)}
+                      className="w-full flex items-center gap-4 px-5 py-4 text-left"
+                      style={{ background: "transparent" }}
+                    >
+                      <div className="shrink-0 rounded-[14px] flex items-center justify-center"
+                        style={{ width: 42, height: 42, background: isOffRoute ? "rgba(230,182,82,0.15)" : C.green, color: isOffRoute ? C.sun : "#fff" }}>
+                        {isOffRoute ? <Plus size={16} /> : <Check size={18} />}
                       </div>
-                      {isOffRoute ? (
-                        <span
-                          className="text-[11px] font-semibold px-2 py-0.5 rounded-full font-syne shrink-0"
-                          style={{ background: "#FFF3E0", color: "#B45309" }}
-                        >
-                          Off-Route Order
-                        </span>
-                      ) : (
-                        <span
-                          className="text-[11px] font-semibold px-2 py-0.5 rounded-full font-syne shrink-0"
-                          style={{ background: "#FFF3E0", color: "#B45309" }}
-                        >
-                          Unscheduled
-                        </span>
-                      )}
-                    </div>
-
-                    {/* details body */}
-                    <div className="px-4 pb-4 space-y-3" style={{ borderTop: `1px solid ${C.border}` }}>
-                      <div className="pt-3">
-                        <div className="flex gap-3 items-start">
-                          <div className="flex-1 space-y-1.5">
-
-                            {/* times — hidden for off-route orders */}
-                            {!isOffRoute && visit.arrival_time && visit.leaving_time && (
-                              <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-1">
-                                  <span className="text-[10px] font-medium" style={{ color: C.inkMute }}>In:</span>
-                                  <span className="text-sm font-medium" style={{ color: C.ink }}>{visit.arrival_time?.slice(0, 5)}</span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <span className="text-[10px] font-medium" style={{ color: C.inkMute }}>Out:</span>
-                                  <span className="text-sm font-medium" style={{ color: C.ink }}>{visit.leaving_time?.slice(0, 5)}</span>
-                                </div>
-                                {visit.duration_minutes > 0 && (
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-[10px] font-medium" style={{ color: C.inkMute }}>Dur:</span>
-                                    <span className="text-sm font-medium" style={{ color: C.ink }}>{visit.duration_minutes}m</span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {/* order details */}
-                            {(visit.order_number || visit.order_quantity != null || visit.order_amount != null) && (
-                              <div className="flex items-center gap-3 flex-wrap">
-                                {visit.order_number && (
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-[10px] font-medium" style={{ color: C.inkMute }}>Order:</span>
-                                    <span className="text-sm" style={{ color: C.ink }}>{visit.order_number}</span>
-                                  </div>
-                                )}
-                                {visit.order_quantity != null && (
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-[10px] font-medium" style={{ color: C.inkMute }}>Qty:</span>
-                                    <span className="text-sm" style={{ color: C.ink }}>{visit.order_quantity}</span>
-                                  </div>
-                                )}
-                                {visit.order_amount != null && (
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-[10px] font-medium" style={{ color: C.inkMute }}>Amt:</span>
-                                    <span className="text-sm" style={{ color: C.ink }}>R {Number(visit.order_amount).toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {/* notes */}
-                            {visit.notes && (
-                              <p className="text-xs italic" style={{ color: C.inkMute }}>"{visit.notes}"</p>
-                            )}
-
-                            {/* Edit Order button / inline form */}
-                            {!isEditing && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setUnscheduledOrderNumber(visit.order_number || "");
-                                  setUnscheduledOrderQty(visit.order_quantity != null ? String(visit.order_quantity) : "");
-                                  setUnscheduledOrderAmount(visit.order_amount != null ? String(visit.order_amount) : "");
-                                  setUnscheduledEditingId(visit.id);
-                                }}
-                                className="text-xs font-medium mt-2 px-3 py-1.5 rounded-lg"
-                                style={{ color: C.green, border: `1px solid ${C.border}`, background: C.bg }}
-                              >
-                                <Pencil size={11} className="inline mr-1" /> Edit Order
-                              </button>
-                            )}
-
-                            {isEditing && (
-                              <div className="mt-2 space-y-2">
-                                <div className="grid grid-cols-3 gap-2">
-                                  <div>
-                                    <label className="text-[10px] font-medium" style={{ color: C.inkMute }}>Order No.</label>
-                                    <Input
-                                      value={unscheduledOrderNumber}
-                                      onChange={(e) => setUnscheduledOrderNumber(e.target.value)}
-                                      onBlur={resetMobileZoom}
-                                      className="h-8 text-sm"
-                                      style={{ borderColor: C.border, background: C.bg }}
-                                      placeholder="Order #"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-[10px] font-medium" style={{ color: C.inkMute }}>Qty</label>
-                                    <Input
-                                      type="number" min="0" step="1"
-                                      value={unscheduledOrderQty}
-                                      onChange={(e) => setUnscheduledOrderQty(e.target.value)}
-                                      onBlur={resetMobileZoom}
-                                      className="h-8 text-sm"
-                                      style={{ borderColor: C.border, background: C.bg }}
-                                      placeholder="0"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-[10px] font-medium" style={{ color: C.inkMute }}>Amount</label>
-                                    <Input
-                                      type="number" min="0" step="0.01"
-                                      value={unscheduledOrderAmount}
-                                      onChange={(e) => setUnscheduledOrderAmount(e.target.value)}
-                                      onBlur={resetMobileZoom}
-                                      className="h-8 text-sm"
-                                      style={{ borderColor: C.border, background: C.bg }}
-                                      placeholder="0.00"
-                                    />
-                                  </div>
-                                </div>
-                                <div className="flex gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => setUnscheduledEditingId(null)}
-                                    className="text-xs px-3 py-1.5 rounded-lg"
-                                    style={{ color: C.inkMute, border: `1px solid ${C.border}` }}
-                                  >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={unscheduledActionInProgress}
-                                    onClick={async () => {
-                                      setUnscheduledActionInProgress(true);
-                                      try {
-                                        const { error } = await supabase.from("visits").update({
-                                          order_number: unscheduledOrderNumber || null,
-                                          order_quantity: unscheduledOrderQty !== "" ? Number(unscheduledOrderQty) : null,
-                                          order_amount: unscheduledOrderAmount !== "" ? Number(unscheduledOrderAmount) : null,
-                                        } as any).eq("id", visit.id);
-                                        if (error) {
-                                          toast.error(error.message);
-                                        } else {
-                                          toast.success("Order updated");
-                                          setUnscheduledEditingId(null);
-                                          await fetchUnscheduledVisits();
-                                        }
-                                      } catch {
-                                        toast.error("Failed to update");
-                                      } finally {
-                                        setUnscheduledActionInProgress(false);
-                                      }
-                                    }}
-                                    className="text-xs px-3 py-1.5 rounded-lg font-medium"
-                                    style={{ background: C.green, color: "#fff" }}
-                                  >
-                                    {unscheduledActionInProgress ? "Saving..." : "Update"}
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* photo thumbnail — hidden for off-route orders */}
-                          {!isOffRoute && visit.photo_url && (
-                            <div className="shrink-0">
-                              <img
-                                src={visit.photo_url}
-                                alt="Visit photo"
-                                className="w-16 h-16 object-cover rounded-xl"
-                                style={{ border: `1px solid ${C.border}` }}
-                              />
-                            </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-syne font-600 text-base" style={{ color: C.ink, letterSpacing: "-0.2px", lineHeight: 1.1 }}>{customerName}</p>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold"
+                            style={{ color: isOffRoute ? C.sun : C.green, fontFamily: "'DM Sans', sans-serif" }}>
+                            <span style={{ width: 7, height: 7, borderRadius: "50%", background: isOffRoute ? C.sun : C.green, display: "inline-block", flexShrink: 0 }} />
+                            {isOffRoute ? "Off-Route" : "Unscheduled"}
+                          </span>
+                          {!isOffRoute && visit.duration_minutes > 0 && (
+                            <span className="text-[11px] font-semibold inline-flex items-center gap-1" style={{ color: C.inkSoft, fontFamily: "'DM Sans', sans-serif" }}>
+                              · <Clock size={11} /> {visit.duration_minutes}m
+                            </span>
+                          )}
+                          {visit.order_amount != null && (
+                            <span className="text-[11px]" style={{ color: C.inkMute, fontFamily: "'DM Sans', sans-serif" }}>
+                              · R {parseFloat(String(visit.order_amount)).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
                           )}
                         </div>
                       </div>
-                    </div>
+                      <span style={{ color: C.inkMute, transform: openCompletedId === visit.id ? "rotate(180deg)" : "rotate(0)", transition: "transform 320ms cubic-bezier(0.22,0.61,0.36,1)" }}>
+                        <ChevronDown size={18} />
+                      </span>
+                    </button>
+
+                    {/* Expanded content */}
+                    <Expand open={openCompletedId === visit.id}>
+                      <div style={{ height: 1, background: `linear-gradient(90deg, transparent, ${C.border}, transparent)` }} />
+                      <div className="px-[18px] pb-5" style={{ paddingTop: "14px" }}>
+
+                        {/* 4-chip row */}
+                        <div style={{ background: C.cream, borderRadius: 14, padding: "6px", display: "flex", gap: 4, marginBottom: 10 }}>
+                          {[
+                            { label: "ARRIVED", value: !isOffRoute && visit.arrival_time ? visit.arrival_time.slice(0, 5) : null },
+                            { label: "PHOTO", value: visit.photo_url ? "✓" : null },
+                            { label: "ORDER", value: visit.order_number ? "✓" : null },
+                            { label: "LEFT", value: !isOffRoute && visit.leaving_time ? visit.leaving_time.slice(0, 5) : null },
+                          ].map(({ label, value }) => (
+                            <div key={label} style={{ flex: 1, background: C.surface, borderRadius: 999, padding: "7px 4px", textAlign: "center" }}>
+                              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: C.inkMute, fontFamily: "'DM Sans', sans-serif" }}>{label}</div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: value ? C.ink : C.inkMute, fontFamily: "'Syne', sans-serif", marginTop: 3, opacity: value ? 1 : 0.3 }}>{value ?? "—"}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* 2-col tiles */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                          {!isOffRoute && (
+                            <div style={{ background: C.surfaceAlt, borderRadius: 16, padding: "12px 14px" }}>
+                              <div style={{ fontSize: 10.5, color: C.inkMute, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 700, fontFamily: "'DM Sans', sans-serif", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                <Clock size={13} />Time at stop
+                              </div>
+                              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, color: C.ink, fontWeight: 700, letterSpacing: "-0.4px", marginTop: 4, lineHeight: 1 }}>
+                                {visit.duration_minutes > 0 ? fmtDuration(visit.duration_minutes) : "—"}
+                              </div>
+                              {visit.arrival_time && visit.leaving_time && (
+                                <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11.5, color: C.inkSoft, marginTop: 4 }}>
+                                  {visit.arrival_time.slice(0, 5)} → {visit.leaving_time.slice(0, 5)}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {(visit.order_number || visit.order_amount != null) && (
+                            <div style={{ background: C.surfaceAlt, borderRadius: 16, padding: "12px 14px" }}>
+                              <div style={{ fontSize: 10.5, color: C.inkMute, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>
+                                Order {visit.order_number}
+                              </div>
+                              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, color: C.ink, fontWeight: 700, letterSpacing: "-0.4px", marginTop: 4, lineHeight: 1 }}>
+                                R {parseFloat(String(visit.order_amount || 0)).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                              <div style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11.5, color: C.inkSoft, marginTop: 4 }}>
+                                {visit.order_quantity} units
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Edit Order button */}
+                        {!isEditing && (
+                          <button type="button"
+                            onClick={() => {
+                              setUnscheduledOrderNumber(visit.order_number || "");
+                              setUnscheduledOrderQty(visit.order_quantity != null ? String(visit.order_quantity) : "");
+                              setUnscheduledOrderAmount(visit.order_amount != null ? String(visit.order_amount) : "");
+                              setUnscheduledEditingId(visit.id);
+                            }}
+                            style={{ width: "100%", height: 38, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surface, color: C.inkSoft, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                            <Pencil size={13} /> Edit order details
+                          </button>
+                        )}
+
+                        {/* Inline edit form */}
+                        {isEditing && (
+                          <div style={{ background: C.cream, borderRadius: 16, padding: 12, border: `1px solid ${C.border}` }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.6fr 1fr", gap: 8, marginBottom: 10 }}>
+                              <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                                <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>№</div>
+                                <input type="text" value={unscheduledOrderNumber} onChange={(e) => setUnscheduledOrderNumber(e.target.value)} onBlur={resetMobileZoom} placeholder="PO-0000"
+                                  style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                              </label>
+                              <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                                <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Qty</div>
+                                <input type="number" min="0" step="1" value={unscheduledOrderQty} onChange={(e) => setUnscheduledOrderQty(e.target.value)} onBlur={resetMobileZoom} placeholder="0"
+                                  style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                              </label>
+                              <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                                <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Value</div>
+                                <input type="number" min="0" step="0.01" value={unscheduledOrderAmount} onChange={(e) => setUnscheduledOrderAmount(e.target.value)} onBlur={resetMobileZoom} placeholder="R 0,00"
+                                  style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                              </label>
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 8 }}>
+                              <button type="button" onClick={() => setUnscheduledEditingId(null)}
+                                style={{ height: 40, borderRadius: 12, border: "none", cursor: "pointer", background: "transparent", color: C.inkSoft, fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 13 }}>
+                                Cancel
+                              </button>
+                              <button type="button" onClick={async () => {
+                                setUnscheduledActionInProgress(true);
+                                try {
+                                  const { error } = await supabase.from("visits").update({
+                                    order_number: unscheduledOrderNumber || null,
+                                    order_quantity: unscheduledOrderQty !== "" ? Number(unscheduledOrderQty) : null,
+                                    order_amount: unscheduledOrderAmount !== "" ? Number(unscheduledOrderAmount) : null,
+                                  } as any).eq("id", visit.id);
+                                  if (error) { toast.error(error.message); }
+                                  else { toast.success("Order updated"); setUnscheduledEditingId(null); await fetchUnscheduledVisits(); }
+                                } catch { toast.error("Failed to update"); }
+                                finally { setUnscheduledActionInProgress(false); }
+                              }}
+                                disabled={unscheduledActionInProgress}
+                                style={{ height: 40, borderRadius: 12, border: "none", cursor: "pointer", background: `linear-gradient(180deg, ${C.greenMid} 0%, ${C.green} 100%)`, color: "#fff", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: `0 8px 16px -8px ${C.green}aa` }}>
+                                <Check size={14} /> Save changes
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </Expand>
                   </div>
                 );
               })}
