@@ -1452,7 +1452,7 @@ function ScheduleCard({
               <div style={{ flex: 1, textAlign: "center", padding: "7px 4px", borderRadius: 999, background: localArrival ? C.surface : "transparent", boxShadow: localArrival ? "0 2px 6px rgba(23,23,21,0.06)" : "none" }}>
                 <div style={{ fontSize: 9.5, color: C.inkMute, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", fontWeight: 700 }}>Arrived</div>
                 <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 12, color: localArrival ? C.greenInk : C.inkMute, marginTop: 1, fontWeight: 600 }}>
-                  {localArrival || "—"}
+                  {localArrival ? localArrival.slice(0, 5) : "—"}
                 </div>
               </div>
               <div style={{ flex: 1, textAlign: "center", padding: "7px 4px", borderRadius: 999, background: photoBlob ? C.surface : "transparent", boxShadow: photoBlob ? "0 2px 6px rgba(23,23,21,0.06)" : "none" }}>
