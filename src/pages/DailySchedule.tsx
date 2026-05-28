@@ -2354,6 +2354,32 @@ export default function DailySchedule() {
     } catch { /* online fetch failed, keep cache */ }
   };
 
+  const uploadAdHocPhoto = async (repId: string, visitId: string, clientGeneratedId: string, blob: Blob): Promise<string | null> => {
+    const queuePhoto = async () => {
+      try {
+        const b64 = await blobToBase64(blob);
+        await savePendingPhoto(visitId, b64, visitId, clientGeneratedId);
+        toast.warning("Photo saved for upload — will retry when connection improves");
+      } catch { /* IDB write failure must not block checkout */ }
+    };
+    try {
+      const path = `${repId}/${visitId}.jpg`;
+      const { error } = await supabase.storage
+        .from("visit-photos")
+        .upload(path, blob, { contentType: "image/jpeg", upsert: true });
+      if (error) {
+        console.warn("[AdHoc] Photo upload failed:", error.message);
+        await queuePhoto();
+        return null;
+      }
+      const { data: urlData } = supabase.storage.from("visit-photos").getPublicUrl(path);
+      return urlData?.publicUrl || null;
+    } catch {
+      await queuePhoto();
+      return null;
+    }
+  };
+
   const submitAdHoc = async () => {
     if (!repId || !adHocCustomerId || !adHocArrivalTime) return;
     const adHocLeavingTime = nowTime();
@@ -2363,43 +2389,16 @@ export default function DailySchedule() {
     const adHocClientId = uuidv4();
     const customerName = adHocCustomers.find((c) => c.id === adHocCustomerId)?.customer_name;
 
-    // Upload photo if captured
-    let adHocPhotoUrl: string | null = null;
-    if (adHocPhoto) {
-      try {
-        const { error: uploadErr } = await supabase.storage
-          .from("visit-photos")
-          .upload(`${adHocClientId}.jpg`, adHocPhoto.blob, { contentType: "image/jpeg", upsert: true });
-        if (!uploadErr) {
-          const { data: urlData } = supabase.storage.from("visit-photos").getPublicUrl(`${adHocClientId}.jpg`);
-          adHocPhotoUrl = urlData?.publicUrl || null;
-        } else {
-          try {
-            const b64 = await blobToBase64(adHocPhoto.blob);
-            await savePendingPhoto(adHocClientId, b64, null, adHocClientId);
-            toast.warning("Photo saved for upload — will retry when connection improves");
-          } catch { /* IDB failure must not block submit */ }
-        }
-      } catch {
-        try {
-          const b64 = await blobToBase64(adHocPhoto.blob);
-          await savePendingPhoto(adHocClientId, b64, null, adHocClientId);
-          toast.warning("Photo saved for upload — will retry when connection improves");
-        } catch { /* IDB failure must not block submit */ }
-      }
-    }
-
     try {
-      const { error } = await supabase.from("visits").insert({
+      const { data: insertedVisit, error } = await supabase.from("visits").insert({
         rep_id: repId, customer_id: adHocCustomerId, visit_date: scheduleDate,
         arrival_time: adHocArrivalTime, leaving_time: adHocLeavingTime, duration_minutes: dur, notes: adHocNotes || null,
         status: "visited",
         client_generated_id: adHocClientId,
-        ...(adHocPhotoUrl ? { photo_url: adHocPhotoUrl } : {}),
         order_number: adHocOrderNumber || null,
         order_quantity: adHocOrderQty !== "" ? Number(adHocOrderQty) : null,
         order_amount: adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null,
-      });
+      } as any).select("id").single();
       if (error) {
         if (isOfflineError(error)) {
           const photoB64 = adHocPhoto ? await blobToBase64(adHocPhoto.blob) : null;
@@ -2411,6 +2410,12 @@ export default function DailySchedule() {
           toast.error(error.message);
         }
       } else {
+        if (adHocPhoto && insertedVisit?.id) {
+          const photoUrl = await uploadAdHocPhoto(repId, insertedVisit.id, adHocClientId, adHocPhoto.blob);
+          if (photoUrl) {
+            await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", insertedVisit.id);
+          }
+        }
         toast.success("Ad-hoc visit logged");
         setActiveTab("done");
         resetAdHoc();
