@@ -1228,7 +1228,7 @@ function ScheduleCard({
                   key={label}
                   style={{
                     flex: 1,
-                    background: C.surface,
+                    background: value ? C.surface : C.cream,
                     borderRadius: 999,
                     padding: "7px 4px",
                     textAlign: "center",
