@@ -1061,7 +1061,7 @@ function ScheduleCard({
       }).catch(() => {});
     }
   };
-  const markLeft    = () => { const t = nowTime(); setLocalLeaving(t); updateItem({ leaving_time: t, status: "visited", order_number: localOrderNumber || null, order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null, order_amount: localOrderAmount !== "" ? Number(localOrderAmount) : null }); };
+  const markLeft    = () => { const t = nowTime(); setLocalLeaving(t); updateItem({ leaving_time: t, status: "visited", notes: localNotes, order_number: localOrderNumber || null, order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null, order_amount: localOrderAmount !== "" ? Number(localOrderAmount) : null }); };
 
   const skipItem = async (note: string = skipNote) => {
     if (actionInProgress) return;
@@ -2405,6 +2405,21 @@ export default function DailySchedule() {
           await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrivalTime, adHocLeavingTime, dur, adHocNotes || null, customerName, "visited", photoB64, adHocOrderNumber || null, adHocOrderQty !== "" ? Number(adHocOrderQty) : null, adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null);
           toast.success("Saved offline. Will sync when online.");
           setActiveTab("done");
+          setUnscheduledVisits(prev => [{
+            id: adHocClientId,
+            customer_id: adHocCustomerId,
+            customers: { customer_name: customerName ?? "Unknown" },
+            status: "visited",
+            arrival_time: adHocArrivalTime,
+            leaving_time: adHocLeavingTime,
+            duration_minutes: dur,
+            notes: adHocNotes || null,
+            order_number: adHocOrderNumber || null,
+            order_quantity: adHocOrderQty !== "" ? Number(adHocOrderQty) : null,
+            order_amount: adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null,
+            photo_url: null,
+            _offline: true,
+          }, ...prev]);
           resetAdHoc();
         } else {
           toast.error(error.message);
@@ -2427,6 +2442,21 @@ export default function DailySchedule() {
         await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrivalTime, adHocLeavingTime, dur, adHocNotes || null, customerName, "visited", photoB64, adHocOrderNumber || null, adHocOrderQty !== "" ? Number(adHocOrderQty) : null, adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null);
         toast.success("Saved offline. Will sync when online.");
         setActiveTab("done");
+        setUnscheduledVisits(prev => [{
+          id: adHocClientId,
+          customer_id: adHocCustomerId,
+          customers: { customer_name: customerName ?? "Unknown" },
+          status: "visited",
+          arrival_time: adHocArrivalTime,
+          leaving_time: adHocLeavingTime,
+          duration_minutes: dur,
+          notes: adHocNotes || null,
+          order_number: adHocOrderNumber || null,
+          order_quantity: adHocOrderQty !== "" ? Number(adHocOrderQty) : null,
+          order_amount: adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null,
+          photo_url: null,
+          _offline: true,
+        }, ...prev]);
         resetAdHoc();
       } catch (idbErr) {
         console.error("[Schedule] IndexedDB save failed:", idbErr);
@@ -2496,6 +2526,21 @@ export default function DailySchedule() {
           if (isOfflineError(error)) {
             await saveOffline();
             toast.success("Saved offline. Will sync when online.");
+            setUnscheduledVisits(prev => [{
+              id: clientId,
+              customer_id: offRouteCustomerId,
+              customers: { customer_name: adHocCustomers?.find((c: any) => c.id === offRouteCustomerId)?.customer_name ?? "Unknown" },
+              status: "off_route",
+              arrival_time: null,
+              leaving_time: null,
+              duration_minutes: null,
+              notes: offRouteNotes || null,
+              order_number: offRouteOrderNumber || null,
+              order_quantity: offRouteOrderQty !== "" ? Number(offRouteOrderQty) : null,
+              order_amount: offRouteOrderAmount !== "" ? Number(offRouteOrderAmount) : null,
+              photo_url: null,
+              _offline: true,
+            }, ...prev]);
             setActiveTab("done");
           } else {
             toast.error(error.message);
@@ -2509,6 +2554,21 @@ export default function DailySchedule() {
       } else {
         await saveOffline();
         toast.success("Saved offline. Will sync when online.");
+        setUnscheduledVisits(prev => [{
+          id: clientId,
+          customer_id: offRouteCustomerId,
+          customers: { customer_name: adHocCustomers?.find((c: any) => c.id === offRouteCustomerId)?.customer_name ?? "Unknown" },
+          status: "off_route",
+          arrival_time: null,
+          leaving_time: null,
+          duration_minutes: null,
+          notes: offRouteNotes || null,
+          order_number: offRouteOrderNumber || null,
+          order_quantity: offRouteOrderQty !== "" ? Number(offRouteOrderQty) : null,
+          order_amount: offRouteOrderAmount !== "" ? Number(offRouteOrderAmount) : null,
+          photo_url: null,
+          _offline: true,
+        }, ...prev]);
         setActiveTab("done");
       }
       resetOffRoute();
@@ -2518,6 +2578,21 @@ export default function DailySchedule() {
       try {
         await saveOffline();
         toast.success("Saved offline. Will sync when online.");
+        setUnscheduledVisits(prev => [{
+          id: clientId,
+          customer_id: offRouteCustomerId,
+          customers: { customer_name: adHocCustomers?.find((c: any) => c.id === offRouteCustomerId)?.customer_name ?? "Unknown" },
+          status: "off_route",
+          arrival_time: null,
+          leaving_time: null,
+          duration_minutes: null,
+          notes: offRouteNotes || null,
+          order_number: offRouteOrderNumber || null,
+          order_quantity: offRouteOrderQty !== "" ? Number(offRouteOrderQty) : null,
+          order_amount: offRouteOrderAmount !== "" ? Number(offRouteOrderAmount) : null,
+          photo_url: null,
+          _offline: true,
+        }, ...prev]);
         setActiveTab("done");
         resetOffRoute();
       } catch {

@@ -411,9 +411,11 @@ Main rep interface. Shows the day's customer visit schedule as expandable cards.
 - Amber recovery banner shown when an in-progress item has a pending photo in IndexedDB (scroll-to + restore workflow); validated against current items to prevent stale banners after schedule regeneration
 - Future dates show "Schedule not yet available" empty state and do not trigger auto-generation
 - Order fields: `order_number` (string), `order_quantity` (integer), `order_amount` (numeric)
-- "Log Unscheduled Visit" section at bottom for ad-hoc visits — customer dropdown is a searchable combobox sorted alphabetically
+- Unscheduled visit card at bottom uses a check-in/check-out flow (Option 2 — component state): rep selects customer via inline search, taps 'Tap to check in' to stamp arrival, then captures photo/notes/order, then taps 'Tap to check out' to insert the visit row directly. No schedule_item is created. Photo uploaded via `uploadAdHocPhoto()` using `repId/visitId` path matching scheduled visits.
+- Off-route order card at bottom allows logging a sale outside the route — customer search, order fields, notes. Visit inserted with status `'off_route'`. Both unscheduled and off-route cards switch to the Done tab on successful submission.
+- Sign-out requires confirmation dialog to prevent accidental logout.
 - Completed visit cards use `VisitDetails` component with dual lookup: primary by `visit_id`, fallback by `rep_id + customer_id + visit_date` (handles offline-synced visits where `schedule_items.visit_id` may not be populated yet)
-- Times displayed as HH:MM (seconds stripped via `.slice(0, 5)`)
+- Times displayed as HH:MM (seconds stripped via `.slice(0, 5)`) — applies to arrival, leaving, and all chip row displays
 
 #### `/log-visit` — [LogVisit.tsx](src/pages/LogVisit.tsx)
 Manual visit logging form. Intended for ad-hoc visits outside the daily schedule.
@@ -427,29 +429,6 @@ Manual visit logging form. Intended for ad-hoc visits outside the daily schedule
 - Duration auto-calculated from arrival/leaving times
 - Offline fallback: `addOfflineVisit()` queues to IndexedDB on network error
 - Customer list cached in IndexedDB (`setCachedCustomers` / `getCachedCustomers`)
-
-#### `/my-visits` — [MyVisits.tsx](src/pages/MyVisits.tsx)
-Rep's own visit history with filters and offline sync status.
-
-**Tables read:** `visits` (SELECT own), `customer_assignments` (for filter dropdown)
-
-**Tables written:** `visits` (UPDATE, DELETE)
-
-**Notable logic:**
-- Merges server visits + offline visits from IndexedDB, deduplicated by `client_generated_id`
-- Offline visit badges: `pending` / `synced` / `error`
-- "Sync Now" button triggers `syncPendingVisits()` when online
-- Photo lightbox modal on thumbnail click
-- Edit modal for synced visits (date, arrival, leaving, notes)
-
-#### `/averages` — [Averages.tsx](src/pages/Averages.tsx)
-Rep's own performance summary — average visit duration per customer.
-
-**Tables read:** `visits` (SELECT own, aggregates `duration_minutes`, `order_quantity`, `order_amount`)
-
-**Notable logic:**
-- Calculates `avg_duration = total_minutes / count`, `total_order_qty`, `total_order_amount`
-- Filters: date range (7d / 30d / all-time), sort by customer name or avg duration
 
 ---
 
@@ -800,8 +779,6 @@ src/
 │   ├── DailySchedule.tsx      # /schedule — rep daily schedule
 │   ├── Index.tsx              # / — role-based redirect
 │   ├── LogVisit.tsx           # /log-visit — manual visit form
-│   ├── MyVisits.tsx           # /my-visits — rep visit history
-│   ├── Averages.tsx           # /averages — rep performance summary
 │   ├── NotFound.tsx           # * — 404
 │   └── admin/
 │       ├── AdminAccount.tsx   # /admin/account
@@ -889,23 +866,28 @@ VITE_SUPABASE_ANON_KEY=<your-anon-key>
 
 ## Important Notes for AI-Assisted Development
 
-1. **Never store roles in `profiles` or `auth.users` metadata** — always use `user_roles` table; all RLS depends on it
-2. **Never edit auto-generated files:** `src/integrations/supabase/client.ts`, `types.ts`, `supabase/config.toml`
-3. **IndexedDB schema version must be incremented** in `offlineDb.ts` if you add/rename any object stores
-4. **`client_generated_id` is the deduplication key** — always set it client-side (UUID v4) before inserting a visit; the sync engine uses it to prevent double-submit
-5. **Photos are always compressed** before storage (`compressImage` → `stampImage`) — never upload raw camera output
-6. **Camera must be triggered by a user gesture** on iOS — no auto-open in `useEffect`
-7. **Edge functions use service role key** and handle their own admin check — do not rely on JWT/RLS inside edge functions
-8. **Template saves delete future unstarted daily schedules** — this is intentional to force regeneration from the updated template
-9. **`auto_generate_daily_schedule` is idempotent** — safe to call multiple times; it will not create duplicate schedules
-10. **Supabase API routes must use NetworkOnly** in the service worker — never cache auth or database responses
-11. **The sync engine is idempotent** — re-running it never creates duplicates thanks to `client_generated_id` + the duplicate-check query
-12. **Account number uniqueness** is enforced at both DB level (UNIQUE constraint) and UI level (debounced real-time check) — both layers are needed
-13. **`auto_generate_daily_schedule` must never run for future dates** — the guard exists in both the SQL function (`p_schedule_date > CURRENT_DATE` → return null) and the frontend (`scheduleDate <= todayStr`). Do not remove either guard; pre-generating future schedules breaks the week-rotation logic when the anchor changes
-14. **Manual week override must update both `app_settings` keys** — setting only `current_week_order` is not enough; `week_cycle_start_date` must also be back-calculated and upserted so `get_week_order_for_date()` stays consistent for all dates
-15. **Photo persistence uses two IndexedDB stores** — `pending_photos` (keyed by `scheduleItemId`) holds the base64-encoded photo from capture until checkout; `active_card_state` (key `"current"`) holds arrival time and notes. Both are cleared in the `updateItem` finally block when status becomes `visited` or `skipped`. **Do not** clear them earlier or the recovery banner will never trigger
-16. **`xlsx-js-style` replaces `xlsx`** — do not revert to `xlsx`; the cell-level styling API (`s: { fill, font, alignment }`) is incompatible with the base library. The package is already listed in `package.json`; no further changes needed
-17. **PDF report banner text layout depends on `TEXT_X = ML + 19`** — this offset accounts for the logo width (14mm) + left margin + padding. If the logo is resized, update `TEXT_X` accordingly. The three info blocks are each exactly 92mm wide (`(PW - ML - MR) / 3 = 276 / 3`); changing `ML` or `MR` breaks the equal-width layout
-18. **`offlineDb.ts` IDB operations all throw `IDB_ERROR: <message>`** on failure — call sites should catch errors prefixed with `IDB_ERROR:` to identify storage failures and surface feedback to the user
-19. **`offline_schedule_item_updates` uses `schedule_item_id` as keyPath intentionally** — the sync pattern is state snapshotting; the checkout payload includes all fields (arrival_time, leaving_time, status, notes, orders). Do not redesign to auto-increment
-20. **`adHocPhoto` in `DailySchedule.tsx` is stored as `{ blob: Blob; preview: string } | null`** — base64 conversion happens lazily only in the offline/error fallback path. Object URLs are revoked on clear and reset
+1. **Unscheduled visit uses Option 2 (component state only)** — no schedule_item is created. Visit is inserted directly on checkout. There is no IDB recovery if the app backgrounds mid-visit on an unscheduled card.
+2. **uploadAdHocPhoto() is a standalone helper at DailySchedule level** — uploads to `repId/visitId.jpg` matching the scheduled visit storage path. Falls back to `savePendingPhoto` queue on failure.
+3. **fmtDuration() returns 'X min' format** (not 'Xm') for values under 60 minutes — affects all duration displays including the stats card and Done tab.
+4. **Bottom action cards (Unscheduled + Off-Route) remove horizontal padding when expanded** — the wrapper uses conditional padding: `expandedBottomCard === null ? '8px 16px' : '8px 0'` to align expanded cards with customer cards above.
+5. **Never suggest xlsx or exceljs** — `xlsx-js-style` only (both confirmed broken).
+6. **Never store roles in `profiles` or `auth.users` metadata** — always use `user_roles` table; all RLS depends on it
+7. **Never edit auto-generated files:** `src/integrations/supabase/client.ts`, `types.ts`, `supabase/config.toml`
+8. **IndexedDB schema version must be incremented** in `offlineDb.ts` if you add/rename any object stores
+9. **`client_generated_id` is the deduplication key** — always set it client-side (UUID v4) before inserting a visit; the sync engine uses it to prevent double-submit
+10. **Photos are always compressed** before storage (`compressImage` → `stampImage`) — never upload raw camera output
+11. **Camera must be triggered by a user gesture** on iOS — no auto-open in `useEffect`
+12. **Edge functions use service role key** and handle their own admin check — do not rely on JWT/RLS inside edge functions
+13. **Template saves delete future unstarted daily schedules** — this is intentional to force regeneration from the updated template
+14. **`auto_generate_daily_schedule` is idempotent** — safe to call multiple times; it will not create duplicate schedules
+15. **Supabase API routes must use NetworkOnly** in the service worker — never cache auth or database responses
+16. **The sync engine is idempotent** — re-running it never creates duplicates thanks to `client_generated_id` + the duplicate-check query
+17. **Account number uniqueness** is enforced at both DB level (UNIQUE constraint) and UI level (debounced real-time check) — both layers are needed
+18. **`auto_generate_daily_schedule` must never run for future dates** — the guard exists in both the SQL function (`p_schedule_date > CURRENT_DATE` → return null) and the frontend (`scheduleDate <= todayStr`). Do not remove either guard; pre-generating future schedules breaks the week-rotation logic when the anchor changes
+19. **Manual week override must update both `app_settings` keys** — setting only `current_week_order` is not enough; `week_cycle_start_date` must also be back-calculated and upserted so `get_week_order_for_date()` stays consistent for all dates
+20. **Photo persistence uses two IndexedDB stores** — `pending_photos` (keyed by `scheduleItemId`) holds the base64-encoded photo from capture until checkout; `active_card_state` (key `"current"`) holds arrival time and notes. Both are cleared in the `updateItem` finally block when status becomes `visited` or `skipped`. **Do not** clear them earlier or the recovery banner will never trigger
+21. **`xlsx-js-style` replaces `xlsx`** — do not revert to `xlsx`; the cell-level styling API (`s: { fill, font, alignment }`) is incompatible with the base library. The package is already listed in `package.json`; no further changes needed
+22. **PDF report banner text layout depends on `TEXT_X = ML + 19`** — this offset accounts for the logo width (14mm) + left margin + padding. If the logo is resized, update `TEXT_X` accordingly. The three info blocks are each exactly 92mm wide (`(PW - ML - MR) / 3 = 276 / 3`); changing `ML` or `MR` breaks the equal-width layout
+23. **`offlineDb.ts` IDB operations all throw `IDB_ERROR: <message>`** on failure — call sites should catch errors prefixed with `IDB_ERROR:` to identify storage failures and surface feedback to the user
+24. **`offline_schedule_item_updates` uses `schedule_item_id` as keyPath intentionally** — the sync pattern is state snapshotting; the checkout payload includes all fields (arrival_time, leaving_time, status, notes, orders). Do not redesign to auto-increment
+25. **`adHocPhoto` in `DailySchedule.tsx` is stored as `{ blob: Blob; preview: string } | null`** — base64 conversion happens lazily only in the offline/error fallback path. Object URLs are revoked on clear and reset
