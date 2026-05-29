@@ -2177,6 +2177,7 @@ export default function DailySchedule() {
   const fetchUnscheduledVisits = useCallback(async () => {
     if (!repId) return;
     try {
+      if (!navigator.onLine) return;
       const linkedVisitIds = itemsRef.current
         .map((i: any) => i.visit_id)
         .filter(Boolean) as string[];

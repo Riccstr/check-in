@@ -181,7 +181,9 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
             syncedVisitsCount++;
 
             if (insertedVisit?.id) {
-              await linkVisitToScheduleItem(insertedVisit.id, payload);
+              if (payload.status !== "off_route") {
+                await linkVisitToScheduleItem(insertedVisit.id, payload);
+              }
 
               // Upload photo if stored offline
               if (visit.photo_base64) {
