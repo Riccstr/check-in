@@ -1,15 +1,14 @@
 import React, { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, TrendingUp, TrendingDown } from "lucide-react";
+import { TrendingUp, TrendingDown, Plus } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import type { ChartEntry } from "./CustomerChart";
 import { fmtDuration, fmtCurrency, fmtDate } from "@/lib/timeUtils";
+import { A, PageHeader, StatCard, Tag, GhostButton, PrimaryButton } from "@/lib/adminUi";
 
 const CustomerChart = React.lazy(() => import("./CustomerChart"));
 
@@ -53,28 +52,6 @@ interface VisitRow {
   order_number: string | null;
   order_quantity: number | null;
   order_amount: number | null;
-}
-
-// ─── MetricCard ───────────────────────────────────────────────────────────────
-
-function MetricCard({
-  label,
-  value,
-  trend,
-}: {
-  label: string;
-  value: string;
-  trend?: React.ReactNode;
-}) {
-  return (
-    <Card className="rounded-xl">
-      <CardContent className="pt-5 pb-4 px-5">
-        <p className="text-xs font-medium text-muted-foreground mb-1">{label}</p>
-        <p className="text-2xl font-bold leading-none">{value}</p>
-        {trend && <div className="mt-2">{trend}</div>}
-      </CardContent>
-    </Card>
-  );
 }
 
 // ─── CustomerDashboard ────────────────────────────────────────────────────────
@@ -234,129 +211,191 @@ export default function CustomerDashboard() {
   }, []);
 
   if (loading) {
-    return <div className="p-8 text-muted-foreground">Loading...</div>;
+    return (
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: A.bg }}>
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
   }
 
   if (!customer) {
-    return <div className="p-8 text-muted-foreground">Customer not found.</div>;
+    return (
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: A.bg, fontFamily: A.sans, color: A.inkMute, fontSize: 13 }}>
+        Customer not found.
+      </div>
+    );
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-4 space-y-5">
-      {/* Header */}
-      <div className="flex items-start gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/admin/customers")} className="mt-0.5 shrink-0">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold leading-tight">{customer.customer_name}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {customer.account_number && <span>#{customer.account_number}</span>}
-            {customer.account_number && customer.area && <span className="mx-1.5">·</span>}
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: A.bg, minHeight: 0, fontFamily: A.sans, color: A.ink }}>
+      <PageHeader
+        breadcrumb={[
+          <button
+            key="customers-link"
+            type="button"
+            onClick={() => navigate("/admin/customers")}
+            style={{ background: "transparent", border: "none", padding: 0, color: A.inkSoft, fontFamily: A.sans, fontSize: 11.5, cursor: "pointer" }}
+          >
+            Customers
+          </button>,
+          customer.customer_name,
+        ]}
+        title={customer.customer_name}
+        subtitle={
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            {customer.account_number && <span style={{ fontFamily: A.mono }}>#{customer.account_number}</span>}
+            {customer.account_number && (customer.area || repName) && <span style={{ color: A.inkDim }}>·</span>}
             {customer.area && <span>{customer.area}</span>}
-            {(customer.account_number || customer.area) && <span className="mx-1.5">·</span>}
+            {customer.area && repName && <span style={{ color: A.inkDim }}>·</span>}
             <span>Rep: {repName}</span>
-          </p>
-        </div>
-      </div>
+          </span>
+        }
+        right={
+          <>
+            {/* Date range pills */}
+            <div style={{ display: "flex", alignItems: "center", gap: 4, padding: 4, background: A.borderSoft, borderRadius: 7 }}>
+              {(
+                [
+                  { label: "7d",    from: daysAgo(7),       to: today() },
+                  { label: "30d",   from: daysAgo(30),      to: today() },
+                  { label: "Month", from: startOfMonth(),   to: today() },
+                  { label: "All",   from: "",                to: "" },
+                ] as const
+              ).map((opt) => {
+                const isActive = fromDate === opt.from && toDate === opt.to;
+                return (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    onClick={() => applyRange(opt.from, opt.to)}
+                    style={{ padding: "4px 11px", borderRadius: 5, fontFamily: A.sans, fontSize: 11.5, fontWeight: 500, color: isActive ? A.ink : A.inkSoft, background: isActive ? A.panel : "transparent", boxShadow: isActive ? "0 1px 2px rgba(23,23,21,0.06)" : "none", border: "none", cursor: "pointer" }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        }
+      />
 
-      {/* Date range filter */}
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex items-end gap-2">
-          <div className="space-y-1">
-            <Label className="text-xs">From</Label>
-            <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-8 text-sm w-36" />
+      <div style={{ padding: "18px 24px", overflow: "auto", flex: 1 }}>
+        {/* Custom date range — sits beneath the page header, only shown when one of the quick ranges isn't active */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+          <div style={{ fontSize: 11, color: A.inkMute, fontWeight: 600, letterSpacing: 0.3, textTransform: "uppercase" }}>Custom range:</div>
+          <Label className="sr-only" htmlFor="cd-from">From</Label>
+          <Input id="cd-from" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} style={{ width: 150, height: 30, fontSize: 12, fontFamily: A.mono, background: A.panel, borderColor: A.border }} />
+          <span style={{ color: A.inkDim, fontSize: 12 }}>→</span>
+          <Label className="sr-only" htmlFor="cd-to">To</Label>
+          <Input id="cd-to" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} style={{ width: 150, height: 30, fontSize: 12, fontFamily: A.mono, background: A.panel, borderColor: A.border }} />
+          {(fromDate || toDate) && (
+            <GhostButton onClick={() => applyRange("", "")}>Clear</GhostButton>
+          )}
+          <div style={{ flex: 1 }} />
+          <PrimaryButton icon={<Plus size={13} />}>Log visit</PrimaryButton>
+        </div>
+
+        {/* 8-tile metric grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 14 }}>
+          <StatCard label="Total visits"          value={metrics.totalVisits} />
+          <StatCard label="Total orders"          value={metrics.totalOrders} />
+          <StatCard label="Strike rate"           value={metrics.strikeRate} accent={A.green} />
+          <StatCard label="Avg time / visit"      value={metrics.avgDuration} />
+          <StatCard label="Total qty sold"        value={metrics.totalQty} />
+          <StatCard label="Total revenue"         value={fmtCurrency(metrics.totalRevenue)} accent={A.green} />
+          <StatCard label="Avg order value"       value={metrics.avgOrderValue} sub={metrics.trend} />
+          <StatCard label="Visit window"          value={fromDate && toDate ? `${fromDate.slice(5).replace("-", "/")} → ${toDate.slice(5).replace("-", "/")}` : fromDate ? `from ${fromDate}` : toDate ? `until ${toDate}` : "All time"} mono={false} />
+        </div>
+
+        {/* Order value chart */}
+        <div style={{ background: A.panel, border: `1px solid ${A.border}`, borderRadius: 10, padding: "14px 18px 18px", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Order value by visit</div>
+              <div style={{ fontSize: 11.5, color: A.inkMute, marginTop: 2 }}>Chronological — newest on the right · click a bar to jump to the row</div>
+            </div>
+            <div style={{ display: "flex", gap: 14, fontSize: 11, color: A.inkMute }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <span style={{ width: 9, height: 9, background: A.green, borderRadius: 2 }} /> Order
+              </span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <span style={{ width: 9, height: 9, background: A.sun, borderRadius: 2 }} /> Off-route
+              </span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <span style={{ width: 9, height: 9, background: A.danger, borderRadius: 2 }} /> Skipped
+              </span>
+            </div>
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs">To</Label>
-            <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-8 text-sm w-36" />
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          <Button variant="outline" size="sm" onClick={() => applyRange(daysAgo(7), today())}>Last 7 days</Button>
-          <Button variant="outline" size="sm" onClick={() => applyRange(daysAgo(30), today())}>Last 30 days</Button>
-          <Button variant="outline" size="sm" onClick={() => applyRange(startOfMonth(), today())}>This month</Button>
-          <Button variant="outline" size="sm" onClick={() => applyRange("", "")}>All time</Button>
-        </div>
-      </div>
-
-      {/* Metric cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <MetricCard label="Total Visits" value={String(metrics.totalVisits)} />
-        <MetricCard label="Total Orders" value={String(metrics.totalOrders)} />
-        <MetricCard label="Strike Rate" value={metrics.strikeRate} />
-        <MetricCard label="Total Qty Sold" value={String(metrics.totalQty)} />
-        <MetricCard label="Total Revenue" value={fmtCurrency(metrics.totalRevenue)} />
-        <MetricCard label="Avg Order Value" value={metrics.avgOrderValue} trend={metrics.trend} />
-        <MetricCard label="Avg Time per Visit" value={metrics.avgDuration} />
-      </div>
-
-      {/* Order value chart */}
-      <Card className="rounded-xl">
-        <CardContent className="pt-5 pb-4 px-5">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Order Value by Visit</p>
           {showChart ? (
-            <Suspense fallback={<div className="h-[250px] animate-pulse bg-muted rounded" />}>
+            <Suspense fallback={<div style={{ height: 250, background: A.borderSoft, borderRadius: 6, animation: "pulse 1.5s ease-in-out infinite" }} />}>
               <CustomerChart data={chartData as ChartEntry[]} onBarClick={handleBarClick} />
             </Suspense>
           ) : (
-            <p className="text-sm text-muted-foreground py-6 text-center">Not enough visit data to display a chart.</p>
+            <div style={{ padding: "32px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>Not enough visit data to display a chart.</div>
           )}
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Visit history table */}
-      <div>
-        <h2 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Visit History</h2>
-        {filtered.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4">No visits in this date range.</p>
-        ) : (
-          <div className="border rounded-xl overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Arrival</TableHead>
-                  <TableHead>Departure</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Order No.</TableHead>
-                  <TableHead>Qty</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Notes</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((v) => {
-                  const isSkipped  = v.status === "skipped";
-                  const isOffRoute = v.status === "off_route";
-                  const hasOrder = v.order_number != null || (v.order_quantity != null && v.order_quantity > 0);
-                  const rowClass = [
-                    isSkipped ? "bg-red-50" : !hasOrder && !isOffRoute ? "text-muted-foreground" : "",
-                    highlightedId === v.id ? "ring-2 ring-inset ring-green-500" : "",
-                  ].filter(Boolean).join(" ");
-                  return (
-                    <TableRow key={v.id} id={`visit-row-${v.id}`} className={rowClass}>
-                      <TableCell className="font-medium whitespace-nowrap">{v.visit_date}</TableCell>
-                      <TableCell>{isOffRoute ? "" : fmtTime(v.arrival_time)}</TableCell>
-                      <TableCell>{isOffRoute ? "" : fmtTime(v.leaving_time)}</TableCell>
-                      <TableCell>{isOffRoute ? "—" : (v.duration_minutes > 0 ? fmtDuration(v.duration_minutes) : "—")}</TableCell>
-                      <TableCell>{v.order_number || "—"}</TableCell>
-                      <TableCell>{v.order_quantity ?? "—"}</TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {v.order_amount != null ? fmtCurrency(Number(v.order_amount)) : "—"}
-                      </TableCell>
-                      <TableCell className="max-w-xs text-xs">
-                        {isSkipped  && <span className="font-semibold text-red-600 mr-1">[SKIPPED]</span>}
-                        {isOffRoute && <span className="font-semibold text-amber-600 mr-1">[OFF-ROUTE]</span>}
-                        {v.notes || ""}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+        {/* Visit history table */}
+        <div style={{ background: A.panel, border: `1px solid ${A.border}`, borderRadius: 10, overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: `1px solid ${A.border}` }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Visit history</div>
+            <div style={{ fontFamily: A.mono, fontSize: 11, color: A.inkMute }}>{filtered.length} {filtered.length === 1 ? "visit" : "visits"}</div>
           </div>
-        )}
+
+          {filtered.length === 0 ? (
+            <div style={{ padding: "40px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>No visits in this date range.</div>
+          ) : (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.6fr 0.6fr 0.6fr 0.7fr 0.4fr 0.8fr 1.4fr", padding: "8px 16px", fontSize: 10.5, color: A.inkMute, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase", borderBottom: `1px solid ${A.borderSoft}` }}>
+                <div>Date</div>
+                <div>Arr</div>
+                <div>Dep</div>
+                <div>Duration</div>
+                <div>Order №</div>
+                <div>Qty</div>
+                <div style={{ textAlign: "right" }}>Amount</div>
+                <div>Notes</div>
+              </div>
+              {filtered.map((v, i) => {
+                const isSkipped  = v.status === "skipped";
+                const isOffRoute = v.status === "off_route";
+                const isHighlighted = highlightedId === v.id;
+                return (
+                  <div
+                    key={v.id}
+                    id={`visit-row-${v.id}`}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1.1fr 0.6fr 0.6fr 0.6fr 0.7fr 0.4fr 0.8fr 1.4fr",
+                      padding: "10px 16px",
+                      alignItems: "center",
+                      borderBottom: i < filtered.length - 1 ? `1px solid ${A.borderRow}` : "none",
+                      fontSize: 12,
+                      color: isSkipped ? A.danger : A.ink,
+                      background: isSkipped ? A.dangerBg : isHighlighted ? A.greenSoft : "transparent",
+                      transition: "background 0.3s",
+                    }}
+                  >
+                    <div style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                      {v.visit_date}
+                      {isSkipped && <Tag tone="danger">SKIP</Tag>}
+                      {isOffRoute && <Tag tone="sun">OFF-ROUTE</Tag>}
+                    </div>
+                    <div style={{ fontFamily: A.mono, fontSize: 11.5 }}>{isOffRoute ? "" : fmtTime(v.arrival_time)}</div>
+                    <div style={{ fontFamily: A.mono, fontSize: 11.5 }}>{isOffRoute ? "" : fmtTime(v.leaving_time)}</div>
+                    <div style={{ fontFamily: A.mono, fontSize: 11.5 }}>{isOffRoute ? "—" : v.duration_minutes > 0 ? fmtDuration(v.duration_minutes) : "—"}</div>
+                    <div style={{ fontFamily: A.mono, fontSize: 11.5 }}>{v.order_number || "—"}</div>
+                    <div style={{ fontFamily: A.mono, fontSize: 11.5 }}>{v.order_quantity ?? "—"}</div>
+                    <div style={{ fontFamily: A.mono, fontSize: 11.5, textAlign: "right" }}>
+                      {v.order_amount != null ? fmtCurrency(Number(v.order_amount)) : "—"}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: A.inkMute, fontStyle: v.notes ? "italic" : "normal", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{v.notes || "—"}</div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -1,20 +1,19 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandList, CommandItem, CommandEmpty } from "@/components/ui/command";
 import { toast } from "sonner";
-import { Users, Plus, Pencil, ArrowUpDown, Filter, Trash2 } from "lucide-react";
+import { Plus, Pencil, Filter, Trash2, Download } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { A, PageHeader, StatCard, Tag, FilterChip, PrimaryButton, GhostButton } from "@/lib/adminUi";
 
 type SortKey = "customer_name" | "area" | "rep";
 
@@ -224,131 +223,180 @@ export default function AdminCustomers() {
     return list;
   }, [customers, search, sortKey, sortAsc, customerRepMap, filterReps, filterAreas]);
 
-  const SortButton = ({ label, sortId }: { label: string; sortId: SortKey }) => (
-    <Button variant="ghost" size="sm" className="-ml-3 h-8 font-medium" onClick={() => handleSort(sortId)}>
-      {label}
-      <ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground" />
-    </Button>
-  );
-
   const clearFilters = () => { setFilterReps([]); setFilterAreas([]); };
 
+  // ── totals for the stat strip ─────────────────────────────────────────────
+  const activeAssignments = new Set(assignments.map((a) => a.customer_id));
+  const unassignedCount = customers.filter((c) => !activeAssignments.has(c.id)).length;
+  const totalAreas = areas.length;
+
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5 text-accent" /> Customers</CardTitle>
-        <Button size="sm" onClick={openNew}><Plus className="h-4 w-4 mr-1" /> Add</Button>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          <Input placeholder="Search customers..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1">
-                <Filter className="h-4 w-4" /> Filter
-                {activeFilterCount > 0 && <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">{activeFilterCount}</Badge>}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-72 space-y-3" align="start">
-              {/* Active filter badges */}
-              {(filterReps.length > 0 || filterAreas.length > 0) && (
-                <div className="flex flex-wrap gap-1">
-                  {filterReps.map((r) => (
-                    <Badge key={r} variant="secondary" className="text-xs gap-1">
-                      {r}
-                      <button onClick={() => setFilterReps(filterReps.filter((x) => x !== r))} className="ml-0.5 hover:text-destructive">×</button>
-                    </Badge>
-                  ))}
-                  {filterAreas.map((a) => (
-                    <Badge key={a} variant="secondary" className="text-xs gap-1">
-                      {a}
-                      <button onClick={() => setFilterAreas(filterAreas.filter((x) => x !== a))} className="ml-0.5 hover:text-destructive">×</button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: A.bg, minHeight: 0, fontFamily: A.sans, color: A.ink }}>
+      <PageHeader
+        title="Customers"
+        subtitle={`${customers.length} customers · ${totalAreas} ${totalAreas === 1 ? "area" : "areas"}${unassignedCount > 0 ? ` · ${unassignedCount} unassigned` : ""}`}
+        right={
+          <>
+            <GhostButton icon={<Download size={13} />}>Import CSV</GhostButton>
+            <PrimaryButton icon={<Plus size={13} />} onClick={openNew}>Add customer</PrimaryButton>
+          </>
+        }
+      />
 
-              {/* Rep multi-select */}
-              <div className="space-y-1">
-                <Label className="text-xs font-medium">Rep</Label>
-                <div className="max-h-32 overflow-y-auto space-y-1 border rounded-md p-2">
-                  {repNamesForFilter.map((name) => (
-                    <label key={name} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted rounded px-1 py-0.5">
-                      <Checkbox
-                        checked={filterReps.includes(name)}
-                        onCheckedChange={(checked) => {
-                          if (checked) setFilterReps([...filterReps, name]);
-                          else setFilterReps(filterReps.filter((r) => r !== name));
-                        }}
-                      />
-                      {name}
-                    </label>
-                  ))}
-                  {repNamesForFilter.length === 0 && <p className="text-xs text-muted-foreground">No assigned reps</p>}
-                </div>
-              </div>
-
-              {/* Area multi-select */}
-              <div className="space-y-1">
-                <Label className="text-xs font-medium">Area</Label>
-                <div className="max-h-32 overflow-y-auto space-y-1 border rounded-md p-2">
-                  {areas.map((area) => (
-                    <label key={area} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted rounded px-1 py-0.5">
-                      <Checkbox
-                        checked={filterAreas.includes(area)}
-                        onCheckedChange={(checked) => {
-                          if (checked) setFilterAreas([...filterAreas, area]);
-                          else setFilterAreas(filterAreas.filter((a) => a !== area));
-                        }}
-                      />
-                      {area}
-                    </label>
-                  ))}
-                  {areas.length === 0 && <p className="text-xs text-muted-foreground">No areas</p>}
-                </div>
-              </div>
-
-              {activeFilterCount > 0 && (
-                <Button variant="ghost" size="sm" className="w-full" onClick={clearFilters}>Clear filters</Button>
-              )}
-            </PopoverContent>
-          </Popover>
+      {/* Filter strip — preserves all the existing filter logic, just restyled */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 24px", background: A.panel, borderBottom: `1px solid ${A.border}`, flexShrink: 0 }}>
+        <div style={{ position: "relative", width: 300 }}>
+          <Input
+            placeholder="Search customer, area, or rep…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ paddingLeft: 34, height: 32, fontSize: 12.5, background: A.panel, borderColor: A.border }}
+          />
+          <Filter size={14} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: A.inkMute, pointerEvents: "none" }} />
         </div>
-        {loading ? <p className="text-muted-foreground py-4">Loading...</p> : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead><SortButton label="Name" sortId="customer_name" /></TableHead>
-                <TableHead>Acc #</TableHead>
-                <TableHead><SortButton label="Area" sortId="area" /></TableHead>
-                <TableHead><SortButton label="Rep" sortId="rep" /></TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-medium">
-                    <button
-                      onClick={() => navigate(`/admin/customer/${c.id}`)}
-                      className="text-left hover:underline hover:text-primary transition-colors"
-                    >
-                      {c.customer_name}
-                    </button>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{c.account_number || "—"}</TableCell>
-                  <TableCell>{c.area || "—"}</TableCell>
-                  <TableCell className="text-muted-foreground">{customerRepMap[c.id] || "Unassigned"}</TableCell>
-                  <TableCell className="text-right space-x-1">
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(c)} className="text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
-                  </TableCell>
-                </TableRow>
+
+        <div style={{ width: 1, height: 22, background: A.borderSoft, margin: "0 4px" }} />
+
+        {/* Rep filter — uses the existing Popover for behaviour, restyled trigger */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <button type="button" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px 5px 11px", border: `1px solid ${filterReps.length > 0 ? A.green : A.border}`, borderRadius: 6, background: filterReps.length > 0 ? A.greenSoft : A.panel, color: filterReps.length > 0 ? A.green : A.inkSoft, fontFamily: A.sans, fontSize: 11.5, fontWeight: 500, cursor: "pointer" }}>
+              <span style={{ color: filterReps.length > 0 ? A.green : A.inkMute, fontWeight: 600 }}>Rep:</span>
+              <span>{filterReps.length === 0 ? "Any" : filterReps.length === 1 ? filterReps[0] : `${filterReps.length} selected`}</span>
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64 space-y-2" align="start">
+            <Label className="text-xs font-medium">Rep</Label>
+            <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md p-2">
+              {repNamesForFilter.map((name) => (
+                <label key={name} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted rounded px-1 py-0.5">
+                  <Checkbox
+                    checked={filterReps.includes(name)}
+                    onCheckedChange={(checked) => {
+                      if (checked) setFilterReps([...filterReps, name]);
+                      else setFilterReps(filterReps.filter((r) => r !== name));
+                    }}
+                  />
+                  {name}
+                </label>
               ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
+              {repNamesForFilter.length === 0 && <p className="text-xs text-muted-foreground">No assigned reps</p>}
+            </div>
+            {filterReps.length > 0 && (
+              <Button variant="ghost" size="sm" className="w-full" onClick={() => setFilterReps([])}>Clear</Button>
+            )}
+          </PopoverContent>
+        </Popover>
+
+        {/* Area filter — same pattern */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <button type="button" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px 5px 11px", border: `1px solid ${filterAreas.length > 0 ? A.green : A.border}`, borderRadius: 6, background: filterAreas.length > 0 ? A.greenSoft : A.panel, color: filterAreas.length > 0 ? A.green : A.inkSoft, fontFamily: A.sans, fontSize: 11.5, fontWeight: 500, cursor: "pointer" }}>
+              <span style={{ color: filterAreas.length > 0 ? A.green : A.inkMute, fontWeight: 600 }}>Area:</span>
+              <span>{filterAreas.length === 0 ? "All" : filterAreas.length === 1 ? filterAreas[0] : `${filterAreas.length} selected`}</span>
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64 space-y-2" align="start">
+            <Label className="text-xs font-medium">Area</Label>
+            <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md p-2">
+              {areas.map((a) => (
+                <label key={a} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted rounded px-1 py-0.5">
+                  <Checkbox
+                    checked={filterAreas.includes(a)}
+                    onCheckedChange={(checked) => {
+                      if (checked) setFilterAreas([...filterAreas, a]);
+                      else setFilterAreas(filterAreas.filter((x) => x !== a));
+                    }}
+                  />
+                  {a}
+                </label>
+              ))}
+              {areas.length === 0 && <p className="text-xs text-muted-foreground">No areas</p>}
+            </div>
+            {filterAreas.length > 0 && (
+              <Button variant="ghost" size="sm" className="w-full" onClick={() => setFilterAreas([])}>Clear</Button>
+            )}
+          </PopoverContent>
+        </Popover>
+
+        <FilterChip
+          label="Sort:"
+          value={`${sortKey === "customer_name" ? "Name" : sortKey === "area" ? "Area" : "Rep"} ${sortAsc ? "↑" : "↓"}`}
+          active
+          onClick={() => {
+            // cycle: name → area → rep → name, toggling asc on first hit per key
+            const order: SortKey[] = ["customer_name", "area", "rep"];
+            const next = order[(order.indexOf(sortKey) + 1) % order.length];
+            setSortKey(next);
+            setSortAsc(true);
+          }}
+        />
+
+        <div style={{ flex: 1 }} />
+        <div style={{ fontSize: 11.5, color: A.inkMute }}>{filtered.length} of {customers.length}</div>
+      </div>
+
+      {/* Main scrollable area */}
+      <div style={{ flex: 1, overflow: "auto", padding: "16px 24px" }}>
+        {/* Stat strip */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 14 }}>
+          <StatCard label="Total customers"   value={customers.length} sub={`${customers.length - unassignedCount} assigned`} />
+          <StatCard label="Areas"              value={totalAreas} sub="across all reps" />
+          <StatCard label="Assigned to a rep"  value={customers.length - unassignedCount} accent={A.green} />
+          <StatCard label="Unassigned"         value={unassignedCount} sub={unassignedCount > 0 ? "needs a rep" : "all good"} accent={unassignedCount > 0 ? A.danger : A.green} />
+        </div>
+
+        {/* Table — CSS grid so the columns line up with the header row */}
+        <div style={{ background: A.panel, border: `1px solid ${A.border}`, borderRadius: 10, overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "100px 2fr 1fr 1.2fr 80px", padding: "10px 16px", fontSize: 10.5, color: A.inkMute, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase", borderBottom: `1px solid ${A.borderSoft}`, background: A.panelTint }}>
+            <div>Account №</div>
+            <div style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("customer_name")}>
+              Customer {sortKey === "customer_name" && (sortAsc ? "↑" : "↓")}
+            </div>
+            <div style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("area")}>
+              Area {sortKey === "area" && (sortAsc ? "↑" : "↓")}
+            </div>
+            <div style={{ cursor: "pointer", userSelect: "none" }} onClick={() => handleSort("rep")}>
+              Assigned rep {sortKey === "rep" && (sortAsc ? "↑" : "↓")}
+            </div>
+            <div style={{ textAlign: "right" }}>Actions</div>
+          </div>
+
+          {loading ? (
+            <div style={{ padding: "40px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>Loading…</div>
+          ) : filtered.length === 0 ? (
+            <div style={{ padding: "40px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>
+              {customers.length === 0 ? "No customers yet — click Add customer to create one." : "No customers match your filters."}
+            </div>
+          ) : (
+            filtered.map((c, i) => (
+              <div key={c.id} style={{ display: "grid", gridTemplateColumns: "100px 2fr 1fr 1.2fr 80px", padding: "11px 16px", alignItems: "center", borderBottom: i < filtered.length - 1 ? `1px solid ${A.borderRow}` : "none", fontSize: 12.5 }}>
+                <div style={{ fontFamily: A.mono, fontSize: 11, color: A.inkSoft }}>{c.account_number ? `#${c.account_number}` : "—"}</div>
+                <button
+                  onClick={() => navigate(`/admin/customer/${c.id}`)}
+                  style={{ background: "transparent", border: "none", padding: 0, fontFamily: A.sans, fontSize: 12.5, fontWeight: 500, color: A.ink, textAlign: "left", cursor: "pointer" }}
+                  onMouseEnter={(e) => { (e.target as HTMLElement).style.color = A.green; }}
+                  onMouseLeave={(e) => { (e.target as HTMLElement).style.color = A.ink; }}
+                >
+                  {c.customer_name}
+                </button>
+                <div>{c.area ? <Tag tone="cream">{c.area}</Tag> : <span style={{ color: A.inkMute }}>—</span>}</div>
+                <div style={{ color: customerRepMap[c.id] ? A.ink : A.inkMute, fontStyle: customerRepMap[c.id] ? "normal" : "italic" }}>
+                  {customerRepMap[c.id] || "Unassigned"}
+                </div>
+                <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                  <button type="button" onClick={() => openEdit(c)} title="Edit" style={{ padding: 5, background: "transparent", border: "none", borderRadius: 5, color: A.inkSoft, cursor: "pointer" }}>
+                    <Pencil size={14} />
+                  </button>
+                  <button type="button" onClick={() => setDeleteTarget(c)} title="Delete" style={{ padding: 5, background: "transparent", border: "none", borderRadius: 5, color: A.danger, cursor: "pointer" }}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
 
       {/* Edit/Add Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -424,6 +472,6 @@ export default function AdminCustomers() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Card>
+    </div>
   );
 }
