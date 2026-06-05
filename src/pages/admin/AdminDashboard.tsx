@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { fmtTime12h } from "@/lib/timeUtils";
+import { A, PageHeader, StatCard, Pill, Tag, ToolbarSearch, PulseKeyframes } from "@/lib/adminUi";
 
 // ─── local types ──────────────────────────────────────────────────────────────
 
@@ -94,131 +95,95 @@ function isoToLocalSortKey(iso: string): string {
   );
 }
 
-// ─── StatCard ─────────────────────────────────────────────────────────────────
+// ─── StatStrip ───────────────────────────────────────────────────────────────
+// 4-card strip across the top of the dashboard. The top-level <StatCard> from
+// adminUi is reused — this just lays them out.
 
-function StatCard({
-  label,
-  value,
-  accentClass,
-}: {
-  label: string;
-  value: string | number;
-  accentClass: string;
-}) {
+function StatStrip({ stats, totalScheduled }: { stats: { visited: number; skipped: number; orders: number; orderValue: number }; totalScheduled: number }) {
+  const visitPct = totalScheduled > 0 ? Math.round((stats.visited / totalScheduled) * 100) : 0;
   return (
-    <div
-      className={`bg-card rounded-xl shadow-sm border border-border border-l-4 ${accentClass} px-4 py-4`}
-    >
-      <p className="text-2xl font-bold text-foreground leading-tight">{value}</p>
-      <p className="text-xs text-muted-foreground mt-1">{label}</p>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+      <StatCard label="Visits"      value={`${stats.visited} / ${totalScheduled}`} sub={`${visitPct}%`} accent={A.green} />
+      <StatCard label="Skipped"     value={stats.skipped} />
+      <StatCard label="Orders"      value={stats.orders} accent={A.sun} />
+      <StatCard label="Order value" value={`R\u00A0${stats.orderValue.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} accent={A.green} />
     </div>
   );
 }
 
-// ─── RepStatusCard ────────────────────────────────────────────────────────────
+// ─── RepDeskRow ──────────────────────────────────────────────────────────────
+// One row in the "Reps on the road" table — name + avatar, status pill,
+// current customer, progress bar, area tags.
 
-const STATUS_META: Record<
-  RepStatus,
-  { label: string; pillBg: string; pillText: string }
-> = {
-  checked_in:   { label: "Checked In",   pillBg: "bg-green-100", pillText: "text-green-700" },
-  travelling:   { label: "Travelling",   pillBg: "bg-blue-100",  pillText: "text-blue-700"  },
-  day_complete: { label: "Day Complete", pillBg: "bg-green-50",  pillText: "text-green-600" },
-  not_started:  { label: "Not Started",  pillBg: "bg-gray-100",  pillText: "text-gray-500"  },
-  no_schedule:  { label: "No Schedule",  pillBg: "bg-gray-50",   pillText: "text-gray-400"  },
-};
-
-function RepStatusCard({ card }: { card: RepCardData }) {
-  const meta = STATUS_META[card.status];
+function RepDeskRow({ card }: { card: RepCardData }) {
+  const pct = card.total > 0 ? Math.round(((card.visited + card.skipped) / card.total) * 100) : 0;
+  const initials = card.rep.rep_name.split(/\s+/).map((s) => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 
   return (
-    <div className="bg-card rounded-xl shadow-sm border border-border px-5 py-4 space-y-3">
-      {/* Name + status pill */}
-      <div className="flex items-start justify-between gap-2">
-        <p className="font-bold text-foreground leading-snug">{card.rep.rep_name}</p>
-        <span
-          className={`shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full ${meta.pillBg} ${meta.pillText}`}
-        >
-          {meta.label}
-        </span>
+    <div style={{ display: "grid", gridTemplateColumns: "1.4fr 0.9fr 1.3fr 1fr 0.7fr", padding: "11px 16px", alignItems: "center", borderBottom: `1px solid ${A.borderRow}`, fontFamily: A.sans }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 999, background: A.greenSoft, color: A.green, fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>{initials}</div>
+        <div style={{ fontSize: 13, fontWeight: 500, color: A.ink }}>{card.rep.rep_name}</div>
       </div>
-
-      {/* Current location (checked-in) */}
-      {card.status === "checked_in" && card.currentCustomer && (
-        <p className="text-xs text-muted-foreground">
-          {card.currentCustomer}
-          {card.currentArrivalTime ? ` since ${fmtTime12h(card.currentArrivalTime)}` : ""}
-        </p>
-      )}
-
-      {/* No schedule */}
-      {!card.hasSchedule && (
-        <p className="text-xs text-muted-foreground italic">No schedule today</p>
-      )}
-
-      {/* Progress bar */}
-      {card.hasSchedule && card.total > 0 && (
-        <div className="space-y-1.5">
-          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary rounded-full transition-all duration-300"
-              style={{ width: `${Math.round(card.progress * 100)}%` }}
-            />
+      <div><Pill status={card.status} /></div>
+      <div style={{ fontSize: 12, color: card.currentCustomer ? A.ink : A.inkMute }}>
+        {card.currentCustomer ? (
+          <>
+            {card.currentCustomer}
+            {card.currentArrivalTime && (
+              <span style={{ fontFamily: A.mono, fontSize: 11, color: A.inkMute, marginLeft: 6 }}>· {card.currentArrivalTime.slice(0, 5)}</span>
+            )}
+          </>
+        ) : card.hasSchedule ? "—" : <span style={{ fontStyle: "italic" }}>No schedule today</span>}
+      </div>
+      <div>
+        {card.hasSchedule && card.total > 0 ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ flex: 1, height: 4, background: A.borderSoft, borderRadius: 999, overflow: "hidden" }}>
+              <div style={{ width: `${pct}%`, height: "100%", background: card.status === "day_complete" ? A.greenMid : A.green, borderRadius: 999, transition: "width 0.3s" }} />
+            </div>
+            <div style={{ fontFamily: A.mono, fontSize: 11, color: A.inkSoft, minWidth: 28, textAlign: "right" }}>{card.visited + card.skipped}/{card.total}</div>
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            {card.visited + card.skipped} / {card.total} customers
-          </p>
-        </div>
-      )}
-
-      {/* Area tags */}
-      {card.areas.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2">
-          {card.areas.map(area => (
-            <span
-              key={area}
-              className="inline-block bg-green-800 text-white text-xs font-medium px-2 py-0.5 rounded-full"
-            >
-              {area}
-            </span>
-          ))}
-        </div>
-      )}
+        ) : <span style={{ fontSize: 11, color: A.inkMute }}>—</span>}
+      </div>
+      <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", flexWrap: "wrap" }}>
+        {card.areas.map((a) => <Tag key={a}>{a}</Tag>)}
+      </div>
     </div>
   );
 }
 
-// ─── ActivityRow ──────────────────────────────────────────────────────────────
+// ─── ActivityFeedRow ─────────────────────────────────────────────────────────
+// One row in the live activity feed. Colour-coded badge maps to event kind.
 
-function ActivityRow({ event }: { event: ActivityEvent }) {
-  const textClass =
-    event.type === "checkout"
-      ? "text-green-700"
-      : event.type === "skip"
-      ? "text-destructive"
-      : event.type === "offroute"
-      ? "text-amber-700"
-      : "text-foreground";
-
-  let line = "";
-  if (event.type === "checkin") {
-    line = `${event.repName} checked in at ${event.customerName}`;
-  } else if (event.type === "checkout") {
-    const dur = event.duration != null ? ` (${event.duration}m)` : "";
-    line = `${event.repName} checked out of ${event.customerName}${dur}`;
-  } else if (event.type === "offroute") {
-    line = `${event.repName} logged an off-route order at ${event.customerName}`;
-  } else {
-    const reason = event.notes ? ` — ${event.notes}` : "";
-    line = `${event.repName} skipped ${event.customerName}${reason}`;
-  }
+function ActivityFeedRow({ event }: { event: ActivityEvent }) {
+  const config = {
+    checkin:  { c: A.green,    label: "IN",   bg: A.greenSoft, verb: "arrived at" },
+    checkout: { c: A.greenMid, label: "OUT",  bg: A.greenWash, verb: "left" },
+    skip:     { c: A.danger,   label: "SKIP", bg: A.dangerBg,  verb: "skipped" },
+    offroute: { c: A.sun,      label: "OFF",  bg: A.sunBg,     verb: "logged off-route at" },
+  }[event.type];
 
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 gap-4">
-      <p className={`text-sm ${textClass} flex-1 min-w-0`}>{line}</p>
-      <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
-        {event.timeDisplay}
-      </span>
+    <div style={{ display: "flex", gap: 11, padding: "10px 16px", borderBottom: `1px solid ${A.borderRow}`, alignItems: "flex-start", fontFamily: A.sans }}>
+      <div style={{ fontFamily: A.mono, fontSize: 11, color: A.inkMute, paddingTop: 1, minWidth: 44 }}>{event.timeDisplay}</div>
+      <div style={{ minWidth: 38 }}>
+        <span style={{ display: "inline-block", padding: "1px 5px", background: config.bg, color: config.c, fontFamily: A.mono, fontSize: 9.5, fontWeight: 700, borderRadius: 3, letterSpacing: 0.4 }}>{config.label}</span>
+      </div>
+      <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.4, color: A.ink }}>
+        <div>
+          <span style={{ fontWeight: 600 }}>{event.repName}</span>{" "}
+          <span style={{ color: A.inkMute }}>{config.verb}</span>{" "}
+          {event.customerName}
+        </div>
+        {(event.duration != null || event.notes) && (
+          <div style={{ fontSize: 11.5, color: A.inkMute, marginTop: 2 }}>
+            {event.duration != null && <span style={{ fontFamily: A.mono }}>{event.duration}m</span>}
+            {event.duration != null && event.notes && <span> · </span>}
+            {event.notes && <span style={{ fontStyle: "italic" }}>"{event.notes}"</span>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -498,7 +463,7 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: A.bg }}>
         <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
       </div>
     );
@@ -506,80 +471,81 @@ export default function AdminDashboard() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <p className="text-destructive text-sm">{error}</p>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: A.bg, fontFamily: A.sans, color: A.danger, fontSize: 13 }}>
+        {error}
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: A.bg, minHeight: 0, fontFamily: A.sans, color: A.ink }}>
+      <PulseKeyframes />
 
-      {/* ── Section 1: Page header ─────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-foreground">
-          {format(new Date(), "EEEE, d MMMM yyyy")}
-        </h1>
-        <div className="flex items-center gap-2">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-          </span>
-          <span className="text-sm font-medium text-green-600">Live</span>
-        </div>
-      </div>
-
-      {/* ── Section 2: Summary stat strip ─────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Visits Completed" value={`${stats.visited} / ${totalScheduled}`} accentClass="border-l-green-500" />
-        <StatCard label="Skipped"          value={stats.skipped}  accentClass="border-l-red-500"   />
-        <StatCard label="Orders Placed"    value={stats.orders}   accentClass="border-l-blue-500"  />
-        <StatCard
-          label="Order Value"
-          value={`R\u00A0${stats.orderValue.toLocaleString("en-ZA", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}`}
-          accentClass="border-l-amber-500"
-        />
-      </div>
-
-      {/* ── Section 3: Rep status cards ───────────────────────────────────── */}
-      <section>
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">
-          Rep Status
-        </h2>
-        {repCards.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No active reps found.</p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            {repCards.map((card) => (
-              <RepStatusCard key={card.rep.id} card={card} />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* ── Section 4: Live activity feed ─────────────────────────────────── */}
-      <section>
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">
-          Live Activity
-        </h2>
-        <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
-          {activityEvents.length === 0 ? (
-            <p className="px-4 py-10 text-center text-muted-foreground text-sm">
-              No activity yet today.
-            </p>
-          ) : (
-            <div className="divide-y divide-border max-h-[400px] overflow-y-auto">
-              {activityEvents.map((ev, idx) => (
-                <ActivityRow key={idx} event={ev} />
-              ))}
+      <PageHeader
+        title="Today"
+        subtitle={format(new Date(), "EEEE, d MMMM yyyy")}
+        right={
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 10px", background: A.greenSoft, borderRadius: 6 }}>
+              <span style={{ position: "relative", display: "inline-block", width: 6, height: 6 }}>
+                <span style={{ position: "absolute", inset: 0, borderRadius: 999, background: A.green }} />
+                <span style={{ position: "absolute", inset: -2, borderRadius: 999, background: A.green, opacity: 0.25, animation: "pulseA 1.4s ease-out infinite" }} />
+              </span>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: A.green }}>Realtime · synced</span>
             </div>
-          )}
-        </div>
-      </section>
+            <ToolbarSearch placeholder="Search reps, customers…" />
+          </>
+        }
+      />
 
+      <div style={{ padding: "18px 24px", overflow: "auto", flex: 1 }}>
+        {/* Stat strip */}
+        <div style={{ marginBottom: 16 }}>
+          <StatStrip stats={stats} totalScheduled={totalScheduled} />
+        </div>
+
+        {/* Two-column: reps table + activity feed */}
+        <div style={{ display: "grid", gridTemplateColumns: "1.35fr 1fr", gap: 14 }}>
+          {/* Reps on the road */}
+          <div style={{ background: A.panel, border: `1px solid ${A.border}`, borderRadius: 10, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: `1px solid ${A.border}` }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Reps on the road</div>
+              <div style={{ fontFamily: A.mono, fontSize: 11, color: A.inkMute }}>{repCards.length} active</div>
+            </div>
+            {repCards.length === 0 ? (
+              <div style={{ padding: "40px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>No active reps found.</div>
+            ) : (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1.4fr 0.9fr 1.3fr 1fr 0.7fr", padding: "8px 16px", fontSize: 10.5, color: A.inkMute, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase", borderBottom: `1px solid ${A.borderSoft}` }}>
+                  <div>Name</div>
+                  <div>Status</div>
+                  <div>Current</div>
+                  <div>Progress</div>
+                  <div style={{ textAlign: "right" }}>Areas</div>
+                </div>
+                {repCards.map((card) => (
+                  <RepDeskRow key={card.rep.id} card={card} />
+                ))}
+              </>
+            )}
+          </div>
+
+          {/* Activity feed */}
+          <div style={{ background: A.panel, border: `1px solid ${A.border}`, borderRadius: 10, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: `1px solid ${A.border}` }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Activity</div>
+              <div style={{ fontFamily: A.mono, fontSize: 11, color: A.inkMute }}>today · live</div>
+            </div>
+            {activityEvents.length === 0 ? (
+              <div style={{ padding: "40px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>No activity yet today.</div>
+            ) : (
+              <div style={{ maxHeight: 600, overflow: "auto" }}>
+                {activityEvents.map((ev, i) => <ActivityFeedRow key={i} event={ev} />)}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

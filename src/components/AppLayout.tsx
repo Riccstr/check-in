@@ -17,6 +17,7 @@ import {
 import logoImg from "@/assets/logo.png";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import OfflineStatusBar from "@/components/OfflineStatusBar";
 import { PullToRefresh } from "@/components/PullToRefresh";
@@ -24,6 +25,56 @@ import { setupAutoSync } from "@/lib/syncEngine";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { toast } from "sonner";
 import { useRegisterSW } from "virtual:pwa-register/react";
+import { AdminSidebar, PulseKeyframes, A } from "@/lib/adminUi";
+
+function AdminChrome({
+  user,
+  repName,
+  signOut,
+  children,
+}: {
+  user: { email?: string | null } | null;
+  repName: string | null;
+  signOut: () => Promise<void> | void;
+  children: ReactNode;
+}) {
+  const displayName = repName || user?.email?.split("@")[0] || "Admin";
+  const initials = displayName
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase() || "A";
+
+  return (
+    <div style={{ display: "flex", height: "100vh", background: A.bg, overflow: "hidden" }}>
+      <AdminSidebar
+        userInitials={initials}
+        userName={displayName}
+        userSubtitle="Admin"
+      />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {/* Top utility strip — offline status + sign out. Page-level headers
+            (the title row each page renders via PageHeader) sit BELOW this. */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, padding: "8px 18px", background: A.panel, borderBottom: `1px solid ${A.borderSoft}`, flexShrink: 0 }}>
+          <OfflineStatusBar />
+          <button
+            type="button"
+            onClick={() => signOut()}
+            title="Sign out"
+            style={{ padding: "6px 10px", background: "transparent", border: `1px solid ${A.border}`, borderRadius: 6, color: A.inkSoft, fontFamily: A.sans, fontSize: 11.5, fontWeight: 500, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}
+          >
+            <LogOut className="h-3.5 w-3.5" /> Sign out
+          </button>
+        </div>
+        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0 }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AppLayout() {
   const { user, role, repName, loading, signOut, roleState, refreshAuthContext } = useAuth();
@@ -134,6 +185,8 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen bg-background">
+      <PulseKeyframes />
+
       {needRefresh && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm font-medium"
           style={{ background: "#1B2A4A", color: "#fff", border: "1px solid #2E5090" }}>
@@ -148,72 +201,86 @@ export default function AppLayout() {
           </button>
         </div>
       )}
+
       <PullToRefresh />
-      {!hideChrome && (
-        <header className="sticky top-0 z-50 border-b bg-card">
-          <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
-            <Link to="/" className="flex items-center gap-2 font-bold text-foreground">
-              <img src={logoImg} alt="Check-In Tracker" className="h-8 w-8" />
-              <span className="hidden sm:inline">Check-In Tracker</span>
-            </Link>
 
-            {/* Desktop nav */}
-            <nav className="hidden md:flex items-center gap-1">
-              {links.map((l) => (
-                <Link key={l.to} to={l.to} className={cn("nav-link", isActive(l.to) ? "nav-link-active" : "nav-link-inactive")}>
-                  <l.icon className="inline-block h-4 w-4 mr-1" />
-                  {l.label}
+      {/* ────────────────────────────────────────────────────────────────
+          Admin chrome — vertical sidebar + content column.
+          Rep chrome is unchanged below.
+         ──────────────────────────────────────────────────────────────── */}
+
+      {role === "admin" ? (
+        <AdminChrome
+          user={user}
+          repName={repName}
+          signOut={signOut}
+        >
+          <Outlet />
+        </AdminChrome>
+      ) : (
+        <>
+          {!hideChrome && (
+            <header className="sticky top-0 z-50 border-b bg-card">
+              <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
+                <Link to="/" className="flex items-center gap-2 font-bold text-foreground">
+                  <img src={logoImg} alt="Check-In Tracker" className="h-8 w-8" />
+                  <span className="hidden sm:inline">Check-In Tracker</span>
                 </Link>
-              ))}
-            </nav>
 
-            <div className="flex items-center gap-2">
-              <OfflineStatusBar />
-              <span className="hidden sm:inline text-xs font-medium uppercase tracking-wide px-2 py-1 rounded-full bg-secondary text-secondary-foreground">
-                {role === "rep" && repName ? repName : role}
-              </span>
-              {/* Logout button visible on desktop, or on mobile for admins (who have no hamburger on desktop) */}
-              <Button variant="ghost" size="icon" onClick={signOut} title="Sign out" className={role === "rep" ? "hidden md:inline-flex" : ""}>
-                <LogOut className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMenuOpen(!menuOpen)}>
-                {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-              </Button>
-            </div>
-          </div>
+                <nav className="hidden md:flex items-center gap-1">
+                  {repLinks.map((l) => (
+                    <Link key={l.to} to={l.to} className={cn("nav-link", isActive(l.to) ? "nav-link-active" : "nav-link-inactive")}>
+                      <l.icon className="inline-block h-4 w-4 mr-1" />
+                      {l.label}
+                    </Link>
+                  ))}
+                </nav>
 
-          {/* Mobile nav */}
-          {menuOpen && (
-            <nav className="md:hidden border-t px-4 py-2 space-y-1 bg-card">
-              {links.map((l) => (
-                <Link
-                  key={l.to}
-                  to={l.to}
-                  onClick={() => setMenuOpen(false)}
-                  className={cn("nav-link block", isActive(l.to) ? "nav-link-active" : "nav-link-inactive")}
-                >
-                  <l.icon className="inline-block h-4 w-4 mr-2" />
-                  {l.label}
-                </Link>
-              ))}
-              {role === "rep" && (
-                <button
-                  type="button"
-                  onClick={() => { setMenuOpen(false); signOut(); }}
-                  className="nav-link block w-full text-left text-red-500 mt-1 pt-2 border-t border-border"
-                >
-                  <LogOut className="inline-block h-4 w-4 mr-2" />
-                  Logout
-                </button>
+                <div className="flex items-center gap-2">
+                  <OfflineStatusBar />
+                  <span className="hidden sm:inline text-xs font-medium uppercase tracking-wide px-2 py-1 rounded-full bg-secondary text-secondary-foreground">
+                    {repName || role}
+                  </span>
+                  <Button variant="ghost" size="icon" onClick={signOut} title="Sign out" className="hidden md:inline-flex">
+                    <LogOut className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMenuOpen(!menuOpen)}>
+                    {menuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+
+              {menuOpen && (
+                <nav className="md:hidden border-t px-4 py-2 space-y-1 bg-card">
+                  {repLinks.map((l) => (
+                    <Link
+                      key={l.to}
+                      to={l.to}
+                      onClick={() => setMenuOpen(false)}
+                      className={cn("nav-link block", isActive(l.to) ? "nav-link-active" : "nav-link-inactive")}
+                    >
+                      <l.icon className="inline-block h-4 w-4 mr-2" />
+                      {l.label}
+                    </Link>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => { setMenuOpen(false); signOut(); }}
+                    className="nav-link block w-full text-left text-red-500 mt-1 pt-2 border-t border-border"
+                  >
+                    <LogOut className="inline-block h-4 w-4 mr-2" />
+                    Logout
+                  </button>
+                </nav>
               )}
-            </nav>
+            </header>
           )}
-        </header>
-      )}
 
-      <main className={hideChrome ? "h-screen flex flex-col overflow-hidden" : "mx-auto max-w-7xl px-4 py-6"}>
-        <Outlet />
-      </main>
+          <main className={hideChrome ? "h-screen flex flex-col overflow-hidden" : "mx-auto max-w-7xl px-4 py-6"}>
+            <Outlet />
+          </main>
+        </>
+      )}
     </div>
   );
 }
