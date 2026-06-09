@@ -55,19 +55,6 @@ function AdminChrome({
         userSubtitle="Admin"
       />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        {/* Top utility strip — offline status + sign out. Page-level headers
-            (the title row each page renders via PageHeader) sit BELOW this. */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, padding: "8px 18px", background: A.panel, borderBottom: `1px solid ${A.borderSoft}`, flexShrink: 0 }}>
-          <OfflineStatusBar />
-          <button
-            type="button"
-            onClick={() => signOut()}
-            title="Sign out"
-            style={{ padding: "6px 10px", background: "transparent", border: `1px solid ${A.border}`, borderRadius: 6, color: A.inkSoft, fontFamily: A.sans, fontSize: 11.5, fontWeight: 500, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}
-          >
-            <LogOut className="h-3.5 w-3.5" /> Sign out
-          </button>
-        </div>
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0 }}>
           {children}
         </div>

@@ -434,15 +434,27 @@ Manual visit logging form. Intended for ad-hoc visits outside the daily schedule
 
 ### Admin Pages
 
-#### `/admin/visits` — [AdminVisits.tsx](src/pages/admin/AdminVisits.tsx)
-All visits across all reps with edit/delete.
+#### `/admin/dashboard` — [AdminDashboard.tsx](src/pages/admin/AdminDashboard.tsx)
+Real-time dashboard showing live rep status and activity feed.
 
-**Tables read:** `visits`, `reps`, `customers`
-
-**Tables written:** `visits` (UPDATE, DELETE) — delete also clears `schedule_items.visit_id`
+**Tables read:** `daily_schedules`, `schedule_items`, `visits`, `reps`, `customers`, `app_settings`
 
 **Notable logic:**
-- Real-time subscription via `supabase.channel('admin-visits-realtime')` listening for INSERT/UPDATE on `visits`
+- Live rep cards showing: status pill (checked_in / travelling / day_complete / not_started / no_schedule), progress meter (X/Y visits), current customer, areas served
+- Status detection: checked_in if arrival_time but no leaving_time; travelling if some items left but some pending; day_complete if all visited/skipped
+- Activity feed: real-time checkin, checkout, skip, and off-route events sorted by timestamp
+- Uses status pills from `adminUi.tsx` with live pulse animation
+
+#### `/admin/visits` — [AdminVisits.tsx](src/pages/admin/AdminVisits.tsx)
+All visits across all reps with edit/delete. Uses soft-delete (is_deleted flag) to preserve data integrity.
+
+**Tables read:** `visits` (filtered `is_deleted = false`), `reps`, `customers`
+
+**Tables written:** `visits` (UPDATE, DELETE via `is_deleted = true`)
+
+**Notable logic:**
+- Real-time subscription via `supabase.channel('admin-visits-realtime')` listening for **INSERT + UPDATE only** (no DELETE) — updates local state on soft-delete
+- Delete action sets `is_deleted = true` (never physically removes rows)
 - Columns: Date, Rep, Customer, Account #, Arrival, Leaving, Duration, Photo, Order No., Qty, Amount, Notes
 - Edit modal includes all visit fields including order fields with time validation
 - Skipped visits highlighted with red background
@@ -459,19 +471,12 @@ Full CRUD for customer records and rep assignments.
 - Permanent delete cascades: removes `schedule_template_items`, `customer_assignments`, then the `customers` row
 - Filter/sort by rep, area, active status
 
-#### `/admin/reps` — [AdminReps.tsx](src/pages/admin/AdminReps.tsx)
-Rep record management.
-
-**Tables read:** `reps`
-
-**Tables written:** `reps` (INSERT, UPDATE) via the `manage-rep-user` edge function
-
-**Notable logic:**
-- "Set Login" (KeyRound icon) shown for reps with `user_id IS NULL` — calls `manage-rep-user` with `action: 'create'`
-- Updates use `manage-rep-user` with `action: 'update'`
-
 #### `/admin/schedules` — [AdminSchedules.tsx](src/pages/admin/AdminSchedules.tsx)
-Manage weekly rotation templates and view daily schedules.
+Manage weekly rotation templates and view daily schedules. Master-detail layout:
+- **Rep rail** (left): Searchable rep list; selecting a rep narrows all views below to that rep only
+- **Week-cycle rail** (left-centre): Horizontal 4-week cycle buttons (Week 1a, 1b, 2a, 2b); tap to manually override the current week
+- **Day tabs** (top): Mon–Fri filter; showing only that day's schedule items
+- **Stops list** (main): Drag-to-reorder visit sequence within the day; each stop shows customer, area tag(s), assigned arrival/leaving times; "Add" button at bottom to append new customers
 
 **Tables read:** `weekly_templates`, `schedule_templates`, `schedule_template_items`, `daily_schedules`, `schedule_items`, `app_settings`, `reps`, `customers`
 
@@ -482,20 +487,40 @@ Manage weekly rotation templates and view daily schedules.
 **Notable logic:**
 - Saving a template deletes future daily schedules for that rep/day that have no started items (forces regeneration)
 - Week cycle start date drives the `get_week_order_for_date()` calculation
-- Drag-to-reorder visit sequence within a day's template
-- Weekly Templates tab displays a horizontal Mon–Fri grid; each column shows area badges (derived from assigned customers) and a numbered customer list — days without a template show an "Add" button pre-seeded with that day
 - Current week auto-calculated on page load via `get_week_order_for_date` RPC; `app_settings.current_week_order` is updated automatically if the week has rolled over
 
 #### `/admin/reports` — [AdminExports.tsx](src/pages/admin/AdminExports.tsx)
-Export visit data as CSV, formatted Excel, or PDF.
+Export visit data as CSV, formatted Excel, or PDF. Two-pane layout: **configurator (left) + live preview (right)**.
+
+**Configurator (left):**
+- Filter selectors: Date range, Rep, Customer, Status (visited/skipped/all)
+- Export format radio buttons: CSV, Excel, PDF
+- Format-specific options (e.g., "Include order details" for CSV)
+- Export button
+
+**Live Preview (right):**
+- Real-time preview of filtered data
+- Paginated table view (if large dataset)
+- Download button below preview
 
 **Tables read:** `visits`, `reps`, `customers`, `daily_schedules`, `weekly_templates`
 
-**Exports:**
-- **Visits CSV:** Raw visit data with all fields including order fields
+**Export formats:**
+- **Visits CSV:** Raw visit data with all fields including order fields (rep_id, customer_id, visit_date, arrival_time, leaving_time, notes, status, order_number, order_quantity, order_amount)
 - **Averages CSV:** Aggregated per rep-customer pair (avg duration, total qty/amount)
-- **Excel XLSX:** Per-rep daily report — styled headers (dark blue/white), alternating row colors, skipped visits in red, totals row (productive time, qty, amount). Times formatted as 12-hour AM/PM. Duration as `Xh Ym`.
-- **PDF (A4 landscape):** Per-rep daily visit report with a branded banner (company logo top-left, rep name bold, areas + schedule day subtitle). Three equal info blocks below the banner: visit summary (left), travel metrics (centre — travel time, expected productive time, customers, time/customer), order summary (right). Visit table rows with skipped items highlighted red. Generated via `jsPDF` + `jspdf-autotable`; logo embedded as base64 via `addImage()`.
+- **Excel XLSX:** Per-rep daily report — styled headers (dark blue/white), alternating row colors, skipped visits in red, totals row (productive time, qty, amount). Times formatted as 12-hour AM/PM. Duration as `Xh Ym`. Uses `xlsx-js-style` for styling.
+- **PDF (A4 landscape):** Per-rep daily visit report with branded banner (company logo top-left, rep name bold, areas + schedule day subtitle). Three equal info blocks: visit summary (left), travel metrics (centre — travel time, expected productive time, customers, time/customer), order summary (right). Visit table rows with skipped items highlighted red. Generated via `jsPDF` + `jspdf-autotable`; logo embedded as base64.
+
+#### `/admin/customer/:customerId` — [CustomerDashboard.tsx](src/pages/admin/CustomerDashboard.tsx)
+Per-customer visit history and details.
+
+**Tables read:** `customers`, `visits`, `reps`
+
+**Notable logic:**
+- Breadcrumb: Customers > [Customer Name]
+- Customer card: name, account number, area, assigned reps
+- Visit table: date, rep, arrival, leaving, duration, status, order details, notes
+- Filter/sort by date range, rep, status
 
 #### `/admin/customer-chart` — [CustomerChart.tsx](src/pages/admin/CustomerChart.tsx)
 Visual chart of visit frequency and duration per customer.
@@ -507,11 +532,22 @@ Visual chart of visit frequency and duration per customer.
 - Filters by rep and date range
 
 #### `/admin/users` — [AdminUsers.tsx](src/pages/admin/AdminUsers.tsx)
-Full user account lifecycle management.
+Full user account lifecycle management. Two-table layout filtered by role:
+- **Administrators:** All users with role `admin`
+- **Field reps & pending:** All users with role `rep` or `null` (unassigned)
+- **Header:** "Add User" button to create new accounts
+- Each row: email, name, role, last sign-in, login audit trail (who changed password last)
 
 **Tables read/written:** Via `manage-users` edge function (touches `auth.users`, `user_roles`, `reps`, `profiles`)
 
-**Actions:** `list`, `create_user`, `update_role`, `reset_password`, `delete_user`
+**Actions supported by manage-users:**
+- `list` — fetch all Supabase users enriched with role, rep link, profile audit data
+- `create_user` — create auth user + assign role in `user_roles` table
+- `update_user` — update user metadata (name, etc.)
+- `update_role` — change role (admin ↔ rep)
+- `update_email` — change user email
+- `reset_password` — set new password + update audit timestamps
+- `delete_user` — remove from `user_roles` + `auth.users` (unlinks from rep record)
 
 **Notable logic:**
 - Login audit trail from `profiles.login_updated_at` / `login_updated_by`
@@ -519,20 +555,43 @@ Full user account lifecycle management.
 - Role change (admin ↔ rep) updates `user_roles` table
 
 #### `/admin/account` — [AdminAccount.tsx](src/pages/admin/AdminAccount.tsx)
-Admin's own email/password settings. Uses `supabase.auth.updateUser()` directly. No custom DB queries.
+Admin's own email/password settings and account preferences. **Placeholder UI** — features are rendered but not fully wired to backend.
+
+**Placeholder sections (TODO backend wiring):**
+- **2FA (Two-Factor Authentication):** UI present, toggle controls not yet implemented
+- **Active Sessions:** Lists current login sessions, not yet synced to backend
+- **Preferences:** Account preference toggles (notifications, theme, etc.), UI only
+
+**Functional:**
+- Email/password change via `supabase.auth.updateUser()` (direct call, no custom DB queries)
 
 ---
 
 ## Key Components
 
 ### [AppLayout.tsx](src/components/AppLayout.tsx)
-Main layout wrapper used on every authenticated page. Responsibilities:
-- Sticky header with logo, nav links, offline indicator, role badge, sign-out
-- Auth guard — redirects unauthenticated users to `/auth`
-- Calls `setupAutoSync()` for reps on mount to start background sync loop (checks every 5s if online)
-- Handles `offline_bootstrap_required` state (shows guidance screen)
-- Route persistence: saves current path to `localStorage` for mobile background/restore
+Main layout wrapper used on every authenticated page. Branches on user role:
+- **Admins:** Render `AdminChrome` (left sidebar via `AdminSidebar` from `adminUi.tsx`) + page content
+- **Reps:** Render traditional header layout + `/schedule` fullscreen path (no chrome)
+- **Chrome hiding logic:** When `role === 'rep' && pathname === '/schedule'`, chrome is hidden for fullscreen UX
+- **Common responsibilities:**
+  - Auth guard — redirects unauthenticated users to `/auth`
+  - Calls `setupAutoSync()` for reps on mount to start background sync loop (checks every 5s if online)
+  - Handles `offline_bootstrap_required` state (shows guidance screen)
+  - Route persistence: saves current path to `localStorage` for mobile background/restore
 - Consumed by: every page
+
+### [adminUi.tsx](src/lib/adminUi.tsx) — *Admin-only design system*
+Centralized palette, components, and utilities for all admin pages. **Admin-only** (rep app uses inline `C` palette in DailySchedule.tsx).
+
+**Exports:**
+- **Palette:** `A` object with semantic colors (deep green `#1B5238`, cream `#F4ECDB`, sun `#C68A1F`, etc.), typefaces (`Inter`, `JetBrains Mono`)
+- **Status:** `RepStatusKey` type and `STATUS_META` for pill rendering (checked_in, travelling, day_complete, not_started, no_schedule)
+- **Currency formatter:** `zar(n, opts)` — formats amounts as R-formatted numbers with optional compact notation
+- **Keyframes:** `PulseKeyframes()` — mounts once at App root to enable live indicator animations
+- **Chrome:** `AdminSidebar({ userInitials, userName, userSubtitle })` — vertical left rail (224px) with nav items + user card
+- **Components:** `PageHeader`, `Pill`, `Tag`, `StatCard`, `FilterChip`, `PrimaryButton`, `GhostButton`, `ToolbarSearch`
+- **Used by:** All admin pages (`AdminDashboard`, `AdminCustomers`, `AdminSchedules`, `AdminVisits`, `AdminExports`, `AdminUsers`, `AdminAccount`)
 
 ### [CameraCapture.tsx](src/components/CameraCapture.tsx)
 Full-screen camera overlay for taking store photos.
@@ -540,6 +599,13 @@ Full-screen camera overlay for taking store photos.
 - **iOS requirement:** Must be triggered by a user gesture (tap) — cannot auto-open camera
 - Captures frame to canvas as JPEG blob
 - Consumed by: [DailySchedule.tsx](src/pages/DailySchedule.tsx), [LogVisit.tsx](src/pages/LogVisit.tsx)
+
+### `AdminChrome` — *Sidebar wrapper for admin pages*
+Component defined inline in [AppLayout.tsx](src/components/AppLayout.tsx). Wraps all admin pages with:
+- Vertical sidebar (left) — `AdminSidebar` with nav menu + user card
+- Top utility strip (right) — offline indicator + sign-out button
+- Flexible main area for page content
+- Used by: AppLayout when `role === 'admin'`
 
 ### [OfflineStatusBar.tsx](src/components/OfflineStatusBar.tsx)
 Visual banner displayed when `navigator.onLine === false`. Uses `useOnlineStatus` hook.
@@ -590,7 +656,9 @@ Both functions are configured with `verify_jwt = false` in `supabase/config.toml
 |--------|-------------|
 | `list` | Returns all Supabase auth users enriched with `user_roles`, linked `reps` record, `profiles` data (including login audit fields) |
 | `create_user` | Creates auth user with `email_confirm: true` (bypasses email confirmation), assigns role in `user_roles` |
-| `update_role` | Updates `user_roles` table for the given `user_id` |
+| `update_user` | Updates user metadata (full_name, etc.) in `auth.users.user_metadata` |
+| `update_role` | Updates `user_roles` table for the given `user_id` (admin ↔ rep) |
+| `update_email` | Changes user email in `auth.users` |
 | `reset_password` | Sets new password via admin API with `email_confirm: true`; updates `profiles.login_updated_at/by` |
 | `delete_user` | Unlinks from `reps` (sets `user_id = null`), removes from `user_roles`, deletes from `auth.users`; blocks self-deletion |
 
