@@ -1,15 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { Download, FileSpreadsheet } from "lucide-react";
+import { FileSpreadsheet } from "lucide-react";
 import { fmtDuration, fmtTime12h, fmtCurrency } from "@/lib/timeUtils";
 import { buildReportData, type ReportData } from "@/lib/reportData";
+import { A, PageHeader } from "@/lib/adminUi";
 
 const LOGO_BASE64 = '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';
 
@@ -66,6 +65,60 @@ function ss(ws: XLSX.WorkSheet, r: number, c: number, s: any) {
   const ref = XLSX.utils.encode_cell({ r, c });
   if (!ws[ref]) ws[ref] = { v: "", t: "s" };
   ws[ref].s = s;
+}
+
+// ── Presentational sub-components (redesign) ─────────────────────────────────
+
+function ExportAction({ icon, label, desc, meta, ready, onClick }: {
+  icon: ReactNode;
+  label: string;
+  desc: string;
+  meta: string;
+  ready?: boolean;
+  onClick: () => void;
+}) {
+  const isReady = ready ?? true;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!isReady}
+      style={{
+        display: "flex",
+        gap: 11,
+        padding: "11px 12px",
+        border: `1px solid ${isReady ? A.green : A.border}`,
+        borderRadius: 8,
+        background: isReady ? A.greenSoft : A.panelTint,
+        cursor: isReady ? "pointer" : "not-allowed",
+        textAlign: "left",
+        fontFamily: A.sans,
+        width: "100%",
+      }}
+    >
+      <div style={{ width: 30, height: 30, borderRadius: 6, background: isReady ? A.green : A.borderSoft, color: isReady ? A.cream : A.inkSoft, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: isReady ? A.greenInk : A.inkSoft }}>{label}</div>
+          <div style={{ fontSize: 10, color: isReady ? A.green : A.inkMute, fontWeight: 500 }}>{meta}</div>
+        </div>
+        <div style={{ fontSize: 11.5, color: isReady ? A.greenInk : A.inkMute, marginTop: 3, lineHeight: 1.4 }}>{desc}</div>
+      </div>
+    </button>
+  );
+}
+
+function SummaryBlock({ rows, last }: { rows: [string, string][]; last?: boolean }) {
+  return (
+    <div style={{ borderRight: last ? "none" : `1px solid ${A.border}` }}>
+      {rows.map(([k, v], i) => (
+        <div key={i} style={{ display: "grid", gridTemplateColumns: "0.9fr 1.1fr", borderBottom: i < rows.length - 1 ? `1px solid ${A.border}` : "none" }}>
+          <div style={{ padding: "7px 12px", background: "#EDEAE4", fontSize: 11, fontWeight: 600, color: "#1B2A4A", fontFamily: A.sans }}>{k}</div>
+          <div style={{ padding: "7px 12px", background: "#FFFFFF", fontSize: 11.5, color: "#333", fontFamily: A.sans }}>{v}</div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -589,48 +642,214 @@ export default function AdminExports() {
     toast.success("PDF report exported");
   };
 
+  // Display labels for the preview pane — purely derived from current filter state.
+  const repLabel = repFilter === "all" ? "All reps" : reps.find((r) => r.id === repFilter)?.rep_name || "—";
+  const custLabel = custFilter === "all" ? "All customers" : customers.find((c) => c.id === custFilter)?.customer_name || "—";
+  const periodLabel = dateFrom
+    ? (dateTo && dateTo !== dateFrom ? `${dateFrom} → ${dateTo}` : dateFrom)
+    : "All time";
+
+  const canExportSingleRep = repFilter !== "all" && !!dateFrom;
+
+  // Quick range presets
+  const setRange = (fromOffsetDays: number | null) => {
+    if (fromOffsetDays === null) { setDateFrom(""); setDateTo(""); return; }
+    const today = new Date();
+    const from = new Date(today);
+    from.setDate(today.getDate() - fromOffsetDays);
+    setDateFrom(from.toISOString().slice(0, 10));
+    setDateTo(today.toISOString().slice(0, 10));
+  };
+
   return (
-    <Card>
-      <CardHeader><CardTitle className="flex items-center gap-2"><Download className="h-5 w-5 text-accent" /> Export Data</CardTitle></CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col gap-1"><Label className="text-xs">Rep</Label>
-            <SearchableSelect
-              value={repFilter}
-              onValueChange={setRepFilter}
-              options={reps.map((r) => ({ value: r.id, label: r.rep_name }))}
-              placeholder="All Reps"
-              searchPlaceholder="Search reps..."
-              includeAll
-              allLabel="All Reps"
-              className="w-40"
-            /></div>
-          <div className="flex flex-col gap-1"><Label className="text-xs">Customer</Label>
-            <SearchableSelect
-              value={custFilter}
-              onValueChange={setCustFilter}
-              options={customers.map((c) => ({ value: c.id, label: c.customer_name + (c.area ? ` (${c.area})` : "") }))}
-              placeholder="All Customers"
-              searchPlaceholder="Search customers..."
-              includeAll
-              allLabel="All Customers"
-              className="w-44"
-            /></div>
-          <div className="flex flex-col gap-1"><Label className="text-xs">From</Label><Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-40" /></div>
-          <div className="flex flex-col gap-1"><Label className="text-xs">To</Label><Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-40" /></div>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: A.bg, minHeight: 0, fontFamily: A.sans, color: A.ink }}>
+      <PageHeader
+        title="Exports"
+        subtitle="Generate reports for finance, ops review and rep performance"
+      />
+
+      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "420px 1fr", minHeight: 0 }}>
+
+        {/* ───────────── LEFT: configurator ───────────── */}
+        <div style={{ borderRight: `1px solid ${A.border}`, background: A.panel, overflow: "auto", padding: "20px 22px" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: A.ink, marginBottom: 3 }}>Build a report</div>
+          <div style={{ fontSize: 11.5, color: A.inkMute, marginBottom: 18 }}>Filter the data, then pick a format. CSV exports any range; Excel & PDF require a single rep and a From date.</div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Rep */}
+            <div>
+              <Label style={{ fontSize: 11, fontWeight: 600, color: A.inkSoft, letterSpacing: 0.3, textTransform: "uppercase" }}>Rep</Label>
+              <div style={{ marginTop: 5 }}>
+                <SearchableSelect
+                  value={repFilter}
+                  onValueChange={setRepFilter}
+                  options={reps.map((r) => ({ value: r.id, label: r.rep_name }))}
+                  placeholder="All reps"
+                  searchPlaceholder="Search reps…"
+                  includeAll
+                  allLabel="All reps"
+                  className="w-full"
+                />
+              </div>
+              <div style={{ fontSize: 10.5, color: A.inkMute, marginTop: 4 }}>Required for Excel & PDF · CSV may use "All reps".</div>
+            </div>
+
+            {/* Customer */}
+            <div>
+              <Label style={{ fontSize: 11, fontWeight: 600, color: A.inkSoft, letterSpacing: 0.3, textTransform: "uppercase" }}>Customer</Label>
+              <div style={{ marginTop: 5 }}>
+                <SearchableSelect
+                  value={custFilter}
+                  onValueChange={setCustFilter}
+                  options={customers.map((c) => ({ value: c.id, label: c.customer_name + (c.area ? ` (${c.area})` : "") }))}
+                  placeholder="All customers"
+                  searchPlaceholder="Search customers…"
+                  includeAll
+                  allLabel="All customers"
+                  className="w-full"
+                />
+              </div>
+            </div>
+
+            {/* Date range */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div>
+                <Label style={{ fontSize: 11, fontWeight: 600, color: A.inkSoft, letterSpacing: 0.3, textTransform: "uppercase" }}>From</Label>
+                <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={{ height: 34, fontSize: 12, fontFamily: A.mono, background: A.panel, borderColor: A.border, marginTop: 5 }} />
+              </div>
+              <div>
+                <Label style={{ fontSize: 11, fontWeight: 600, color: A.inkSoft, letterSpacing: 0.3, textTransform: "uppercase" }}>
+                  To <span style={{ color: A.inkMute, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional)</span>
+                </Label>
+                <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={{ height: 34, fontSize: 12, fontFamily: A.mono, background: A.panel, borderColor: A.border, marginTop: 5 }} />
+              </div>
+            </div>
+
+            {/* Quick range chips */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {[
+                { label: "Today",     offset: 0 },
+                { label: "7 days",    offset: 7 },
+                { label: "30 days",   offset: 30 },
+                { label: "All time",  offset: null as number | null },
+              ].map((r) => (
+                <button
+                  key={r.label}
+                  type="button"
+                  onClick={() => setRange(r.offset)}
+                  style={{ padding: "4px 9px", borderRadius: 5, background: A.borderSoft, color: A.inkSoft, border: "none", fontSize: 11, fontFamily: A.sans, fontWeight: 500, cursor: "pointer" }}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ height: 1, background: A.borderSoft, margin: "20px 0" }} />
+
+          {/* Three action buttons */}
+          <div style={{ fontSize: 11, fontWeight: 600, color: A.inkSoft, letterSpacing: 0.3, textTransform: "uppercase", marginBottom: 9 }}>Generate</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <ExportAction
+              icon={<FileSpreadsheet size={14} />}
+              label="Visits CSV"
+              desc="Raw rows — every visit in the range. Good for spreadsheets and BI imports."
+              meta="Works with all reps"
+              onClick={exportVisits}
+            />
+            <ExportAction
+              icon={<FileSpreadsheet size={14} />}
+              label="Excel report"
+              desc="Styled .xlsx — title banner, KPI strip, per-visit table, totals row."
+              meta={canExportSingleRep ? "Ready" : "Pick a rep + From date"}
+              ready={canExportSingleRep}
+              onClick={exportReportExcel}
+            />
+            <ExportAction
+              icon={<FileSpreadsheet size={14} />}
+              label="PDF report"
+              desc="Landscape A4 — same layout as Excel, fits one rep one day."
+              meta={canExportSingleRep ? "Ready" : "Pick a rep + From date"}
+              ready={canExportSingleRep}
+              onClick={exportReportPDF}
+            />
+          </div>
+
+          <div style={{ marginTop: 16, padding: "10px 12px", background: A.cream, border: `1px solid ${A.creamDeep}`, borderRadius: 7, fontSize: 11.5, color: "#5C4A22", lineHeight: 1.5 }}>
+            <b style={{ color: A.greenInk }}>Preview →</b> The pane on the right shows the structure of the Excel/PDF with your current filters. The actual export uses live data from your last query.
+          </div>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <Button variant="outline" className="hover:bg-primary hover:text-primary-foreground" onClick={exportVisits}>
-            <Download className="h-4 w-4 mr-2" /> Export Visits CSV
-          </Button>
-          <Button variant="outline" className="hover:bg-primary hover:text-primary-foreground" onClick={exportReportExcel}>
-            <FileSpreadsheet className="h-4 w-4 mr-2" /> Export Report (Excel)
-          </Button>
-          <Button variant="outline" className="hover:bg-primary hover:text-primary-foreground" onClick={exportReportPDF}>
-            <FileSpreadsheet className="h-4 w-4 mr-2" /> Export Report (PDF)
-          </Button>
+
+        {/* ───────────── RIGHT: live preview ───────────── */}
+        <div style={{ overflow: "auto", padding: "22px 28px", background: A.bg }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: A.ink }}>Preview · Excel/PDF report</div>
+              <div style={{ fontSize: 11.5, color: A.inkMute, marginTop: 2 }}>
+                {repLabel} · {periodLabel}{custLabel !== "All customers" ? ` · ${custLabel}` : ""}
+              </div>
+            </div>
+          </div>
+
+          {/* Paper-style frame mirroring the actual xlsx output */}
+          <div style={{ background: A.panel, border: `1px solid ${A.border}`, borderRadius: 8, padding: 18, boxShadow: "0 1px 0 rgba(23,23,21,0.04), 0 8px 20px -10px rgba(23,23,21,0.10)" }}>
+
+            {/* Navy banner — matches NAVY (#1B2A4A) + ACCENT (#2E5090) constants in the file */}
+            <div style={{ background: "#1B2A4A", color: "#fff", padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, borderBottom: "3px solid #2E5090" }}>
+              <div style={{ width: 28, height: 28, background: "#fff", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", color: "#1B2A4A", fontWeight: 700, fontSize: 11, fontFamily: A.sans }}>CIT</div>
+              <div>
+                <div style={{ fontFamily: A.sans, fontWeight: 700, fontSize: 14, lineHeight: 1.1 }}>{repLabel}</div>
+                <div style={{ fontFamily: A.sans, fontSize: 10.5, color: "#b4cde1", marginTop: 3 }}>{periodLabel}</div>
+              </div>
+            </div>
+
+            {/* 3-block info summary — labels/values illustrative */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderTop: `1px solid ${A.border}`, borderBottom: `1px solid ${A.border}` }}>
+              <SummaryBlock rows={[["Name", repLabel], ["Date", "—"], ["Period", periodLabel], ["Visits", "—"]]} />
+              <SummaryBlock rows={[["Travel Time", "—"], ["Expected Productive Time", "—"], ["Total Customers on Route", "—"], ["Time / Customer", "—"]]} />
+              <SummaryBlock rows={[["Productive Time", "—"], ["Order Qty", "—"], ["Order Amount (R)", "—"], ["Skipped", "—"]]} last />
+            </div>
+
+            {/* Table preview — illustrative rows + a skipped row to show the red styling */}
+            <div style={{ marginTop: 14, border: `1px solid ${A.border}`, borderRadius: 4, overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "32px 80px 1.5fr 90px 70px 70px 60px 80px 50px 90px 1fr 70px", padding: "8px 10px", background: "#1B2A4A", color: "#fff", fontSize: 10, fontWeight: 700, letterSpacing: 0.3, fontFamily: A.sans }}>
+                <div>#</div><div>Acct #</div><div>Customer</div><div>Area</div><div>Arr</div><div>Dep</div><div>Dur</div><div>Order #</div><div>Qty</div><div style={{ textAlign: "right" }}>R</div><div>Notes</div><div>Status</div>
+              </div>
+              {[
+                { idx: 1, acc: "EXAMPLE", cust: "Example Customer A",  area: "—", arr: "—", dep: "—", dur: "—", po: "—", qty: "—", amt: "—", note: "Live data populates from your filter.", status: "Visited" },
+                { idx: 2, acc: "EXAMPLE", cust: "Example Skipped Row", area: "—", arr: "—", dep: "—", dur: "—", po: "—", qty: "—", amt: "—", note: "[SKIPPED] Closed for renovations",         status: "Skipped", skip: true },
+                { idx: 3, acc: "EXAMPLE", cust: "Example Off-route",   area: "—", arr: "—", dep: "—", dur: "—", po: "—", qty: "—", amt: "—", note: "[OFF-ROUTE] Walk-in order",               status: "Off-route" },
+              ].map((r, i) => {
+                const bg = r.skip ? "#FFE0E0" : i % 2 === 1 ? "#F5F2ED" : "#FFFFFF";
+                const color = r.skip ? "#991B1B" : "#1A1A1A";
+                return (
+                  <div key={i} style={{ display: "grid", gridTemplateColumns: "32px 80px 1.5fr 90px 70px 70px 60px 80px 50px 90px 1fr 70px", padding: "7px 10px", fontSize: 10.5, color, background: bg, borderTop: `1px solid ${A.border}`, fontFamily: A.sans, alignItems: "center" }}>
+                    <div style={{ fontFamily: A.mono }}>{r.idx}</div>
+                    <div style={{ fontFamily: A.mono }}>{r.acc}</div>
+                    <div style={{ fontWeight: 500 }}>{r.cust}</div>
+                    <div>{r.area}</div>
+                    <div style={{ fontFamily: A.mono }}>{r.arr}</div>
+                    <div style={{ fontFamily: A.mono }}>{r.dep}</div>
+                    <div style={{ fontFamily: A.mono }}>{r.dur}</div>
+                    <div style={{ fontFamily: A.mono }}>{r.po}</div>
+                    <div style={{ fontFamily: A.mono }}>{r.qty}</div>
+                    <div style={{ fontFamily: A.mono, textAlign: "right" }}>{r.amt}</div>
+                    <div style={{ fontSize: 10, fontStyle: r.note ? "italic" : "normal", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.note}</div>
+                    <div style={{ fontSize: 10 }}>{r.status}</div>
+                  </div>
+                );
+              })}
+              <div style={{ display: "grid", gridTemplateColumns: "32px 80px 1.5fr 90px 70px 70px 60px 80px 50px 90px 1fr 70px", padding: "8px 10px", background: "#1B2A4A", color: "#fff", fontSize: 10.5, fontWeight: 700, fontFamily: A.sans, borderTop: `1px solid ${A.border}` }}>
+                <div>Tot</div><div /><div /><div /><div /><div /><div style={{ fontFamily: A.mono }}>—</div><div /><div style={{ fontFamily: A.mono }}>—</div><div style={{ fontFamily: A.mono, textAlign: "right" }}>—</div><div /><div />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12, fontSize: 11, color: A.inkMute, fontFamily: A.sans }}>
+              The actual export reads <span style={{ fontFamily: A.mono }}>buildReportData()</span> with your live filters and uses the same banner colours and totals layout.
+            </div>
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

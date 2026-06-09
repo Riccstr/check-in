@@ -1,16 +1,14 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Users, Trash2, UserPlus, Pencil, Info } from "lucide-react";
+import { Trash2, UserPlus, Pencil, Info } from "lucide-react";
 import { format } from "date-fns";
+import { A, PageHeader, Tag, PrimaryButton } from "@/lib/adminUi";
 
 interface UserAccount {
   id: string;
@@ -27,6 +25,125 @@ interface UserAccount {
   email_confirmed_at: string | null;
   login_updated_at: string | null;
   login_updated_by_name: string | null;
+}
+
+function UserTable({
+  title,
+  subtitle,
+  users,
+  showLinkedRep,
+  onEdit,
+  onDelete,
+  emptyCopy,
+}: {
+  title: string;
+  subtitle: string;
+  users: UserAccount[];
+  showLinkedRep: boolean;
+  onEdit: (u: UserAccount) => void;
+  onDelete: (u: UserAccount) => void;
+  emptyCopy: string;
+}) {
+  // 6 cols when showing linked rep, 5 cols otherwise. Adjust grid template per case.
+  const cols = showLinkedRep ? "1.6fr 1.6fr 1.2fr 0.9fr 1fr 60px" : "1.6fr 1.6fr 0.9fr 1fr 60px";
+
+  return (
+    <div style={{ background: A.panel, border: `1px solid ${A.border}`, borderRadius: 10, overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "14px 18px", borderBottom: `1px solid ${A.border}` }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>{title}</div>
+          <div style={{ fontSize: 12, color: A.inkMute, marginTop: 2 }}>{subtitle}</div>
+        </div>
+        <div style={{ fontFamily: A.mono, fontSize: 11.5, color: A.inkMute }}>{users.length} {users.length === 1 ? "user" : "users"}</div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: cols, padding: "8px 18px", fontSize: 10.5, color: A.inkMute, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase", borderBottom: `1px solid ${A.borderSoft}`, background: A.panelTint }}>
+        <div>Name</div>
+        <div>Email</div>
+        {showLinkedRep && <div>Linked rep</div>}
+        <div>Created</div>
+        <div>Last sign-in</div>
+        <div></div>
+      </div>
+
+      {users.length === 0 ? (
+        <div style={{ padding: "40px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>{emptyCopy}</div>
+      ) : users.map((u, i) => {
+        const fullName = u.full_name
+          || [u.linked_rep_first_name, u.linked_rep_surname].filter(Boolean).join(" ")
+          || u.email.split("@")[0];
+        const initials = fullName.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "U";
+        const isAdmin = u.role === "admin";
+        const isPending = !u.role;
+        return (
+          <div
+            key={u.id}
+            style={{
+              display: "grid",
+              gridTemplateColumns: cols,
+              padding: "12px 18px",
+              alignItems: "center",
+              borderBottom: i < users.length - 1 ? `1px solid ${A.borderRow}` : "none",
+              fontSize: 12.5,
+              color: isPending ? A.inkMute : A.ink,
+            }}
+          >
+            {/* Name + initials avatar + role tag */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <div style={{ width: 30, height: 30, borderRadius: 999, background: isAdmin ? A.greenDeep : A.greenSoft, color: isAdmin ? A.cream : A.green, fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{initials}</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fullName}</div>
+                <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
+                  {isAdmin && <Tag tone="green">Admin</Tag>}
+                  {!isAdmin && !isPending && <Tag tone="cream">Rep</Tag>}
+                  {isPending && <Tag tone="sun">No role</Tag>}
+                </div>
+              </div>
+            </div>
+
+            {/* Email + login-change footnote */}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: A.mono, fontSize: 11.5, color: A.inkSoft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.email}</div>
+              {u.login_updated_at && (
+                <div style={{ fontSize: 10, color: A.inkMute, marginTop: 2, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <Info size={10} />
+                  Login changed {format(new Date(u.login_updated_at), "dd MMM HH:mm")}
+                  {u.login_updated_by_name && ` by ${u.login_updated_by_name}`}
+                </div>
+              )}
+            </div>
+
+            {/* Linked rep (rep table only) */}
+            {showLinkedRep && (
+              <div style={{ fontSize: 12, color: u.linked_rep_name ? A.ink : A.inkMute, fontStyle: u.linked_rep_name ? "normal" : "italic" }}>
+                {u.linked_rep_name || "Not linked"}
+              </div>
+            )}
+
+            {/* Created */}
+            <div style={{ fontFamily: A.mono, fontSize: 11, color: A.inkMute }}>
+              {format(new Date(u.created_at), "dd MMM yyyy")}
+            </div>
+
+            {/* Last sign-in */}
+            <div style={{ fontSize: 11.5, color: u.last_sign_in_at ? A.inkSoft : A.inkMute, fontStyle: u.last_sign_in_at ? "normal" : "italic" }}>
+              {u.last_sign_in_at ? format(new Date(u.last_sign_in_at), "dd MMM HH:mm") : "Never"}
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 2 }}>
+              <button type="button" onClick={() => onEdit(u)} title="Edit" style={{ padding: 5, background: "transparent", border: "none", color: A.inkSoft, cursor: "pointer" }}>
+                <Pencil size={13} />
+              </button>
+              <button type="button" onClick={() => onDelete(u)} title="Delete" style={{ padding: 5, background: "transparent", border: "none", color: A.danger, cursor: "pointer" }}>
+                <Trash2 size={13} />
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function AdminUsers() {
@@ -177,84 +294,50 @@ export default function AdminUsers() {
     fetchUsers();
   };
 
-  const roleBadgeVariant = (role: string | null) => {
-    if (role === "admin") return "destructive" as const;
-    if (role === "rep") return "default" as const;
-    return "secondary" as const;
-  };
+  // Split admins from reps for the redesign's two-table layout.
+  // Users with role === null fall into a third "Pending" bucket inside the rep table.
+  const admins = users.filter((u) => u.role === "admin");
+  const reps   = users.filter((u) => u.role !== "admin");
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-accent" /> User Accounts
-          </CardTitle>
-          <Button onClick={openCreateDialog} size="sm">
-            <UserPlus className="h-4 w-4 mr-2" /> Add User
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: A.bg, minHeight: 0, fontFamily: A.sans, color: A.ink }}>
+      <PageHeader
+        title="Users"
+        subtitle={`${admins.length} ${admins.length === 1 ? "admin" : "admins"} · ${reps.length} ${reps.length === 1 ? "rep" : "reps"}`}
+        right={
+          <PrimaryButton icon={<UserPlus size={13} />} onClick={openCreateDialog}>Add User</PrimaryButton>
+        }
+      />
+
+      <div style={{ flex: 1, overflow: "auto", padding: "20px 24px" }}>
         {loading ? (
-          <p className="text-muted-foreground py-4">Loading...</p>
+          <div style={{ padding: "60px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>Loading…</div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Linked Rep</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Last Sign In</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell>
-                    <div className="font-medium">{u.email}</div>
-                    {u.login_updated_at && (
-                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                        <Info className="h-3 w-3" />
-                        Login changed {format(new Date(u.login_updated_at), "dd MMM yyyy HH:mm")}
-                        {u.login_updated_by_name && <> by {u.login_updated_by_name}</>}
-                      </div>
-                    )}
-                  </TableCell>
-                  <TableCell>{u.full_name || "—"}</TableCell>
-                  <TableCell>
-                    <Badge variant={roleBadgeVariant(u.role)}>
-                      {u.role || "none"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {u.linked_rep_name || "—"}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {format(new Date(u.created_at), "dd MMM yyyy")}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {u.last_sign_in_at
-                      ? format(new Date(u.last_sign_in_at), "dd MMM yyyy HH:mm")
-                      : "Never"}
-                  </TableCell>
-                  <TableCell className="text-right space-x-1">
-                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(u)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(u)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <>
+            <UserTable
+              title="Administrators"
+              subtitle="Full access — schedules, exports, users."
+              users={admins}
+              showLinkedRep={false}
+              onEdit={openEditDialog}
+              onDelete={openDeleteDialog}
+              emptyCopy="No admin users yet."
+            />
+
+            <div style={{ height: 18 }} />
+
+            <UserTable
+              title="Field reps & pending"
+              subtitle="App users — assigned to a rep record and see only their assigned customers."
+              users={reps}
+              showLinkedRep={true}
+              onEdit={openEditDialog}
+              onDelete={openDeleteDialog}
+              emptyCopy="No rep users yet."
+            />
+          </>
         )}
-      </CardContent>
+      </div>
 
       {/* Create User Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
@@ -361,6 +444,6 @@ export default function AdminUsers() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   );
 }

@@ -1,17 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Eye, Pencil, Trash2, Camera } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Pencil, Trash2, Camera } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { A, PageHeader, Tag } from "@/lib/adminUi";
 
 interface VisitRep {
   rep_name: string;
@@ -134,136 +132,210 @@ export default function AdminVisits() {
     toast.success("Updated"); setEditVisit(null); fetchVisits();
   };
 
-  const renderPhoto = (v: any) => {
-    if (v.photo_url) {
-      return (
-        <button
-          onClick={() => setPhotoModal(v)}
-          className="block rounded overflow-hidden border border-border hover:ring-2 hover:ring-primary/50 transition-all"
-          style={{ width: 40, height: 40 }}
-        >
-          <img
-            src={v.photo_url}
-            alt="Visit photo"
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-        </button>
-      );
+  const renderTime = (v: Visit) => {
+    if (v.status === "skipped" || v.status === "off_route") {
+      return <span style={{ color: A.inkMute }}>—</span>;
     }
-    if (v.status === "off_route") {
-      return <Badge className="text-xs bg-amber-100 text-amber-800 border border-amber-200 hover:bg-amber-100">Off-Route</Badge>;
-    }
-    return <span className="text-muted-foreground">—</span>;
-  };
-
-  const renderTime = (v: any) => {
-    if (v.status === "skipped" || v.status === "off_route") return <span className="text-muted-foreground">—</span>;
     const arr = v.arrival_time?.slice(0, 5);
     const lev = v.leaving_time?.slice(0, 5);
     if (arr && lev) {
-      const dur = v.duration_minutes != null ? ` (${v.duration_minutes} min)` : "";
-      return <span className="text-xs whitespace-nowrap">{arr} – {lev}{dur}</span>;
+      return (
+        <span style={{ fontFamily: A.mono, fontSize: 11.5, whiteSpace: "nowrap" }}>
+          {arr} – {lev}
+          {v.duration_minutes != null && <span style={{ color: A.inkMute }}> ({v.duration_minutes}m)</span>}
+        </span>
+      );
     }
-    if (arr) return <span className="text-xs whitespace-nowrap">{arr} –</span>;
-    return <span className="text-muted-foreground">—</span>;
+    if (arr) return <span style={{ fontFamily: A.mono, fontSize: 11.5, whiteSpace: "nowrap" }}>{arr} –</span>;
+    return <span style={{ color: A.inkMute }}>—</span>;
   };
 
+  const renderPhoto = (v: Visit) => {
+    if (v.photo_url) {
+      return (
+        <button
+          type="button"
+          onClick={() => setPhotoModal(v)}
+          style={{ display: "block", width: 36, height: 36, borderRadius: 5, overflow: "hidden", border: `1px solid ${A.border}`, padding: 0, background: "transparent", cursor: "pointer" }}
+          title="View photo"
+        >
+          <img src={v.photo_url} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        </button>
+      );
+    }
+    if (v.status === "off_route") return <Tag tone="sun">Off-route</Tag>;
+    return <span style={{ color: A.inkMute }}>—</span>;
+  };
+
+  // Aggregate stats for the strip — derived from the currently-loaded `visits` array.
+  const totalAmount = visits.reduce((s, v) => s + (Number(v.order_amount) || 0), 0);
+  const completedCount = visits.filter((v) => v.status === "visited").length;
+  const skippedCount   = visits.filter((v) => v.status === "skipped").length;
+  const offRouteCount  = visits.filter((v) => v.status === "off_route").length;
+  const visitedPct = visits.length > 0 ? Math.round((completedCount / visits.length) * 100) : 0;
+
+  const hasFilters = repFilter !== "all" || custFilter !== "all" || !!dateFrom || !!dateTo;
+
+  const GRID_COLS = "90px 1.1fr 1.4fr 0.9fr 60px 0.9fr 50px 0.9fr 1.3fr 60px";
+
   return (
-    <div className="-mx-4">
-    <Card>
-      <CardHeader><CardTitle className="flex items-center gap-2"><Eye className="h-5 w-5 text-accent" /> All Visits</CardTitle></CardHeader>
-      <CardContent>
-        <div className="flex flex-wrap items-end gap-3 mb-4">
-          <div className="flex flex-col gap-1"><Label className="text-xs">Rep</Label>
-            <SearchableSelect
-              value={repFilter}
-              onValueChange={setRepFilter}
-              options={reps.map((r) => ({ value: r.id, label: r.rep_name }))}
-              placeholder="All Reps"
-              searchPlaceholder="Search reps..."
-              includeAll
-              allLabel="All Reps"
-              className="w-40"
-            /></div>
-          <div className="flex flex-col gap-1"><Label className="text-xs">Customer</Label>
-            <SearchableSelect
-              value={custFilter}
-              onValueChange={setCustFilter}
-              options={customers.map((c) => ({ value: c.id, label: c.customer_name + (c.area ? ` (${c.area})` : "") }))}
-              placeholder="All Customers"
-              searchPlaceholder="Search customers..."
-              includeAll
-              allLabel="All Customers"
-              className="w-44"
-            /></div>
-          <div className="flex flex-col gap-1"><Label className="text-xs">From</Label><Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-40" /></div>
-          <div className="flex flex-col gap-1"><Label className="text-xs">To</Label><Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-40" /></div>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: A.bg, minHeight: 0, fontFamily: A.sans, color: A.ink }}>
+      <PageHeader
+        title="Visits"
+        subtitle="Every check-in, check-out, skip and off-route across all reps"
+      />
+
+      {/* Filter strip */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 24px", background: A.panel, borderBottom: `1px solid ${A.border}`, flexShrink: 0, flexWrap: "wrap" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 11.5, color: A.inkMute, fontWeight: 500 }}>Rep:</span>
+          <SearchableSelect
+            value={repFilter}
+            onValueChange={setRepFilter}
+            options={reps.map((r) => ({ value: r.id, label: r.rep_name }))}
+            placeholder="All reps"
+            searchPlaceholder="Search reps…"
+            includeAll
+            allLabel="All reps"
+            className="w-44"
+          />
         </div>
-        {loading ? <p className="text-muted-foreground py-8 text-center">Loading...</p> : (
-          <div className="overflow-x-auto">
-            <Table className="[&_td]:py-2">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Rep</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead className="w-28">Time</TableHead>
-                  <TableHead><Camera className="h-3.5 w-3.5" /></TableHead>
-                  <TableHead className="min-w-[100px]">Order No.</TableHead>
-                  <TableHead>Qty</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Notes</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {visits.map((v: any) => {
-                  const isSkipped = v.status === "skipped";
-                  return (
-                    <TableRow key={v.id} className={isSkipped ? "bg-destructive/10" : ""}>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{v.visit_date}</TableCell>
-                      <TableCell>{v.reps?.rep_name}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-2">
-                            {v.customers?.customer_name}
-                            {isSkipped && <Badge variant="destructive" className="text-xs">Skipped</Badge>}
-                          </div>
-                          {v.customers?.account_number && (
-                            <span className="text-xs text-muted-foreground">{v.customers.account_number}</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>{renderTime(v)}</TableCell>
-                      <TableCell>{renderPhoto(v)}</TableCell>
-                      <TableCell className="whitespace-nowrap">{v.order_number || "—"}</TableCell>
-                      <TableCell>{v.order_quantity != null ? v.order_quantity : "—"}</TableCell>
-                      <TableCell>{v.order_amount != null ? Number(v.order_amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}</TableCell>
-                      <TableCell className="max-w-[150px]">
-                        {v.notes ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="truncate block cursor-default">{v.notes}</span>
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-xs whitespace-pre-wrap">{v.notes}</TooltipContent>
-                          </Tooltip>
-                        ) : "—"}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => openEdit(v)}><Pencil className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => del(v.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+        <div style={{ width: 1, height: 22, background: A.borderSoft }} />
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 11.5, color: A.inkMute, fontWeight: 500 }}>Customer:</span>
+          <SearchableSelect
+            value={custFilter}
+            onValueChange={setCustFilter}
+            options={customers.map((c) => ({ value: c.id, label: c.customer_name + (c.area ? ` (${c.area})` : "") }))}
+            placeholder="All customers"
+            searchPlaceholder="Search customers…"
+            includeAll
+            allLabel="All customers"
+            className="w-52"
+          />
+        </div>
+        <div style={{ width: 1, height: 22, background: A.borderSoft }} />
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <Label htmlFor="visits-from" className="text-xs" style={{ color: A.inkMute, fontWeight: 500 }}>From</Label>
+          <Input id="visits-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={{ width: 140, height: 32, fontSize: 12, fontFamily: A.mono, background: A.panel, borderColor: A.border }} />
+          <Label htmlFor="visits-to" className="text-xs" style={{ color: A.inkMute, fontWeight: 500 }}>To</Label>
+          <Input id="visits-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={{ width: 140, height: 32, fontSize: 12, fontFamily: A.mono, background: A.panel, borderColor: A.border }} />
+        </div>
+
+        {hasFilters && (
+          <button
+            type="button"
+            onClick={() => { setRepFilter("all"); setCustFilter("all"); setDateFrom(""); setDateTo(""); }}
+            style={{ fontSize: 11.5, color: A.inkMute, background: "transparent", border: "none", cursor: "pointer", padding: "5px 8px", fontFamily: A.sans }}
+          >
+            Clear filters
+          </button>
+        )}
+
+        <div style={{ flex: 1 }} />
+        <div style={{ fontSize: 11.5, color: A.inkMute }}>{visits.length} {visits.length === 1 ? "result" : "results"}</div>
+      </div>
+
+      {/* Summary strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 0, background: A.panel, borderBottom: `1px solid ${A.border}`, padding: "14px 24px", flexShrink: 0 }}>
+        {[
+          { l: "Total visits",   v: visits.length,  sub: undefined as string | undefined, accent: undefined as string | undefined },
+          { l: "Completed",      v: completedCount, sub: `${visitedPct}%`, accent: A.green },
+          { l: "Skipped",        v: skippedCount,   sub: undefined, accent: A.danger },
+          { l: "Off-route",      v: offRouteCount,  sub: undefined, accent: A.sun },
+          { l: "Order value",    v: `R\u00A0${totalAmount.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: undefined, accent: A.green },
+        ].map((s, i) => (
+          <div key={s.l} style={{ paddingLeft: i > 0 ? 18 : 0, borderLeft: i > 0 ? `1px solid ${A.borderSoft}` : "none" }}>
+            <div style={{ fontSize: 10.5, color: A.inkMute, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase" }}>{s.l}</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 4 }}>
+              <div style={{ fontFamily: A.mono, fontSize: 19, fontWeight: 600, color: A.ink, letterSpacing: -0.3, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{s.v}</div>
+              {s.sub && <div style={{ fontSize: 11, color: s.accent || A.inkMute, fontWeight: 500 }}>{s.sub}</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div style={{ flex: 1, overflow: "auto", padding: "14px 24px" }}>
+        {loading ? (
+          <div style={{ padding: "60px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>Loading…</div>
+        ) : (
+          <div style={{ background: A.panel, border: `1px solid ${A.border}`, borderRadius: 10, overflow: "hidden" }}>
+            <div style={{ display: "grid", gridTemplateColumns: GRID_COLS, padding: "10px 14px", fontSize: 10.5, color: A.inkMute, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase", borderBottom: `1px solid ${A.borderSoft}`, background: A.panelTint }}>
+              <div>Date</div>
+              <div>Rep</div>
+              <div>Customer</div>
+              <div>Time</div>
+              <div style={{ textAlign: "center" }}><Camera size={12} style={{ display: "inline-block", verticalAlign: "-2px" }} /></div>
+              <div>Order №</div>
+              <div>Qty</div>
+              <div style={{ textAlign: "right" }}>Amount</div>
+              <div>Notes</div>
+              <div></div>
+            </div>
+
+            {visits.length === 0 ? (
+              <div style={{ padding: "40px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>
+                {hasFilters ? "No visits match your filters." : "No visits yet."}
+              </div>
+            ) : visits.map((v: any, i: number) => {
+              const isSkipped = v.status === "skipped";
+              return (
+                <div
+                  key={v.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: GRID_COLS,
+                    padding: "11px 14px",
+                    alignItems: "center",
+                    borderBottom: i < visits.length - 1 ? `1px solid ${A.borderRow}` : "none",
+                    fontSize: 12,
+                    color: isSkipped ? A.danger : A.ink,
+                    background: isSkipped ? A.dangerBg : "transparent",
+                  }}
+                >
+                  <div style={{ fontFamily: A.mono, fontSize: 11, color: isSkipped ? A.danger : A.inkSoft }}>{v.visit_date}</div>
+                  <div style={{ fontWeight: 500 }}>{v.reps?.rep_name || "—"}</div>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontWeight: 500 }}>{v.customers?.customer_name}</span>
+                      {isSkipped && <Tag tone="danger">Skipped</Tag>}
+                    </div>
+                    {v.customers?.account_number && (
+                      <div style={{ fontSize: 10.5, color: A.inkMute, fontFamily: A.mono, marginTop: 1 }}>#{v.customers.account_number}</div>
+                    )}
+                  </div>
+                  <div>{renderTime(v)}</div>
+                  <div style={{ display: "flex", justifyContent: "center" }}>{renderPhoto(v)}</div>
+                  <div style={{ fontFamily: A.mono, fontSize: 11, color: isSkipped ? A.danger : A.ink }}>{v.order_number || "—"}</div>
+                  <div style={{ fontFamily: A.mono, fontSize: 11 }}>{v.order_quantity != null ? v.order_quantity : "—"}</div>
+                  <div style={{ fontFamily: A.mono, fontSize: 11.5, textAlign: "right", fontWeight: 500 }}>
+                    {v.order_amount != null ? `R\u00A0${Number(v.order_amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: A.inkMute, fontStyle: v.notes ? "italic" : "normal" }}>
+                    {v.notes ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block", cursor: "default" }}>{v.notes}</span>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs whitespace-pre-wrap">{v.notes}</TooltipContent>
+                      </Tooltip>
+                    ) : "—"}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 2 }}>
+                    <button type="button" onClick={() => openEdit(v)} title="Edit" style={{ padding: 5, background: "transparent", border: "none", color: A.inkSoft, cursor: "pointer" }}>
+                      <Pencil size={13} />
+                    </button>
+                    <button type="button" onClick={() => del(v.id)} title="Delete" style={{ padding: 5, background: "transparent", border: "none", color: A.danger, cursor: "pointer" }}>
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
-      </CardContent>
+      </div>
 
       {/* Edit dialog */}
       <Dialog open={!!editVisit} onOpenChange={(o) => !o && setEditVisit(null)}>
@@ -307,7 +379,6 @@ export default function AdminVisits() {
           )}
         </DialogContent>
       </Dialog>
-    </Card>
     </div>
   );
 }
