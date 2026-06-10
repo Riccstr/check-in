@@ -58,7 +58,12 @@ export async function buildReportData(
   let travelTimeMins: number | null = null;
   let scheduleItemCount = 0;
   let weekTemplateName = "";
-  {
+  let scheduleDaysCount = 0;
+
+  const isMultiDay = !!dateTo && dateTo !== dateFrom;
+
+  if (!isMultiDay) {
+    // Single-day path — existing logic unchanged
     const { data: dsData } = await (supabase as any)
       .from("daily_schedules")
       .select("weekly_template_id, schedule_date, schedule_items(id)")
@@ -87,11 +92,56 @@ export async function buildReportData(
         if (tmplData) travelTimeMins = tmplData.travel_time_minutes;
       }
     }
+  } else {
+    // Multi-day path — fetch all daily schedules in range, sum metrics
+    const { data: dsRows } = await (supabase as any)
+      .from("daily_schedules")
+      .select("weekly_template_id, schedule_date, schedule_items(id)")
+      .eq("rep_id", repId)
+      .gte("schedule_date", dateFrom)
+      .lte("schedule_date", dateTo) as { data: { weekly_template_id: string | null; schedule_date: string; schedule_items: any[] }[] | null };
+
+    if (dsRows && dsRows.length > 0) {
+      let totalTravelMins = 0;
+      let totalScheduleItems = 0;
+      let anyScheduleFound = false;
+
+      for (const dsData of dsRows) {
+        // Only include days where we can fetch a template
+        if (!dsData.weekly_template_id) continue;
+
+        const jsDay = new Date(dsData.schedule_date + "T12:00:00").getDay();
+        const isoDow = jsDay === 0 ? 7 : jsDay;
+
+        const { data: tmplData } = await (supabase as any)
+          .from("schedule_templates")
+          .select("travel_time_minutes")
+          .eq("rep_id", repId)
+          .eq("day_of_week", isoDow)
+          .eq("weekly_template_id", dsData.weekly_template_id)
+          .maybeSingle() as { data: { travel_time_minutes: number | null } | null };
+
+        // Only include this day if we successfully fetched a template
+        if (!tmplData) continue;
+
+        anyScheduleFound = true;
+        scheduleDaysCount += 1;
+        const dayTravelMins = tmplData.travel_time_minutes ?? 0;
+        totalTravelMins += dayTravelMins;
+        totalScheduleItems += (dsData.schedule_items as any[])?.length ?? 0;
+      }
+
+      if (anyScheduleFound) {
+        travelTimeMins = totalTravelMins;
+        scheduleItemCount = totalScheduleItems;
+      }
+    }
   }
 
-  const WORKING_DAY_MINS = 540;
   const travelTimeForCalc = travelTimeMins ?? 0;
-  const expectedProductiveMins = WORKING_DAY_MINS - travelTimeForCalc;
+  const expectedProductiveMins = isMultiDay
+    ? (scheduleDaysCount * 540) - travelTimeForCalc
+    : 540 - travelTimeForCalc;
   const timePerCustomer = scheduleItemCount > 0 ? Math.round(expectedProductiveMins / scheduleItemCount) : 0;
 
   const generatedAt = format(new Date(), "dd MMM yyyy HH:mm");

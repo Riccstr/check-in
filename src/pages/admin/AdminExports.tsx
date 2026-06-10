@@ -140,6 +140,7 @@ export default function AdminExports() {
 
   // ── Export Visits CSV ──────────────────────────────────────────────────────
   const exportVisits = async () => {
+    const toastId = toast.loading("Exporting visits…");
     let q = (supabase as any)
       .from("visits")
       .select("*, reps(rep_name), customers(customer_name, account_number, area)")
@@ -152,7 +153,7 @@ export default function AdminExports() {
     if (dateFrom) q = q.gte("visit_date", dateFrom);
     if (dateTo) q = q.lte("visit_date", dateTo);
     const { data } = await q;
-    if (!data || data.length === 0) { toast.error("No data to export"); return; }
+    if (!data || data.length === 0) { toast.dismiss(toastId); toast.error("No data to export"); return; }
 
     const lines: string[] = [];
 
@@ -220,13 +221,14 @@ export default function AdminExports() {
     const a = document.createElement("a");
     a.href = url; a.download = "visits_export.csv"; a.click();
     URL.revokeObjectURL(url);
-    toast.success("Visits exported");
+    toast.dismiss(toastId); toast.success("Visits exported");
   };
 
   // ── Export Report (Excel) ──────────────────────────────────────────────────
   const exportReportExcel = async () => {
-    if (repFilter === "all") { toast.error("Please select a specific rep for the Excel report"); return; }
-    if (!dateFrom) { toast.error("Please select a 'From' date for the Excel report"); return; }
+    const toastId = toast.loading("Building Excel report…");
+    if (repFilter === "all") { toast.dismiss(toastId); toast.error("Please select a specific rep for the Excel report"); return; }
+    if (!dateFrom) { toast.dismiss(toastId); toast.error("Please select a 'From' date for the Excel report"); return; }
 
     const XLSX = (await import("xlsx-js-style")).default;
 
@@ -234,7 +236,7 @@ export default function AdminExports() {
     const repName = selectedRep?.rep_name || "Unknown";
 
     const rd = await buildReportData(repFilter, repName, custFilter, dateFrom, dateTo);
-    if (!rd) { toast.error("No data to export"); return; }
+    if (!rd) { toast.dismiss(toastId); toast.error("No data to export"); return; }
 
     const {
       data, totalProductiveMins, totalOrderQty, totalOrderAmount, skippedCount,
@@ -406,13 +408,14 @@ export default function AdminExports() {
 
     XLSX.utils.book_append_sheet(wb, ws, "Visit Report");
     XLSX.writeFile(wb, `visit_report_${repName.replace(/\s+/g, "_")}_${dateFrom}.xlsx`);
-    toast.success("Excel report exported");
+    toast.dismiss(toastId); toast.success("Excel report exported");
   };
 
   // ── Export Report (PDF) ────────────────────────────────────────────────────
   const exportReportPDF = async () => {
-    if (repFilter === "all") { toast.error("Please select a specific rep for the PDF report"); return; }
-    if (!dateFrom) { toast.error("Please select a 'From' date for the PDF report"); return; }
+    const toastId = toast.loading("Building PDF report…");
+    if (repFilter === "all") { toast.dismiss(toastId); toast.error("Please select a specific rep for the PDF report"); return; }
+    if (!dateFrom) { toast.dismiss(toastId); toast.error("Please select a 'From' date for the PDF report"); return; }
 
     const jsPDF = (await import("jspdf")).default;
     const { default: autoTable } = await import("jspdf-autotable");
@@ -421,7 +424,7 @@ export default function AdminExports() {
     const repName = selectedRep?.rep_name || "Unknown";
 
     const rd = await buildReportData(repFilter, repName, custFilter, dateFrom, dateTo);
-    if (!rd) { toast.error("No data to export"); return; }
+    if (!rd) { toast.dismiss(toastId); toast.error("No data to export"); return; }
 
     const {
       data, totalProductiveMins, totalOrderQty, totalOrderAmount, skippedCount,
@@ -639,7 +642,7 @@ export default function AdminExports() {
     });
 
     doc.save(`visit_report_${repName.replace(/\s+/g, "_")}_${dateFrom}.pdf`);
-    toast.success("PDF report exported");
+    toast.dismiss(toastId); toast.success("PDF report exported");
   };
 
   // Display labels for the preview pane — purely derived from current filter state.
@@ -727,6 +730,19 @@ export default function AdminExports() {
 
             {/* Quick range chips */}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const yesterday = new Date();
+                  yesterday.setDate(yesterday.getDate() - 1);
+                  const yStr = yesterday.toISOString().slice(0, 10);
+                  setDateFrom(yStr);
+                  setDateTo(yStr);
+                }}
+                style={{ padding: "4px 9px", borderRadius: 5, background: A.borderSoft, color: A.inkSoft, border: "none", fontSize: 11, fontFamily: A.sans, fontWeight: 500, cursor: "pointer" }}
+              >
+                Yesterday
+              </button>
               {[
                 { label: "Today",     offset: 0 },
                 { label: "7 days",    offset: 7 },
@@ -773,10 +789,6 @@ export default function AdminExports() {
               ready={canExportSingleRep}
               onClick={exportReportPDF}
             />
-          </div>
-
-          <div style={{ marginTop: 16, padding: "10px 12px", background: A.cream, border: `1px solid ${A.creamDeep}`, borderRadius: 7, fontSize: 11.5, color: "#5C4A22", lineHeight: 1.5 }}>
-            <b style={{ color: A.greenInk }}>Preview →</b> The pane on the right shows the structure of the Excel/PDF with your current filters. The actual export uses live data from your last query.
           </div>
         </div>
 
