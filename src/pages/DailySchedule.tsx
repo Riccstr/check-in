@@ -609,70 +609,9 @@ export default function DailySchedule() {
     const visitedItems = items.filter((i) => i.status === "visited");
     const skippedItems = items.filter((i) => i.status === "skipped");
 
-    let orders = 0;
-    let totalOrderValue = 0;
-    let histAvgOrders: number | null = null;
-    let histAvgOrderValue: number | null = null;
-
-    if (repId && navigator.onLine) {
-      try {
-        // Today's visit order data
-        const { data: todayVisits } = await (supabase as any)
-          .from("visits")
-          .select("order_number, order_amount")
-          .eq("rep_id", repId)
-          .eq("visit_date", scheduleDate)
-          .eq("status", "visited") as any;
-        if (todayVisits) {
-          orders = todayVisits.filter((v) => v.order_number != null && v.order_number !== "").length;
-          totalOrderValue = todayVisits.reduce((sum, v) => sum + (Number(v.order_amount) || 0), 0);
-        }
-
-        // Historical averages — same rep, same weekly template, same DOW, before today
-        const weeklyTemplateId = schedule?.weekly_template_id;
-        if (weeklyTemplateId) {
-          const targetDow = new Date(scheduleDate + "T12:00:00").getDay();
-
-          const { data: histSchedules } = await (supabase
-            .from("daily_schedules")
-            .select("schedule_date")
-            .eq("rep_id", repId)
-            .eq("weekly_template_id", weeklyTemplateId)
-            .lt("schedule_date", scheduleDate) as unknown as any);
-
-          if (histSchedules) {
-            // Filter to same day-of-week client-side (PostgREST has no EXTRACT filter)
-            const sameDowDates = histSchedules
-              .filter((ds) => new Date(ds.schedule_date + "T12:00:00").getDay() === targetDow)
-              .map((ds) => ds.schedule_date);
-
-            if (sameDowDates.length >= 2) {
-              const { data: histVisits } = await supabase
-                .from("visits")
-                .select("visit_date, order_number, order_amount")
-                .eq("rep_id", repId)
-                .eq("status", "visited")
-                .in("visit_date", sameDowDates) as any;
-
-              if (histVisits) {
-                // Per-day totals
-                const perDay: Record<string, { orders: number; value: number }> = {};
-                for (const d of sameDowDates) perDay[d] = { orders: 0, value: 0 };
-                for (const v of histVisits) {
-                  if (perDay[v.visit_date] !== undefined) {
-                    if (v.order_number != null && v.order_number !== "") perDay[v.visit_date].orders++;
-                    perDay[v.visit_date].value += Number(v.order_amount) || 0;
-                  }
-                }
-                const days = Object.values(perDay);
-                histAvgOrders = days.reduce((s, d) => s + d.orders, 0) / days.length;
-                histAvgOrderValue = days.reduce((s, d) => s + d.value, 0) / days.length;
-              }
-            }
-          }
-        }
-      } catch { /* offline or query error — omit historical comparison */ }
-    }
+    const v = visitedItems.map((i: any) => Array.isArray(i.visits) ? i.visits[0] : i.visits).filter(Boolean);
+    const orders = v.filter((v: any) => v?.order_number != null && v?.order_number !== "").length;
+    const totalOrderValue = v.reduce((sum: number, v: any) => sum + (Number(v?.order_amount) || 0), 0);
 
     const durationsWithValue = visitedItems.filter((i) => i.duration_minutes > 0);
     const avgDuration =
@@ -687,8 +626,6 @@ export default function DailySchedule() {
       orders,
       totalOrderValue,
       avgDuration,
-      histAvgOrders,
-      histAvgOrderValue,
     });
     setShowSummary(true);
   }, [items, repId, scheduleDate, schedule]);

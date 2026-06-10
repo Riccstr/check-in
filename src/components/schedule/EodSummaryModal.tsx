@@ -11,8 +11,6 @@ export interface SummaryStats {
   orders: number;
   totalOrderValue: number;
   avgDuration: number; // minutes
-  histAvgOrders: number | null;     // null = fewer than 2 historical days, don't show
-  histAvgOrderValue: number | null; // null = fewer than 2 historical days, don't show
 }
 
 export function EodSummaryModal({ stats, onClose }: { stats: SummaryStats; onClose: () => void }) {
@@ -126,27 +124,9 @@ export function EodSummaryModal({ stats, onClose }: { stats: SummaryStats; onClo
               <p style={{ fontSize: 10, fontWeight: 500, color: C.inkMute, textTransform: "uppercase", margin: 0, marginBottom: 6 }}>
                 Orders
               </p>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                <p style={{ fontSize: 24, fontWeight: 700, fontFamily: "Syne, sans-serif", color: C.green, margin: 0 }}>
-                  {stats.orders}
-                </p>
-                {stats.histAvgOrders !== null && (
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 500,
-                      color: stats.orders > stats.histAvgOrders ? C.green : stats.orders < stats.histAvgOrders ? C.danger : C.inkMute,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 3,
-                    }}
-                  >
-                    {stats.orders > stats.histAvgOrders && <span>▲</span>}
-                    {stats.orders < stats.histAvgOrders && <span>▼</span>}
-                    {stats.histAvgOrders.toFixed(1)}
-                  </div>
-                )}
-              </div>
+              <p style={{ fontSize: 24, fontWeight: 700, fontFamily: "Syne, sans-serif", color: C.green, margin: 0 }}>
+                {stats.orders}
+              </p>
             </div>
 
             {/* Avg Time */}
@@ -160,32 +140,14 @@ export function EodSummaryModal({ stats, onClose }: { stats: SummaryStats; onClo
             </div>
           </div>
 
-          {/* Full-width Order Value with delta */}
+          {/* Full-width Order Value */}
           <div style={{ padding: "12px 10px", borderRadius: 12, background: C.surfaceAlt, border: `1px solid ${C.border}` }}>
             <p style={{ fontSize: 10, fontWeight: 500, color: C.inkMute, textTransform: "uppercase", margin: 0, marginBottom: 6 }}>
               Order Value
             </p>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-              <p style={{ fontSize: 24, fontWeight: 700, fontFamily: "Syne, sans-serif", color: C.green, margin: 0 }}>
-                R {stats.totalOrderValue.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
-              </p>
-              {stats.histAvgOrderValue !== null && (
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: stats.totalOrderValue > stats.histAvgOrderValue ? C.green : stats.totalOrderValue < stats.histAvgOrderValue ? C.danger : C.inkMute,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                  }}
-                >
-                  {stats.totalOrderValue > stats.histAvgOrderValue && <span>▲</span>}
-                  {stats.totalOrderValue < stats.histAvgOrderValue && <span>▼</span>}
-                  R {stats.histAvgOrderValue.toLocaleString("en-ZA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                </div>
-              )}
-            </div>
+            <p style={{ fontSize: 24, fontWeight: 700, fontFamily: "Syne, sans-serif", color: C.green, margin: 0 }}>
+              R {stats.totalOrderValue.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}
+            </p>
           </div>
 
           {/* Wrap up button */}
