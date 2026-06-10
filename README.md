@@ -394,8 +394,12 @@ Email + password sign-in form. Calls `supabase.auth.signIn()`. Redirects to `/` 
 #### `/` — [Index.tsx](src/pages/Index.tsx)
 Role-based redirect: admin → `/admin/visits`, rep → `/schedule`. No DB queries.
 
-#### `/schedule` — [DailySchedule.tsx](src/pages/DailySchedule.tsx)
-Main rep interface. Shows the day's customer visit schedule as expandable cards.
+#### `/schedule` — [DailySchedule.tsx](src/pages/DailySchedule.tsx) + Schedule Components
+Main rep interface. Shows the day's customer visit schedule as expandable cards. Logic split across multiple files:
+- **Shell:** [src/pages/DailySchedule.tsx](src/pages/DailySchedule.tsx) — page state, date navigation, real-time subscriptions
+- **Card components:** [src/components/schedule/ScheduleCard.tsx](src/components/schedule/ScheduleCard.tsx), [src/components/schedule/AdHocVisitCard.tsx](src/components/schedule/AdHocVisitCard.tsx), [src/components/schedule/OffRouteOrderCard.tsx](src/components/schedule/OffRouteOrderCard.tsx), [src/components/schedule/UnscheduledVisitRow.tsx](src/components/schedule/UnscheduledVisitRow.tsx)
+- **Modals/utilities:** [src/components/schedule/EodSummaryModal.tsx](src/components/schedule/EodSummaryModal.tsx), [src/components/schedule/ScheduleHelpers.tsx](src/components/schedule/ScheduleHelpers.tsx)
+- **Custom hook:** [src/hooks/useUnscheduledVisits.ts](src/hooks/useUnscheduledVisits.ts)
 
 **Tables read:** `daily_schedules`, `schedule_items`, `schedule_templates`, `weekly_templates`, `customers` (via join), `app_settings`
 
@@ -472,11 +476,12 @@ Full CRUD for customer records and rep assignments.
 - Filter/sort by rep, area, active status
 
 #### `/admin/schedules` — [AdminSchedules.tsx](src/pages/admin/AdminSchedules.tsx)
-Manage weekly rotation templates and view daily schedules. Master-detail layout:
-- **Rep rail** (left): Searchable rep list; selecting a rep narrows all views below to that rep only
-- **Week-cycle rail** (left-centre): Horizontal 4-week cycle buttons (Week 1a, 1b, 2a, 2b); tap to manually override the current week
-- **Day tabs** (top): Mon–Fri filter; showing only that day's schedule items
-- **Stops list** (main): Drag-to-reorder visit sequence within the day; each stop shows customer, area tag(s), assigned arrival/leaving times; "Add" button at bottom to append new customers
+Manage weekly rotation templates and view daily schedules. Master-detail layout with accordion week-cycles:
+- **Rep rail** (left): Searchable rep list; selecting a rep narrows all template views
+- **Week-cycle accordion** (left-centre): Four collapsible week cards (Week 1a, 1b, 2a, 2b); click card header to expand and reveal day buttons (Mon–Fri)
+- **Day buttons** (revealed on expand): Mon–Fri tabs; selecting a day filters the right pane to that day's template
+- **Stops list** (right): For the selected rep/week/day, shows customer sequence with account numbers and area tags; drag-to-reorder; "Add stop" or "Edit stops" button opens template editor modal
+- **Settings modal** (gear icon): Manage week cycle start date and manually override the current week order
 
 **Tables read:** `weekly_templates`, `schedule_templates`, `schedule_template_items`, `daily_schedules`, `schedule_items`, `app_settings`, `reps`, `customers`
 
@@ -488,22 +493,30 @@ Manage weekly rotation templates and view daily schedules. Master-detail layout:
 - Saving a template deletes future daily schedules for that rep/day that have no started items (forces regeneration)
 - Week cycle start date drives the `get_week_order_for_date()` calculation
 - Current week auto-calculated on page load via `get_week_order_for_date` RPC; `app_settings.current_week_order` is updated automatically if the week has rolled over
+- Manual week override updates both `current_week_order` and back-calculates `week_cycle_start_date` to keep the rotation anchor consistent
 
 #### `/admin/reports` — [AdminExports.tsx](src/pages/admin/AdminExports.tsx)
 Export visit data as CSV, formatted Excel, or PDF. Two-pane layout: **configurator (left) + live preview (right)**.
 
 **Configurator (left):**
-- Filter selectors: Date range, Rep, Customer, Status (visited/skipped/all)
+- Quick date buttons: Yesterday, Today, This week, This month, Custom date range
+- Filter selectors: Date range (from/to), Rep, Customer, Status (visited/skipped/all)
 - Export format radio buttons: CSV, Excel, PDF
 - Format-specific options (e.g., "Include order details" for CSV)
-- Export button
+- Export button with progress feedback (`toast.loading` → `toast.success` or `toast.error`)
 
 **Live Preview (right):**
 - Real-time preview of filtered data
 - Paginated table view (if large dataset)
 - Download button below preview
 
-**Tables read:** `visits`, `reps`, `customers`, `daily_schedules`, `weekly_templates`
+**Tables read:** `visits`, `reps`, `customers`, `daily_schedules`, `weekly_templates` (via `reportData.buildReportData()`)
+
+**Report data logic:** [src/lib/reportData.ts](src/lib/reportData.ts)
+- Builds visit summary with schedule metrics for both single-day and multi-day date ranges
+- Single-day: fetches one `daily_schedule` row and its `schedule_template` to get travel time
+- Multi-day: accumulates across all days in range with fetchable templates, summing travel time, schedule item count, and calculating expected productive minutes as `(scheduleDaysCount * 540) - totalTravelMins`
+- Returns: total productive minutes, order totals, skip count, calculated metrics (time-per-customer, expected productive time)
 
 **Export formats:**
 - **Visits CSV:** Raw visit data with all fields including order fields (rep_id, customer_id, visit_date, arrival_time, leaving_time, notes, status, order_number, order_quantity, order_amount)
@@ -579,6 +592,7 @@ Main layout wrapper used on every authenticated page. Branches on user role:
   - Calls `setupAutoSync()` for reps on mount to start background sync loop (checks every 5s if online)
   - Handles `offline_bootstrap_required` state (shows guidance screen)
   - Route persistence: saves current path to `localStorage` for mobile background/restore
+- **AdminChrome:** Container for admin pages with `AdminSidebar` (left) and flexible main area (right). No top utility strip; offline status and sign-out now handled separately (sign-out button only on AdminAccount page).
 - Consumed by: every page
 
 ### [adminUi.tsx](src/lib/adminUi.tsx) — *Admin-only design system*
@@ -589,7 +603,7 @@ Centralized palette, components, and utilities for all admin pages. **Admin-only
 - **Status:** `RepStatusKey` type and `STATUS_META` for pill rendering (checked_in, travelling, day_complete, not_started, no_schedule)
 - **Currency formatter:** `zar(n, opts)` — formats amounts as R-formatted numbers with optional compact notation
 - **Keyframes:** `PulseKeyframes()` — mounts once at App root to enable live indicator animations
-- **Chrome:** `AdminSidebar({ userInitials, userName, userSubtitle })` — vertical left rail (224px) with nav items + user card
+- **Sidebar:** `AdminSidebar({ userInitials, userName, userSubtitle })` — vertical left rail (224px) with nav items + user card (no sign-out button)
 - **Components:** `PageHeader`, `Pill`, `Tag`, `StatCard`, `FilterChip`, `PrimaryButton`, `GhostButton`, `ToolbarSearch`
 - **Used by:** All admin pages (`AdminDashboard`, `AdminCustomers`, `AdminSchedules`, `AdminVisits`, `AdminExports`, `AdminUsers`, `AdminAccount`)
 
@@ -816,18 +830,24 @@ Edge functions access the **service role key** via `Deno.env.get('SUPABASE_SERVI
 src/
 ├── assets/                    # Static assets (logo)
 ├── components/
+│   ├── schedule/              # Rep schedule page components (split from DailySchedule)
+│   │   ├── ScheduleCard.tsx           # Individual customer visit card
+│   │   ├── AdHocVisitCard.tsx         # Unscheduled visit card
+│   │   ├── OffRouteOrderCard.tsx      # Off-route order card
+│   │   ├── UnscheduledVisitRow.tsx    # Completed unscheduled visit row
+│   │   ├── EodSummaryModal.tsx        # End-of-day summary dialog
+│   │   └── ScheduleHelpers.tsx        # Shared utilities, constants, styles
 │   ├── ui/                    # shadcn/ui components (50+)
 │   ├── AppLayout.tsx          # Main layout, auth guard, auto-sync setup
 │   ├── CameraCapture.tsx      # Full-screen camera overlay
 │   ├── NavLink.tsx            # Styled nav link
 │   ├── OfflineStatusBar.tsx   # Offline indicator banner
-│   └── ui/
-│       ├── searchable-select.tsx  # Searchable combobox (Popover + cmdk) for all customer/rep dropdowns
-│       └── ...                    # 50+ shadcn/ui components
+│   └── PullToRefresh.tsx      # Pull-to-refresh handler
 ├── hooks/
 │   ├── useAuth.tsx            # Auth context provider — role, repId, profile, permissions
 │   ├── useOnlineStatus.ts     # navigator.onLine + event listeners
-│   ├── useVisitDetails.ts     # Shared Supabase visit lookup hook used by VisitDetailsText and VisitPhotoOnly
+│   ├── useUnscheduledVisits.ts    # Unscheduled visits fetch hook
+│   ├── useVisitDetails.ts     # Shared Supabase visit lookup hook
 │   ├── use-mobile.tsx         # Mobile breakpoint detection
 │   └── use-toast.ts           # Toast hook
 ├── integrations/
@@ -835,30 +855,34 @@ src/
 │       ├── client.ts          # Supabase client init — reads VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
 │       └── types.ts           # Auto-generated DB types — DO NOT EDIT manually
 ├── lib/
+│   ├── adminUi.tsx            # Admin design system: palette (A), components, sidebar
 │   ├── imageCompressor.ts     # compressImage(), stampImage(), blobToBase64(), base64ToBlob()
 │   ├── offlineBootstrap.ts    # Pre-cache customers/schedules/auth on first online login
-│   ├── offlineDb.ts           # All IndexedDB read/write operations
-│   ├── reportData.ts          # buildReportData() and ReportData interface (extracted from AdminExports.tsx)
+│   ├── offlineDb.ts           # All IndexedDB read/write operations (DB_VERSION: 5)
+│   ├── reportData.ts          # buildReportData() with single/multi-day schedule metrics
 │   ├── syncEngine.ts          # syncPendingVisits(), syncPendingScheduleItemUpdates()
 │   ├── timeUtils.ts           # Shared time and currency formatting utilities
 │   └── utils.ts               # cn() Tailwind merge utility
 ├── pages/
 │   ├── Auth.tsx               # /auth — login form
-│   ├── DailySchedule.tsx      # /schedule — rep daily schedule
+│   ├── DailySchedule.tsx      # /schedule — rep daily schedule (page shell)
 │   ├── Index.tsx              # / — role-based redirect
 │   ├── LogVisit.tsx           # /log-visit — manual visit form
+│   ├── MyVisits.tsx           # /my-visits — completed visits list
+│   ├── Averages.tsx           # /averages — rep performance metrics
 │   ├── NotFound.tsx           # * — 404
 │   └── admin/
-│       ├── AdminAccount.tsx   # /admin/account
-│       ├── AdminCustomers.tsx # /admin/customers
+│       ├── AdminAccount.tsx   # /admin/account — admin profile & settings (with sign-out)
+│       ├── AdminCustomers.tsx # /admin/customers — customer CRUD + assignments
+│       ├── AdminDashboard.tsx # /admin/dashboard — live rep status + activity feed
 │       ├── AdminExports.tsx   # /admin/reports — CSV, Excel, PDF export
-│       ├── AdminReps.tsx      # /admin/reps
-│       ├── AdminSchedules.tsx # /admin/schedules
-│       ├── AdminUsers.tsx     # /admin/users
-│       ├── AdminVisits.tsx    # /admin/visits
-│       └── CustomerChart.tsx  # /admin/customer-chart — recharts visit visualisation
+│       ├── AdminSchedules.tsx # /admin/schedules — template management + week rotation
+│       ├── AdminUsers.tsx     # /admin/users — user account lifecycle
+│       ├── AdminVisits.tsx    # /admin/visits — all visits with edit/soft-delete
+│       ├── CustomerDashboard.tsx # /admin/customer/:customerId — per-customer history
+│       └── CustomerChart.tsx  # /admin/customer-chart — recharts visit frequency
 ├── sw-custom.ts               # Custom service worker (caching routes)
-├── App.tsx                    # Root: router, providers
+├── App.tsx                    # Root: router, providers, PulseKeyframes
 ├── index.css                  # Tailwind directives + HSL design tokens
 └── main.tsx                   # Entry point
 

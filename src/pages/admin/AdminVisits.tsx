@@ -164,6 +164,7 @@ export default function AdminVisits() {
       );
     }
     if (v.status === "off_route") return <Tag tone="sun">Off-route</Tag>;
+    if (v.status === "skipped") return <Tag tone="danger">Skipped</Tag>;
     return <span style={{ color: A.inkMute }}>—</span>;
   };
 
@@ -176,7 +177,7 @@ export default function AdminVisits() {
 
   const hasFilters = repFilter !== "all" || custFilter !== "all" || !!dateFrom || !!dateTo;
 
-  const GRID_COLS = "90px 1.1fr 1.4fr 0.9fr 60px 0.9fr 50px 0.9fr 1.3fr 60px";
+  const GRID_COLS = "75px 0.8fr 1.1fr 0.8fr 65px 0.9fr 10px 0.6fr 2.2fr 60px";
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", background: A.bg, minHeight: 0, fontFamily: A.sans, color: A.ink }}>
@@ -256,25 +257,28 @@ export default function AdminVisits() {
       </div>
 
       {/* Table */}
-      <div style={{ flex: 1, overflow: "auto", padding: "14px 24px" }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "0 24px 14px 24px" }}>
         {loading ? (
           <div style={{ padding: "60px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>Loading…</div>
         ) : (
-          <div style={{ background: A.panel, border: `1px solid ${A.border}`, borderRadius: 10, overflow: "hidden" }}>
-            <div style={{ display: "grid", gridTemplateColumns: GRID_COLS, padding: "10px 14px", fontSize: 10.5, color: A.inkMute, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase", borderBottom: `1px solid ${A.borderSoft}`, background: A.panelTint }}>
+          <div style={{ marginTop: 14 }}>
+            {/* Sticky header — sits directly in the scroll container */}
+            <div style={{ display: "grid", gridTemplateColumns: GRID_COLS, padding: "8px 14px", fontSize: 10.5, color: A.inkMute, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase", borderBottom: `1px solid ${A.borderSoft}`, background: A.panelTint, border: `1px solid ${A.border}`, borderRadius: "10px 10px 0 0", position: "sticky", top: 0, zIndex: 1 }}>
               <div>Date</div>
               <div>Rep</div>
               <div>Customer</div>
-              <div>Time</div>
+              <div style={{ paddingLeft: 18 }}>Time</div>
               <div style={{ textAlign: "center" }}><Camera size={12} style={{ display: "inline-block", verticalAlign: "-2px" }} /></div>
-              <div>Order №</div>
-              <div>Qty</div>
+              <div style={{ paddingLeft: 72, paddingRight: 0 }}>Order №</div>
+              <div style={{ textAlign: "center" }}>Qty</div>
               <div style={{ textAlign: "right" }}>Amount</div>
-              <div>Notes</div>
+              <div style={{ paddingLeft: 80 }}>Notes</div>
               <div></div>
             </div>
 
-            {visits.length === 0 ? (
+            {/* Body */}
+            <div style={{ background: A.panel, border: `1px solid ${A.border}`, borderTop: "none", borderRadius: "0 0 10px 10px", overflow: "hidden" }}>
+              {visits.length === 0 ? (
               <div style={{ padding: "40px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>
                 {hasFilters ? "No visits match your filters." : "No visits yet."}
               </div>
@@ -286,10 +290,10 @@ export default function AdminVisits() {
                   style={{
                     display: "grid",
                     gridTemplateColumns: GRID_COLS,
-                    padding: "11px 14px",
+                    padding: "7px 14px",
                     alignItems: "center",
                     borderBottom: i < visits.length - 1 ? `1px solid ${A.borderRow}` : "none",
-                    fontSize: 12,
+                    fontSize: 13,
                     color: isSkipped ? A.danger : A.ink,
                     background: isSkipped ? A.dangerBg : "transparent",
                   }}
@@ -299,20 +303,19 @@ export default function AdminVisits() {
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span style={{ fontWeight: 500 }}>{v.customers?.customer_name}</span>
-                      {isSkipped && <Tag tone="danger">Skipped</Tag>}
                     </div>
                     {v.customers?.account_number && (
                       <div style={{ fontSize: 10.5, color: A.inkMute, fontFamily: A.mono, marginTop: 1 }}>#{v.customers.account_number}</div>
                     )}
                   </div>
-                  <div>{renderTime(v)}</div>
+                  <div style={{ paddingLeft: 18 }}>{renderTime(v)}</div>
                   <div style={{ display: "flex", justifyContent: "center" }}>{renderPhoto(v)}</div>
-                  <div style={{ fontFamily: A.mono, fontSize: 11, color: isSkipped ? A.danger : A.ink }}>{v.order_number || "—"}</div>
-                  <div style={{ fontFamily: A.mono, fontSize: 11 }}>{v.order_quantity != null ? v.order_quantity : "—"}</div>
+                  <div style={{ fontFamily: A.mono, fontSize: 11, color: isSkipped ? A.danger : A.ink, paddingLeft: 72, paddingRight: 0 }}>{v.order_number || "—"}</div>
+                  <div style={{ fontFamily: A.mono, fontSize: 11, textAlign: "center" }}>{v.order_quantity != null ? v.order_quantity : "—"}</div>
                   <div style={{ fontFamily: A.mono, fontSize: 11.5, textAlign: "right", fontWeight: 500 }}>
                     {v.order_amount != null ? `R\u00A0${Number(v.order_amount).toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
                   </div>
-                  <div style={{ fontSize: 11.5, color: A.inkMute, fontStyle: v.notes ? "italic" : "normal" }}>
+                  <div style={{ fontSize: 11.5, color: A.inkMute, fontStyle: v.notes ? "italic" : "normal", paddingLeft: 80 }}>
                     {v.notes ? (
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -332,7 +335,8 @@ export default function AdminVisits() {
                   </div>
                 </div>
               );
-            })}
+              })}
+            </div>
           </div>
         )}
       </div>

@@ -126,6 +126,15 @@ export function ScheduleCard({
         if (card.clientGeneratedId && !clientGenIdRef.current) {
           clientGenIdRef.current = card.clientGeneratedId;
         }
+        if (card.orderNumber && !localOrderNumber) {
+          setLocalOrderNumber(card.orderNumber);
+        }
+        if (card.orderQty && !localOrderQty) {
+          setLocalOrderQty(card.orderQty);
+        }
+        if (card.orderAmount && !localOrderAmount) {
+          setLocalOrderAmount(card.orderAmount);
+        }
       } catch {
         // IDB unavailable — do nothing silently
       }
@@ -163,8 +172,11 @@ export function ScheduleCard({
       notes: localNotes,
       visitId: activeVisitId,
       clientGeneratedId: clientGenIdRef.current,
+      orderNumber: localOrderNumber || null,
+      orderQty: localOrderQty || null,
+      orderAmount: localOrderAmount || null,
     }).catch(() => {});
-  }, [localNotes]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [localNotes, localOrderNumber, localOrderQty, localOrderAmount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const queueScheduleItemUpdate = async (newItem: any) => {
     // Resolve visitId: prefer component state, fall back to IDB for the

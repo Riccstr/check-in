@@ -21,6 +21,11 @@ export function useUnscheduledVisits(
         .map((i: any) => i.visit_id)
         .filter(Boolean) as string[];
 
+      const completedScheduledKeys = itemsRef.current
+        .filter((i: any) => i.status === "visited" || i.status === "skipped")
+        .map((i: any) => i.customer_id)
+        .filter(Boolean) as string[];
+
       let query = supabase
         .from("visits")
         .select("*, customers(customer_name)")
@@ -30,6 +35,10 @@ export function useUnscheduledVisits(
 
       if (linkedVisitIds.length > 0) {
         query = (query as any).not("id", "in", `(${linkedVisitIds.join(",")})`);
+      }
+
+      if (completedScheduledKeys.length > 0) {
+        query = (query as any).not("customer_id", "in", `(${completedScheduledKeys.join(",")})`);
       }
 
       const { data } = await query;

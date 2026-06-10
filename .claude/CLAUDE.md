@@ -14,21 +14,29 @@ Language: TypeScript throughout.
 - SQL changes run in Supabase SQL Editor only — never via code migrations
 
 ## Key Files
-- src/pages/DailySchedule.tsx — Rep schedule page (highest risk file — contains offline sync, photo capture, realtime subscriptions, active visit guard, self-heal logic)
+- src/pages/DailySchedule.tsx — Rep schedule page shell (highest risk file — contains offline sync, photo capture, realtime subscriptions, active visit guard, self-heal logic)
+- src/components/schedule/ScheduleCard.tsx — Individual customer visit card component
+- src/components/schedule/AdHocVisitCard.tsx — Unscheduled visit card component
+- src/components/schedule/OffRouteOrderCard.tsx — Off-route order card component
+- src/components/schedule/UnscheduledVisitRow.tsx — Completed unscheduled visit row component
+- src/components/schedule/EodSummaryModal.tsx — End-of-day summary modal component
+- src/components/schedule/ScheduleHelpers.tsx — Shared schedule utilities, constants, and styles
+- src/hooks/useUnscheduledVisits.ts — Unscheduled visits fetch and state hook
 - src/pages/admin/AdminDashboard.tsx — Admin dashboard with live rep status and area tags
-- src/pages/admin/AdminSchedules.tsx — Schedule template management and week rotation (master-detail layout)
+- src/pages/admin/AdminSchedules.tsx — Schedule template management and week rotation (accordion week-cycle layout with day buttons)
 - src/pages/admin/AdminVisits.tsx — All visits view with filters, soft-delete (is_deleted = true)
-- src/pages/admin/AdminExports.tsx — Excel/PDF export (two-pane configurator + preview)
+- src/pages/admin/AdminExports.tsx — CSV/Excel/PDF export with quick-date buttons and toast feedback
+- src/pages/admin/AdminAccount.tsx — Admin profile settings and account preferences (includes sign-out)
 - src/pages/admin/CustomerDashboard.tsx — Per-customer visit history
 - src/lib/adminUi.tsx — Admin design system: palette (A), status semantics, zar() formatter, AdminSidebar, PageHeader, buttons, chips
 - src/lib/offlineDb.ts — IndexedDB helpers (DB_VERSION: 5)
-- src/lib/reportData.ts — buildReportData() and ReportData interface (extracted from AdminExports.tsx)
-- src/lib/timeUtils.ts — shared time and currency formatting utilities
+- src/lib/reportData.ts — buildReportData() with single-day and multi-day schedule metric aggregation
+- src/lib/timeUtils.ts — Shared time and currency formatting utilities
 - src/lib/imageCompressor.ts — Photo compression before upload
 - src/hooks/useAuth.tsx — Auth context
-- src/hooks/useVisitDetails.ts — shared Supabase visit lookup hook used by VisitDetailsText and VisitPhotoOnly
-- src/components/AppLayout.tsx — Nav and layout; branches on role (admin → AdminChrome + sidebar, rep → header)
-- src/App.tsx — Routes
+- src/hooks/useVisitDetails.ts — Shared Supabase visit lookup hook
+- src/components/AppLayout.tsx — Main layout, auth guard, auto-sync setup; branches on role (admin → AdminChrome + sidebar, rep → header)
+- src/App.tsx — Routes and providers
 
 ## Key Database Tables
 - visits — rep_id (references reps.id NOT profiles.id), customer_id, visit_date, arrival_time, leaving_time, status, order_number, order_quantity, order_amount, photo_url, client_generated_id
@@ -52,8 +60,9 @@ Any new status must be added via SQL ALTER before frontend code can write it.
 
 ## Critical Patterns
 - visits.rep_id references reps.id — never profiles.id or auth.users.id
-- adminUi.tsx exports admin-only design system (palette A, AdminSidebar, components); rep app uses inline C palette in DailySchedule.tsx
+- adminUi.tsx exports admin-only design system (palette A, AdminSidebar, components); rep app uses inline C palette in schedule components
 - AppLayout.tsx branches on role: admin → AdminChrome (sidebar) + admin pages, rep → header + /schedule fullscreen
+- AdminChrome has no top utility strip; offline status shown via OfflineStatusBar on rep header; sign-out button only on AdminAccount page
 - AdminVisits uses soft-delete (is_deleted = true); realtime subscription is INSERT + UPDATE only (no DELETE trigger)
 - active_card_state in IndexedDB must be cleared on every checkout path (online PATCH, offline queue, and error/catch paths)
 - expandedActiveIdRef realtime guard must always be preserved — never remove it
@@ -67,7 +76,8 @@ Any new status must be added via SQL ALTER before frontend code can write it.
 - offlineDb.ts IDB operations re-throw as `IDB_ERROR: <message>` — call sites importing from offlineDb should catch this prefix to identify storage failures
 - `offline_schedule_item_updates` uses schedule_item_id as keyPath intentionally — state snapshot pattern, last write before sync is authoritative. Do not redesign
 - `adHocPhoto` in DailySchedule.tsx is `{ blob: Blob; preview: string } | null` — base64 conversion is lazy, only in offline/error fallback paths
-- AdminSchedules uses master-detail layout: rep rail + week-cycle rail + day tabs + stops list with drag-to-reorder
+- AdminSchedules uses master-detail layout: rep rail (left) + week-cycle accordion (left-centre, expandable cards with day buttons) + day template editor (right)
+- reportData.ts handles both single-day and multi-day date ranges; multi-day aggregates travel time, schedule items, and calculates expectedProductiveMins as `(scheduleDaysCount * 540) - travelTimeMins`
 
 ## IndexedDB Stores (DB_VERSION: 5)
 - offline_visits_queue — queued visit inserts (key: client_generated_id)

@@ -430,6 +430,9 @@ export interface ActiveCardState {
   visitId?: string | null;
   /** UUID generated at arrival for idempotent upsert. */
   clientGeneratedId?: string | null;
+  orderNumber?: string | null;
+  orderQty?: string | null;
+  orderAmount?: string | null;
 }
 
 export async function saveActiveCard(data: ActiveCardState): Promise<void> {
@@ -452,6 +455,9 @@ export async function getActiveCard(): Promise<ActiveCardState | null> {
       notes: entry.notes,
       visitId: entry.visitId ?? null,
       clientGeneratedId: entry.clientGeneratedId ?? null,
+      orderNumber: entry.orderNumber ?? null,
+      orderQty: entry.orderQty ?? null,
+      orderAmount: entry.orderAmount ?? null,
     };
   } catch (err) {
     throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
