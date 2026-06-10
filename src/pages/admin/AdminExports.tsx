@@ -241,7 +241,7 @@ export default function AdminExports() {
     const {
       data, totalProductiveMins, totalOrderQty, totalOrderAmount, skippedCount,
       travelTimeMins, scheduleItemCount, expectedProductiveMins, timePerCustomer,
-      generatedAt, period,
+      generatedAt, period, unscheduledVisitIds,
     } = rd;
 
     // 12 columns: A=# B=Acc C=Cust D=Area E=Arr F=Dep G=Dur(min) H=OrdNo I=Qty J=Amt K=Notes L=Status
@@ -369,7 +369,7 @@ export default function AdminExports() {
         v.order_number || "",
         v.order_quantity != null ? v.order_quantity : "",
         v.order_amount != null ? v.order_amount : "",
-        isSkipped ? `[SKIPPED] ${v.notes || ""}` : (v.notes || ""),
+        isSkipped ? `[SKIPPED] ${v.notes || ""}` : (isOffRoute ? `[OFF-ROUTE] ${v.notes || ""}`.trimEnd() : (unscheduledVisitIds.has(v.id) ? `[UNSCHEDULED] ${v.notes || ""}`.trimEnd() : (v.notes || ""))),
         statusLabel,
       ];
 
@@ -429,7 +429,7 @@ export default function AdminExports() {
     const {
       data, totalProductiveMins, totalOrderQty, totalOrderAmount, skippedCount,
       travelTimeMins, scheduleItemCount, expectedProductiveMins, timePerCustomer,
-      generatedAt, period, bannerLine2,
+      generatedAt, period, bannerLine2, unscheduledVisitIds,
     } = rd;
 
     // ── Document setup ───────────────────────────────────────────────────────
@@ -582,7 +582,7 @@ export default function AdminExports() {
         v.order_number || "",
         v.order_quantity != null ? String(v.order_quantity) : "",
         v.order_amount   != null ? fmtCurrency(Number(v.order_amount)) : "",
-        isSkipped ? `[SKIPPED] ${v.notes || ""}` : (isOffRoute ? `[OFF-ROUTE] ${v.notes || ""}`.trimEnd() : (v.notes || "")),
+        isSkipped ? `[SKIPPED] ${v.notes || ""}` : (isOffRoute ? `[OFF-ROUTE] ${v.notes || ""}`.trimEnd() : (unscheduledVisitIds.has(v.id) ? `[UNSCHEDULED] ${v.notes || ""}`.trimEnd() : (v.notes || ""))),
       ];
       (row as any).__skipped = isSkipped;
       bodyRows.push(row);

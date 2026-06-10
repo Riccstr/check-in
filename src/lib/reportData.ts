@@ -20,6 +20,7 @@ export interface ReportData {
   scheduleDayStr: string;
   areasStr: string;
   bannerLine2: string;
+  unscheduledVisitIds: Set<string>;
 }
 
 export async function buildReportData(
@@ -43,6 +44,32 @@ export async function buildReportData(
 
   const { data } = await q;
   if (!data || data.length === 0) return null;
+
+  const { data: linkedRows } = await supabase
+    .from("schedule_items")
+    .select("visit_id")
+    .not("visit_id", "is", null)
+    .in(
+      "schedule_id",
+      (
+        await supabase
+          .from("daily_schedules")
+          .select("id")
+          .eq("rep_id", repId)
+          .gte("schedule_date", dateFrom)
+          .lte("schedule_date", dateTo || dateFrom)
+      ).data?.map((d: any) => d.id) ?? []
+    );
+
+  const linkedVisitIds = new Set<string>(
+    (linkedRows ?? []).map((r: any) => r.visit_id).filter(Boolean)
+  );
+
+  const unscheduledVisitIds = new Set<string>(
+    (data as any[])
+      .filter((v: any) => v.status === "visited" && !linkedVisitIds.has(v.id))
+      .map((v: any) => v.id)
+  );
 
   let totalProductiveMins = 0;
   let totalOrderQty = 0;
@@ -173,5 +200,6 @@ export async function buildReportData(
     scheduleDayStr,
     areasStr,
     bannerLine2,
+    unscheduledVisitIds,
   };
 }
