@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { startOfWeek, subWeeks, format } from "date-fns";
-import { Plus, Trash2, ArrowUp, ArrowDown, Settings, Search, GripVertical } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Settings, Search, GripVertical, ChevronDown } from "lucide-react";
 import { A, PageHeader, Tag, PrimaryButton, GhostButton } from "@/lib/adminUi";
 
 const WEEKDAYS = [
@@ -19,8 +19,6 @@ const WEEKDAYS = [
   { value: 4, label: "Thursday" },
   { value: 5, label: "Friday" },
 ];
-
-const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 interface Rep {
   id: string;
@@ -65,22 +63,6 @@ interface ScheduleTemplate {
   schedule_template_items: ScheduleTemplateItem[];
 }
 
-interface ScheduleItem {
-  id: string;
-  sort_order: number;
-  status: string;
-  customers: {
-    customer_name: string;
-    account_number: string | null;
-  } | null;
-}
-
-interface DailySchedule {
-  id: string;
-  schedule_date: string;
-  schedule_items: ScheduleItem[];
-}
-
 export default function AdminSchedules() {
   const { user } = useAuth();
   const [reps, setReps] = useState<Rep[]>([]);
@@ -99,12 +81,13 @@ export default function AdminSchedules() {
   const [templateTravelTime, setTemplateTravelTime] = useState<string>("");
   const [templateCustomers, setTemplateCustomers] = useState<string[]>([]);
 
-  // Daily schedules
-  const [dailySchedules, setDailySchedules] = useState<DailySchedule[]>([]);
+  // Week management modal
+  const [weekSettingsOpen, setWeekSettingsOpen] = useState(false);
+  const [weekNameEdits, setWeekNameEdits] = useState<Record<string, string>>({});
+  const [pendingCurrentWeek, setPendingCurrentWeek] = useState<number | null>(null);
 
-  // Inline week rename
-  const [editingWeekId, setEditingWeekId] = useState<string | null>(null);
-  const [editingWeekName, setEditingWeekName] = useState("");
+  // Accordion expand state
+  const [expandedWeekId, setExpandedWeekId] = useState<string | null>(null);
 
   // Template dialog filters
   const [customerSearch, setCustomerSearch] = useState("");
@@ -117,7 +100,6 @@ export default function AdminSchedules() {
     const d = new Date().getDay(); // 0 Sun .. 6 Sat
     return d >= 1 && d <= 5 ? String(d) : "1";
   });
-  const [showDaily, setShowDaily] = useState(false);
 
   useEffect(() => {
     fetchBaseData();
@@ -128,12 +110,6 @@ export default function AdminSchedules() {
       fetchTemplates();
     }
   }, [selectedRep, selectedWeeklyTemplate]);
-
-  useEffect(() => {
-    if (selectedRep) {
-      fetchDailySchedules();
-    }
-  }, [selectedRep]);
 
   const fetchBaseData = async () => {
     const [repsRes, custRes, weekRes, settingRes] = await Promise.all([
@@ -188,16 +164,6 @@ export default function AdminSchedules() {
     setTemplates(data || []);
   };
 
-  const fetchDailySchedules = async () => {
-    const { data } = await supabase
-      .from("daily_schedules")
-      .select("*, schedule_items(*, customers(customer_name, account_number))")
-      .eq("rep_id", selectedRep)
-      .order("schedule_date", { ascending: false })
-      .limit(30);
-    setDailySchedules(data || []);
-  };
-
 
   // --- Current Week ---
   const setCurrentWeek = async (sortOrder: number) => {
@@ -217,38 +183,29 @@ export default function AdminSchedules() {
     }
   };
 
-  // --- Reorder weeks ---
-  const moveWeek = async (weekId: string, direction: "up" | "down") => {
-    const idx = weeklyTemplates.findIndex(w => w.id === weekId);
-    if (idx < 0) return;
-    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= weeklyTemplates.length) return;
+  // --- Week settings modal ---
+  const openWeekSettings = () => {
+    const edits: Record<string, string> = {};
+    weeklyTemplates.forEach(w => { edits[w.id] = w.name; });
+    setWeekNameEdits(edits);
+    setPendingCurrentWeek(currentWeekOrder);
+    setWeekSettingsOpen(true);
+  };
 
-    const a = weeklyTemplates[idx];
-    const b = weeklyTemplates[swapIdx];
-
-    await Promise.all([
-      supabase.from("weekly_templates").update({ sort_order: b.sort_order }).eq("id", a.id),
-      supabase.from("weekly_templates").update({ sort_order: a.sort_order }).eq("id", b.id),
-    ]);
+  const saveWeekSettings = async () => {
+    for (const wk of weeklyTemplates) {
+      const newName = weekNameEdits[wk.id]?.trim();
+      if (newName && newName !== wk.name) {
+        const { error } = await supabase.from("weekly_templates").update({ name: newName }).eq("id", wk.id);
+        if (error) { toast.error(error.message); return; }
+      }
+    }
+    if (pendingCurrentWeek && pendingCurrentWeek !== currentWeekOrder) {
+      await setCurrentWeek(pendingCurrentWeek);
+    }
+    setWeekSettingsOpen(false);
     fetchBaseData();
-  };
-
-  // --- Inline week rename ---
-  const startEditWeek = (wk: any) => {
-    setEditingWeekId(wk.id);
-    setEditingWeekName(wk.name);
-  };
-
-  const saveWeekName = async (id: string, name: string) => {
-    const trimmed = name.trim();
-    setEditingWeekId(null);
-    if (!trimmed) return;
-    const original = weeklyTemplates.find(w => w.id === id)?.name;
-    if (trimmed === original) return;
-    const { error } = await supabase.from("weekly_templates").update({ name: trimmed }).eq("id", id);
-    if (error) toast.error(error.message);
-    else { toast.success("Week renamed"); fetchBaseData(); }
+    toast.success("Week settings saved");
   };
 
   // --- Template CRUD ---
@@ -322,7 +279,6 @@ export default function AdminSchedules() {
 
     setTemplateDialogOpen(false);
     fetchTemplates();
-    if (selectedRep) fetchDailySchedules();
   };
 
   const regenerateAffectedSchedules = async (repId: string, dayOfWeek: number, weeklyTemplateId: string) => {
@@ -367,14 +323,6 @@ export default function AdminSchedules() {
     await supabase.from("schedule_templates").delete().eq("id", id);
     toast.success("Template deleted");
     fetchTemplates();
-  };
-
-  // --- Daily schedules ---
-  const deleteDaily = async (id: string) => {
-    if (!confirm("Delete this daily schedule? This cannot be undone.")) return;
-    await supabase.from("daily_schedules").delete().eq("id", id);
-    toast.success("Schedule deleted");
-    fetchDailySchedules();
   };
 
   const toggleCustomer = (list: string[], setList: (v: string[]) => void, id: string) => {
@@ -431,57 +379,50 @@ export default function AdminSchedules() {
             );
           })}
 
-          <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: 0.6, textTransform: "uppercase", color: A.inkMute, padding: "18px 8px 8px" }}>4-Week Cycle</div>
-          {weeklyTemplates.map((wk, idx) => {
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 8px 8px" }}>
+            <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: 0.6, textTransform: "uppercase", color: A.inkMute }}>4-Week Cycle</div>
+            <button
+              type="button"
+              onClick={openWeekSettings}
+              title="Manage weeks"
+              style={{ padding: 3, background: "transparent", border: "none", color: A.inkMute, cursor: "pointer", display: "flex" }}
+            >
+              <Settings size={12} />
+            </button>
+          </div>
+          {weeklyTemplates.map((wk) => {
             const sel = selectedWeeklyTemplate === wk.id;
             const isCurrent = wk.sort_order === currentWeekOrder;
-            const editing = editingWeekId === wk.id;
+            const isExpanded = expandedWeekId === wk.id;
             return (
-              <div
-                key={wk.id}
-                className="group"
-                onClick={() => { if (!editing) setSelectedWeeklyTemplate(wk.id); }}
-                style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 10px", borderRadius: 8, border: `1px solid ${sel ? A.greenDeep : A.border}`, background: sel ? A.greenDeep : A.panel, cursor: "pointer", marginBottom: 6 }}
-              >
-                {editing ? (
-                  <Input
-                    autoFocus
-                    value={editingWeekName}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => setEditingWeekName(e.target.value)}
-                    onBlur={() => saveWeekName(wk.id, editingWeekName)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
-                      if (e.key === "Escape") setEditingWeekId(null);
-                    }}
-                    style={{ height: 24, fontSize: 12.5, fontWeight: 600, padding: "0 6px", flex: 1 }}
-                  />
-                ) : (
+              <div key={wk.id}>
+                <div
+                  onClick={() => { setSelectedWeeklyTemplate(wk.id); setExpandedWeekId(sel ? (isExpanded ? null : wk.id) : wk.id); }}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 10px", borderRadius: 8, border: `1px solid ${sel ? A.greenDeep : A.border}`, background: sel ? A.greenDeep : A.panel, cursor: "pointer", marginBottom: 0 }}
+                >
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: sel ? A.cream : A.ink }}>{wk.name}</span>
-                )}
 
-                {!editing && isCurrent && (
-                  <span style={{ fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 5, background: sel ? A.green : A.greenSoft, color: sel ? A.cream : A.green, flexShrink: 0 }}>This week</span>
-                )}
+                  {isCurrent && (
+                    <span style={{ fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 5, background: sel ? A.green : A.greenSoft, color: sel ? A.cream : A.green, flexShrink: 0 }}>This week</span>
+                  )}
 
-                {!editing && (
-                  <div
-                    className="opacity-0 group-hover:opacity-100 transition-opacity"
-                    style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {!isCurrent && (
-                      <button type="button" title="Set as current week" onClick={() => setCurrentWeek(wk.sort_order)} style={{ padding: "2px 6px", fontSize: 9.5, fontWeight: 600, border: `1px solid ${sel ? A.cream : A.border}`, background: sel ? "transparent" : A.panel, color: sel ? A.cream : A.inkSoft, borderRadius: 5, cursor: "pointer" }}>Set current</button>
-                    )}
-                    <button type="button" title="Rename" onClick={() => startEditWeek(wk)} style={{ padding: 3, background: "transparent", border: "none", color: sel ? A.cream : A.inkMute, cursor: "pointer", display: "flex" }}>
-                      <Settings size={11} />
-                    </button>
-                    <button type="button" title="Move earlier" disabled={idx === 0} onClick={() => moveWeek(wk.id, "up")} style={{ padding: 3, background: "transparent", border: "none", color: idx === 0 ? A.inkDim : (sel ? A.cream : A.inkMute), cursor: idx === 0 ? "not-allowed" : "pointer", display: "flex" }}>
-                      <ArrowUp size={11} />
-                    </button>
-                    <button type="button" title="Move later" disabled={idx === weeklyTemplates.length - 1} onClick={() => moveWeek(wk.id, "down")} style={{ padding: 3, background: "transparent", border: "none", color: idx === weeklyTemplates.length - 1 ? A.inkDim : (sel ? A.cream : A.inkMute), cursor: idx === weeklyTemplates.length - 1 ? "not-allowed" : "pointer", display: "flex" }}>
-                      <ArrowDown size={11} />
-                    </button>
+                  <ChevronDown size={13} style={{ color: sel ? A.cream : A.inkMute, transition: "transform 0.2s", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)", flexShrink: 0 }} />
+                </div>
+                {sel && isExpanded && (
+                  <div style={{ display: "flex", gap: 2, padding: "6px 10px 6px 10px", background: A.panel, borderRadius: 6, margin: "6px 0" }}>
+                    {WEEKDAYS.map((d) => {
+                      const active = selectedDay === String(d.value);
+                      return (
+                        <button
+                          key={d.value}
+                          type="button"
+                          onClick={() => setSelectedDay(String(d.value))}
+                          style={{ flex: 1, padding: "4px 8px", borderRadius: 5, border: "none", background: active ? A.green : A.borderSoft, color: active ? A.cream : A.inkSoft, fontSize: 10.5, fontWeight: active ? 600 : 500, cursor: "pointer" }}
+                        >
+                          {d.label.slice(0, 3)}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -501,130 +442,59 @@ export default function AdminSchedules() {
             </div>
           ) : (
             <>
-              {/* Header: rep · week  +  day tabs + daily-history toggle */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: `1px solid ${A.border}`, flexShrink: 0, gap: 12 }}>
+              {/* Header: rep · week */}
+              <div style={{ display: "flex", alignItems: "center", padding: "14px 20px", borderBottom: `1px solid ${A.border}`, flexShrink: 0 }}>
                 <div style={{ fontSize: 15, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {selectedRepName}
                   <span style={{ color: A.inkMute, fontWeight: 500 }}> · {selectedWeekName}</span>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                  <div style={{ display: "flex", gap: 2, background: A.borderSoft, padding: 3, borderRadius: 8 }}>
-                    {WEEKDAYS.map((d) => {
-                      const active = !showDaily && selectedDay === String(d.value);
-                      return (
-                        <button
-                          key={d.value}
-                          type="button"
-                          onClick={() => { setShowDaily(false); setSelectedDay(String(d.value)); }}
-                          style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: active ? A.panel : "transparent", color: active ? A.ink : A.inkSoft, fontSize: 12, fontWeight: active ? 600 : 500, cursor: "pointer", boxShadow: active ? "0 1px 2px rgba(23,23,21,0.06)" : "none" }}
-                        >
-                          {d.label.slice(0, 3)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowDaily((s) => !s)}
-                    style={{ padding: "6px 11px", borderRadius: 7, border: `1px solid ${showDaily ? A.green : A.border}`, background: showDaily ? A.greenSoft : A.panel, color: showDaily ? A.green : A.inkSoft, fontSize: 11.5, fontWeight: 500, cursor: "pointer" }}
-                  >
-                    Daily history
-                  </button>
-                </div>
               </div>
 
               <div style={{ flex: 1, overflow: "auto", padding: "18px 20px" }}>
-                {showDaily ? (
-                  /* ── Daily schedule history ─────────────────────────── */
-                  <div style={{ background: A.panel, border: `1px solid ${A.border}`, borderRadius: 10, overflow: "hidden" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "120px 100px 1fr 130px 60px", padding: "10px 14px", fontSize: 10.5, color: A.inkMute, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase", borderBottom: `1px solid ${A.borderSoft}`, background: A.panelTint }}>
-                      <div>Date</div>
-                      <div>Day</div>
-                      <div>Customers</div>
-                      <div>Status</div>
-                      <div></div>
-                    </div>
-                    {dailySchedules.length === 0 ? (
-                      <div style={{ padding: "40px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>No schedules generated yet for this rep.</div>
-                    ) : dailySchedules.map((ds, rowIdx) => {
-                      const items = (ds.schedule_items || []).slice().sort((a, b) => a.sort_order - b.sort_order);
-                      const visited = items.filter((i) => i.status === "visited").length;
-                      const pct = items.length > 0 ? Math.round((visited / items.length) * 100) : 0;
-                      return (
-                        <div key={ds.id} style={{ display: "grid", gridTemplateColumns: "120px 100px 1fr 130px 60px", padding: "11px 14px", alignItems: "flex-start", borderBottom: rowIdx < dailySchedules.length - 1 ? `1px solid ${A.borderRow}` : "none", fontSize: 12 }}>
-                          <div style={{ fontFamily: A.mono, fontWeight: 500 }}>{ds.schedule_date}</div>
-                          <div>{DAYS[new Date(ds.schedule_date + "T12:00:00").getDay()]}</div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                            {items.map((i, idx) => (
-                              <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5 }}>
-                                <span style={{ flexShrink: 0, width: 16, height: 16, borderRadius: 999, background: i.status === "visited" ? A.green : i.status === "skipped" ? A.dangerBg : A.borderSoft, color: i.status === "visited" ? A.cream : i.status === "skipped" ? A.danger : A.inkSoft, fontFamily: A.mono, fontSize: 9.5, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>{idx + 1}</span>
-                                <span style={{ color: i.status === "skipped" ? A.inkMute : A.ink, textDecoration: i.status === "skipped" ? "line-through" : "none" }}>{i.customers?.customer_name}</span>
-                              </div>
-                            ))}
-                          </div>
-                          <div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <div style={{ flex: 1, height: 4, background: A.borderSoft, borderRadius: 999, overflow: "hidden" }}>
-                                <div style={{ width: `${pct}%`, height: "100%", background: A.green, borderRadius: 999 }} />
-                              </div>
-                              <div style={{ fontFamily: A.mono, fontSize: 11, color: A.inkSoft, minWidth: 32, textAlign: "right" }}>{visited}/{items.length}</div>
-                            </div>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                            <button type="button" onClick={() => deleteDaily(ds.id)} title="Delete schedule" style={{ padding: 5, background: "transparent", border: "none", color: A.danger, cursor: "pointer" }}>
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  /* ── Single-day template ────────────────────────────── */
-                  <>
-                    <div style={{ background: A.panel, border: `1px solid ${A.border}`, borderRadius: 12, overflow: "hidden" }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: `1px solid ${A.border}` }}>
-                        <div style={{ fontSize: 14, fontWeight: 600 }}>
-                          {dayLabel.slice(0, 3)} <span style={{ color: A.inkMute, fontWeight: 500 }}>· {dayItems.length} {dayItems.length === 1 ? "stop" : "stops"}</span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          {dayTemplate && (
-                            <button type="button" onClick={() => deleteTemplate(dayTemplate.id)} title="Delete day template" style={{ padding: "6px 8px", background: "transparent", border: `1px solid ${A.border}`, borderRadius: 6, color: A.danger, cursor: "pointer", display: "inline-flex", alignItems: "center" }}>
-                              <Trash2 size={13} />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => (dayTemplate ? editTemplate(dayTemplate) : openNewTemplate(selectedDay))}
-                            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 13px", background: A.green, color: A.cream, border: "none", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: "pointer", boxShadow: `0 1px 0 ${A.greenDeep}` }}
-                          >
-                            <Plus size={13} /> {dayTemplate ? "Edit stops" : "Add stop"}
-                          </button>
-                        </div>
+                {/* Single-day template */}
+                <>
+                  <div style={{ background: A.panel, border: `1px solid ${A.border}`, borderRadius: 12, overflow: "hidden" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: `1px solid ${A.border}` }}>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>
+                        {dayLabel.slice(0, 3)} <span style={{ color: A.inkMute, fontWeight: 500 }}>· {dayItems.length} {dayItems.length === 1 ? "stop" : "stops"}</span>
                       </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        {dayTemplate && (
+                          <button type="button" onClick={() => deleteTemplate(dayTemplate.id)} title="Delete day template" style={{ padding: "6px 8px", background: "transparent", border: `1px solid ${A.border}`, borderRadius: 6, color: A.danger, cursor: "pointer", display: "inline-flex", alignItems: "center" }}>
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => (dayTemplate ? editTemplate(dayTemplate) : openNewTemplate(selectedDay))}
+                          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 13px", background: A.green, color: A.cream, border: "none", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: "pointer", boxShadow: `0 1px 0 ${A.greenDeep}` }}
+                        >
+                          <Plus size={13} /> {dayTemplate ? "Edit stops" : "Add stop"}
+                        </button>
+                      </div>
+                    </div>
 
-                      {dayItems.length > 0 ? (
-                        dayItems.map((i, idx) => (
-                          <div key={i.id} style={{ display: "grid", gridTemplateColumns: "30px 44px 1fr 120px 130px", alignItems: "center", padding: "12px 16px", borderBottom: idx < dayItems.length - 1 ? `1px solid ${A.borderRow}` : "none", fontSize: 13 }}>
-                            <span style={{ color: A.inkDim, display: "flex" }}><GripVertical size={14} /></span>
-                            <span style={{ fontFamily: A.mono, fontSize: 12, color: A.inkMute }}>{String(idx + 1).padStart(2, "0")}</span>
-                            <span style={{ fontWeight: 500, color: A.ink }}>{i.customers?.customer_name}</span>
-                            <span style={{ fontFamily: A.mono, fontSize: 11.5, color: A.inkSoft }}>{i.customers?.account_number ? `#${i.customers.account_number}` : "—"}</span>
-                            <span style={{ display: "flex", justifyContent: "flex-start" }}>{i.customers?.area ? <Tag tone="cream">{i.customers.area}</Tag> : null}</span>
-                          </div>
-                        ))
-                      ) : (
-                        <div style={{ padding: "48px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>
-                          No stops for {dayLabel}. Click {dayTemplate ? "\u201CEdit stops\u201D" : "\u201CAdd stop\u201D"} to build the route.
+                    {dayItems.length > 0 ? (
+                      dayItems.map((i, idx) => (
+                        <div key={i.id} style={{ display: "grid", gridTemplateColumns: "30px 44px 1fr 120px 130px", alignItems: "center", padding: "12px 16px", borderBottom: idx < dayItems.length - 1 ? `1px solid ${A.borderRow}` : "none", fontSize: 13 }}>
+                          <span style={{ color: A.inkDim, display: "flex" }}><GripVertical size={14} /></span>
+                          <span style={{ fontFamily: A.mono, fontSize: 12, color: A.inkMute }}>{String(idx + 1).padStart(2, "0")}</span>
+                          <span style={{ fontWeight: 500, color: A.ink }}>{i.customers?.customer_name}</span>
+                          <span style={{ fontFamily: A.mono, fontSize: 11.5, color: A.inkSoft }}>{i.customers?.account_number ? `#${i.customers.account_number}` : "—"}</span>
+                          <span style={{ display: "flex", justifyContent: "flex-start" }}>{i.customers?.area ? <Tag tone="cream">{i.customers.area}</Tag> : null}</span>
                         </div>
-                      )}
-                    </div>
+                      ))
+                    ) : (
+                      <div style={{ padding: "48px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>
+                        No stops for {dayLabel}. Click to build the route.
+                      </div>
+                    )}
+                  </div>
 
-                    <div style={{ fontSize: 11.5, color: A.inkMute, marginTop: 10 }}>
-                      Editing opens the stop editor — saving regenerates future unstarted daily schedules for this rep + day. Past schedules and any day with an in-progress visit are untouched.
-                    </div>
-                  </>
-                )}
+                  <div style={{ fontSize: 11.5, color: A.inkMute, marginTop: 10 }}>
+                    Editing opens the stop editor — saving regenerates future unstarted daily schedules for this rep + day. Past schedules and any day with an in-progress visit are untouched.
+                  </div>
+                </>
               </div>
             </>
           )}
@@ -726,6 +596,63 @@ export default function AdminSchedules() {
             </div>
           </div>
           <DialogFooter><Button onClick={saveTemplate}>Save Template</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Week Settings Modal */}
+      <Dialog open={weekSettingsOpen} onOpenChange={setWeekSettingsOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+          <DialogHeader><DialogTitle>Manage Week Cycle</DialogTitle></DialogHeader>
+          <div className="space-y-2">
+            {weeklyTemplates.slice().sort((a, b) => a.sort_order - b.sort_order).map((wk) => {
+              const isCurrentPending = pendingCurrentWeek === wk.sort_order;
+              return (
+                <div
+                  key={wk.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "12px 14px",
+                    border: `1px solid ${isCurrentPending ? A.green : A.border}`,
+                    background: isCurrentPending ? A.greenSoft : A.panelTint,
+                    borderRadius: 8,
+                  }}
+                >
+                  <Input
+                    value={weekNameEdits[wk.id] || ""}
+                    onChange={(e) => setWeekNameEdits({ ...weekNameEdits, [wk.id]: e.target.value })}
+                    style={{ flex: 1, height: 28, fontSize: 12 }}
+                  />
+                  {isCurrentPending ? (
+                    <span style={{ fontSize: 9.5, fontWeight: 700, padding: "2px 7px", borderRadius: 5, background: A.green, color: A.cream, whiteSpace: "nowrap" }}>Current</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setPendingCurrentWeek(wk.sort_order)}
+                      style={{
+                        padding: "4px 10px",
+                        fontSize: 11,
+                        fontWeight: 500,
+                        border: `1px solid ${A.border}`,
+                        background: A.panel,
+                        color: A.inkSoft,
+                        borderRadius: 5,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Set current
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWeekSettingsOpen(false)}>Cancel</Button>
+            <Button onClick={saveWeekSettings}>Save</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
