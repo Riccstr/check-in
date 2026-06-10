@@ -864,7 +864,7 @@ export default function DailySchedule() {
                 ) : (
                   <>
                     Done
-                    {completedItems.length + unscheduledVisits.length > 0 && (
+                    {!loading && completedItems.length + unscheduledVisits.length > 0 && (
                       <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.5, marginLeft: 4 }}>
                         {completedItems.length + unscheduledVisits.length}
                       </span>
