@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -7,17 +7,17 @@ import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-ro
 import { AuthProvider } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
 import Auth from "@/pages/Auth";
-import Index from "@/pages/Index";
-import LogVisit from "@/pages/LogVisit";
-import DailySchedule from "@/pages/DailySchedule";
-import AdminDashboard from "@/pages/admin/AdminDashboard";
-import AdminCustomers from "@/pages/admin/AdminCustomers";
-import CustomerDashboard from "@/pages/admin/CustomerDashboard";
-import AdminSchedules from "@/pages/admin/AdminSchedules";
-import AdminVisits from "@/pages/admin/AdminVisits";
-import AdminExports from "@/pages/admin/AdminExports";
-import AdminAccount from "@/pages/admin/AdminAccount";
-import AdminUsers from "@/pages/admin/AdminUsers";
+const Index = lazy(() => import("@/pages/Index"));
+const LogVisit = lazy(() => import("@/pages/LogVisit"));
+const DailySchedule = lazy(() => import("@/pages/DailySchedule"));
+const AdminDashboard = lazy(() => import("@/pages/admin/AdminDashboard"));
+const AdminCustomers = lazy(() => import("@/pages/admin/AdminCustomers"));
+const CustomerDashboard = lazy(() => import("@/pages/admin/CustomerDashboard"));
+const AdminSchedules = lazy(() => import("@/pages/admin/AdminSchedules"));
+const AdminVisits = lazy(() => import("@/pages/admin/AdminVisits"));
+const AdminExports = lazy(() => import("@/pages/admin/AdminExports"));
+const AdminAccount = lazy(() => import("@/pages/admin/AdminAccount"));
+const AdminUsers = lazy(() => import("@/pages/admin/AdminUsers"));
 import NotFound from "@/pages/NotFound";
 import { toast } from "sonner";
 
@@ -87,24 +87,26 @@ const App = () => (
           <RoutePersistence />
           <RouteRestorer />
           <AuthProvider>
-            <Routes>
-              <Route path="/auth" element={<Auth />} />
-              <Route element={<AppLayout />}>
-                <Route path="/" element={<Index />} />
-                <Route path="/log-visit" element={<LogVisit />} />
-                <Route path="/schedule" element={<DailySchedule />} />
+            <Suspense fallback={null}>
+              <Routes>
+                <Route path="/auth" element={<Auth />} />
+                <Route element={<AppLayout />}>
+                  <Route path="/" element={<Index />} />
+                  <Route path="/log-visit" element={<LogVisit />} />
+                  <Route path="/schedule" element={<DailySchedule />} />
 
-                <Route path="/admin/dashboard" element={<AdminDashboard />} />
-                <Route path="/admin/customers" element={<AdminCustomers />} />
-                <Route path="/admin/customer/:customerId" element={<CustomerDashboard />} />
-                <Route path="/admin/schedules" element={<AdminSchedules />} />
-                <Route path="/admin/visits" element={<AdminVisits />} />
-                <Route path="/admin/reports" element={<AdminExports />} />
-                <Route path="/admin/account" element={<AdminAccount />} />
-                <Route path="/admin/users" element={<AdminUsers />} />
-              </Route>
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+                  <Route path="/admin/dashboard" element={<AdminDashboard />} />
+                  <Route path="/admin/customers" element={<AdminCustomers />} />
+                  <Route path="/admin/customer/:customerId" element={<CustomerDashboard />} />
+                  <Route path="/admin/schedules" element={<AdminSchedules />} />
+                  <Route path="/admin/visits" element={<AdminVisits />} />
+                  <Route path="/admin/reports" element={<AdminExports />} />
+                  <Route path="/admin/account" element={<AdminAccount />} />
+                  <Route path="/admin/users" element={<AdminUsers />} />
+                </Route>
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
           </AuthProvider>
         </BrowserRouter>
       </GlobalErrorBoundary>
