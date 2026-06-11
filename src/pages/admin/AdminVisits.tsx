@@ -11,6 +11,8 @@ import { Pencil, Trash2, Camera } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { A, PageHeader, Tag } from "@/lib/adminUi";
 
+const PAGE_SIZE = 50;
+
 interface VisitRep {
   rep_name: string;
 }
@@ -73,16 +75,57 @@ export default function AdminVisits() {
   const [editOrderQty, setEditOrderQty] = useState("");
   const [editOrderAmount, setEditOrderAmount] = useState("");
   const [photoModal, setPhotoModal] = useState<Visit | null>(null);
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const [summaryStats, setSummaryStats] = useState({ totalVisits: 0, completedCount: 0, skippedCount: 0, offRouteCount: 0, totalAmount: 0 });
 
   const fetchVisits = async () => {
     setLoading(true);
-    let q = supabase.from("visits").select("*, reps(rep_name), customers(customer_name, account_number)").eq("is_deleted", false).order("visit_date", { ascending: false }).order("arrival_time", { ascending: false });
-    if (repFilter !== "all") q = q.eq("rep_id", repFilter);
-    if (custFilter !== "all") q = q.eq("customer_id", custFilter);
-    if (dateFrom) q = q.gte("visit_date", dateFrom);
-    if (dateTo) q = q.lte("visit_date", dateTo);
-    const { data } = await q;
-    setVisits(data || []);
+
+    // Build base filter for reuse in both queries
+    const applyFilters = (q: any) => {
+      q = q.eq("is_deleted", false);
+      if (repFilter !== "all") q = q.eq("rep_id", repFilter);
+      if (custFilter !== "all") q = q.eq("customer_id", custFilter);
+      if (dateFrom) q = q.gte("visit_date", dateFrom);
+      if (dateTo) q = q.lte("visit_date", dateTo);
+      return q;
+    };
+
+    // Paginated data query
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+    const dataQuery = applyFilters(
+      supabase
+        .from("visits")
+        .select("*, reps(rep_name), customers(customer_name, account_number)", { count: "exact" })
+        .order("visit_date", { ascending: false })
+        .order("arrival_time", { ascending: false })
+        .range(from, to)
+    );
+
+    // Summary stats query — fetches only the fields needed for aggregation, no limit
+    const statsQuery = applyFilters(
+      (supabase as any)
+        .from("visits")
+        .select("status, order_amount")
+    );
+
+    const [{ data, count }, { data: statsData }] = await Promise.all([dataQuery, statsQuery]);
+
+    setVisits((data as Visit[]) || []);
+    setTotalCount(count ?? 0);
+
+    // Compute summary stats from full result set
+    const allVisits = (statsData as any[]) || [];
+    setSummaryStats({
+      totalVisits: allVisits.length,
+      completedCount: allVisits.filter((v) => v.status === "visited").length,
+      skippedCount: allVisits.filter((v) => v.status === "skipped").length,
+      offRouteCount: allVisits.filter((v) => v.status === "off_route").length,
+      totalAmount: allVisits.reduce((s: number, v: any) => s + (Number(v.order_amount) || 0), 0),
+    });
+
     setLoading(false);
   };
 
@@ -93,7 +136,8 @@ export default function AdminVisits() {
     ]).then(([r, c]) => { setReps(r.data || []); setCustomers(c.data || []); });
   }, []);
 
-  useEffect(() => { fetchVisits(); }, [repFilter, custFilter, dateFrom, dateTo]);
+  useEffect(() => { setPage(0); }, [repFilter, custFilter, dateFrom, dateTo]);
+  useEffect(() => { fetchVisits(); }, [repFilter, custFilter, dateFrom, dateTo, page]);
 
   // Keep a ref to the latest fetchVisits so the realtime callback always uses
   // the current filter state without needing to recreate the channel.
@@ -168,13 +212,6 @@ export default function AdminVisits() {
     return <span style={{ color: A.inkMute }}>—</span>;
   };
 
-  // Aggregate stats for the strip — derived from the currently-loaded `visits` array.
-  const totalAmount = visits.reduce((s, v) => s + (Number(v.order_amount) || 0), 0);
-  const completedCount = visits.filter((v) => v.status === "visited").length;
-  const skippedCount   = visits.filter((v) => v.status === "skipped").length;
-  const offRouteCount  = visits.filter((v) => v.status === "off_route").length;
-  const visitedPct = visits.length > 0 ? Math.round((completedCount / visits.length) * 100) : 0;
-
   const hasFilters = repFilter !== "all" || custFilter !== "all" || !!dateFrom || !!dateTo;
 
   const GRID_COLS = "75px 0.8fr 1.1fr 0.8fr 65px 0.9fr 10px 0.6fr 2.2fr 60px";
@@ -234,17 +271,17 @@ export default function AdminVisits() {
         )}
 
         <div style={{ flex: 1 }} />
-        <div style={{ fontSize: 11.5, color: A.inkMute }}>{visits.length} {visits.length === 1 ? "result" : "results"}</div>
+        <div style={{ fontSize: 11.5, color: A.inkMute }}>{totalCount} {totalCount === 1 ? "result" : "results"}</div>
       </div>
 
       {/* Summary strip */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 0, background: A.panel, borderBottom: `1px solid ${A.border}`, padding: "14px 24px", flexShrink: 0 }}>
         {[
-          { l: "Total visits",   v: visits.length,  sub: undefined as string | undefined, accent: undefined as string | undefined },
-          { l: "Completed",      v: completedCount, sub: `${visitedPct}%`, accent: A.green },
-          { l: "Skipped",        v: skippedCount,   sub: undefined, accent: A.danger },
-          { l: "Off-route",      v: offRouteCount,  sub: undefined, accent: A.sun },
-          { l: "Order value",    v: `R\u00A0${totalAmount.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: undefined, accent: A.green },
+          { l: "Total visits",   v: summaryStats.totalVisits,  sub: undefined as string | undefined, accent: undefined as string | undefined },
+          { l: "Completed",      v: summaryStats.completedCount, sub: `${(summaryStats.totalVisits > 0 ? Math.round((summaryStats.completedCount / summaryStats.totalVisits) * 100) : 0)}%`, accent: A.green },
+          { l: "Skipped",        v: summaryStats.skippedCount,   sub: undefined, accent: A.danger },
+          { l: "Off-route",      v: summaryStats.offRouteCount,  sub: undefined, accent: A.sun },
+          { l: "Order value",    v: `R\u00A0${summaryStats.totalAmount.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: undefined, accent: A.green },
         ].map((s, i) => (
           <div key={s.l} style={{ paddingLeft: i > 0 ? 18 : 0, borderLeft: i > 0 ? `1px solid ${A.borderSoft}` : "none" }}>
             <div style={{ fontSize: 10.5, color: A.inkMute, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase" }}>{s.l}</div>
@@ -337,6 +374,30 @@ export default function AdminVisits() {
               );
               })}
             </div>
+
+            {totalCount > PAGE_SIZE && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 4px", marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  style={{ padding: "6px 14px", borderRadius: 7, border: `1px solid ${A.border}`, background: A.panel, color: page === 0 ? A.inkMute : A.ink, fontSize: 12, fontFamily: A.sans, cursor: page === 0 ? "not-allowed" : "pointer", fontWeight: 500 }}
+                >
+                  ← Previous
+                </button>
+                <div style={{ fontSize: 12, color: A.inkMute, fontFamily: A.sans }}>
+                  {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={(page + 1) * PAGE_SIZE >= totalCount}
+                  style={{ padding: "6px 14px", borderRadius: 7, border: `1px solid ${A.border}`, background: A.panel, color: (page + 1) * PAGE_SIZE >= totalCount ? A.inkMute : A.ink, fontSize: 12, fontFamily: A.sans, cursor: (page + 1) * PAGE_SIZE >= totalCount ? "not-allowed" : "pointer", fontWeight: 500 }}
+                >
+                  Next →
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
