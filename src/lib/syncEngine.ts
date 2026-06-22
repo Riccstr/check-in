@@ -160,9 +160,7 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
             continue;
           }
 
-          // Strip client_generated_id from the insert payload — the visits table
-          // may not have this column. Idempotency is handled by the checks above.
-          const { client_generated_id: _cgid, ...insertPayload } = payload;
+          const insertPayload = { ...payload };
           console.log("[Sync] inserting offline visit:", JSON.stringify(insertPayload));
 
           const { data: insertedVisit, error } = await supabase

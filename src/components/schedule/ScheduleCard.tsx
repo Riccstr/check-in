@@ -232,10 +232,27 @@ export function ScheduleCard({
   };
 
   const uploadPhotoOnline = async (visitId: string, clientGeneratedId: string | null = null): Promise<string | null> => {
-    if (!photoBlob) return null;
+    let blobToUpload = photoBlob;
+
+    // If photoBlob was lost (app backgrounded), try to restore from pending_photos IDB
+    if (!blobToUpload) {
+      try {
+        const b64 = await getPendingPhoto(item.id);
+        if (b64) {
+          const raw = b64.includes(",") ? b64.split(",")[1] : b64;
+          const byteStr = atob(raw);
+          const arr = new Uint8Array(byteStr.length);
+          for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
+          blobToUpload = new Blob([arr], { type: "image/jpeg" });
+        }
+      } catch { /* IDB unavailable — proceed without photo */ }
+    }
+
+    if (!blobToUpload) return null;
+
     const queuePhoto = async () => {
       try {
-        const b64 = await blobToBase64(photoBlob);
+        const b64 = await blobToBase64(blobToUpload!);
         await savePendingPhoto(item.id, b64, visitId, clientGeneratedId);
         toast.warning("Photo saved for upload — will retry when connection improves");
       } catch { /* IDB write failure must not block checkout */ }
@@ -244,7 +261,7 @@ export function ScheduleCard({
       const path = `${repId}/${visitId}.jpg`;
       const { error } = await supabase.storage
         .from("visit-photos")
-        .upload(path, photoBlob, { contentType: "image/jpeg", upsert: true });
+        .upload(path, blobToUpload, { contentType: "image/jpeg", upsert: true });
       if (error) {
         console.warn("[Photo] Upload failed:", error.message);
         await queuePhoto();
@@ -558,17 +575,14 @@ export function ScheduleCard({
 
         const { data, error } = await supabase
           .from("visits")
-          .upsert(
-            {
-              rep_id: repId,
-              customer_id: item.customer_id,
-              visit_date: scheduleDate,
-              arrival_time: t,
-              status: "in_progress",
-              client_generated_id: cgid,
-            },
-            { onConflict: "client_generated_id" }
-          )
+          .insert({
+            rep_id: repId,
+            customer_id: item.customer_id,
+            visit_date: scheduleDate,
+            arrival_time: t,
+            status: "in_progress",
+            client_generated_id: cgid,
+          } as any)
           .select("id")
           .single();
 
