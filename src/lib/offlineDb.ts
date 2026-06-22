@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from "idb";
 
 const DB_NAME = "checkin-tracker-offline";
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 export interface OfflineVisit {
   client_generated_id: string;
@@ -92,6 +92,12 @@ function getDb() {
         }
         if (!db.objectStoreNames.contains("active_card_state")) {
           db.createObjectStore("active_card_state", { keyPath: "key" });
+        }
+        if (!db.objectStoreNames.contains("active_adhoc_state")) {
+          db.createObjectStore("active_adhoc_state", { keyPath: "key" });
+        }
+        if (!db.objectStoreNames.contains("active_offroute_state")) {
+          db.createObjectStore("active_offroute_state", { keyPath: "key" });
         }
       },
     });
@@ -435,6 +441,23 @@ export interface ActiveCardState {
   orderAmount?: string | null;
 }
 
+export interface ActiveAdHocState {
+  customerId: string;
+  arrivalTime: string;
+  notes: string;
+  orderNumber: string;
+  orderQty: string;
+  orderAmount: string;
+}
+
+export interface ActiveOffRouteState {
+  customerId: string;
+  orderNumber: string;
+  orderQty: string;
+  orderAmount: string;
+  notes: string;
+}
+
 export async function saveActiveCard(data: ActiveCardState): Promise<void> {
   try {
     const db = await getDb();
@@ -468,6 +491,77 @@ export async function clearActiveCard(): Promise<void> {
   try {
     const db = await getDb();
     await db.delete("active_card_state", "current");
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function saveAdHocCard(data: ActiveAdHocState): Promise<void> {
+  try {
+    const db = await getDb();
+    await db.put("active_adhoc_state", { key: "current", ...data });
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function getAdHocCard(): Promise<ActiveAdHocState | null> {
+  try {
+    const db = await getDb();
+    const entry = await db.get("active_adhoc_state", "current");
+    if (!entry) return null;
+    return {
+      customerId: entry.customerId,
+      arrivalTime: entry.arrivalTime,
+      notes: entry.notes ?? "",
+      orderNumber: entry.orderNumber ?? "",
+      orderQty: entry.orderQty ?? "",
+      orderAmount: entry.orderAmount ?? "",
+    };
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function clearAdHocCard(): Promise<void> {
+  try {
+    const db = await getDb();
+    await db.delete("active_adhoc_state", "current");
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function saveOffRouteCard(data: ActiveOffRouteState): Promise<void> {
+  try {
+    const db = await getDb();
+    await db.put("active_offroute_state", { key: "current", ...data });
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function getOffRouteCard(): Promise<ActiveOffRouteState | null> {
+  try {
+    const db = await getDb();
+    const entry = await db.get("active_offroute_state", "current");
+    if (!entry) return null;
+    return {
+      customerId: entry.customerId,
+      orderNumber: entry.orderNumber ?? "",
+      orderQty: entry.orderQty ?? "",
+      orderAmount: entry.orderAmount ?? "",
+      notes: entry.notes ?? "",
+    };
+  } catch (err) {
+    throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function clearOffRouteCard(): Promise<void> {
+  try {
+    const db = await getDb();
+    await db.delete("active_offroute_state", "current");
   } catch (err) {
     throw new Error(`IDB_ERROR: ${err instanceof Error ? err.message : String(err)}`);
   }

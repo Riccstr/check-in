@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Check, X, MapPin, Camera, FileText, Search, Pin } from "lucide-react";
@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { compressImage, blobToBase64 } from "@/lib/imageCompressor";
 import { CameraCapture } from "@/components/CameraCapture";
 import { Button } from "@/components/ui/button";
-import { addOfflineVisit, savePendingPhoto } from "@/lib/offlineDb";
+import { addOfflineVisit, savePendingPhoto, saveAdHocCard, getAdHocCard, clearAdHocCard } from "@/lib/offlineDb";
 import { C, isOfflineError, saveVisitOffline, nowTime, calcDuration, resetMobileZoom, Expand } from "./ScheduleHelpers";
 
 export interface Customer {
@@ -58,6 +58,34 @@ export function AdHocVisitCard({
   const [adHocShowNotes, setAdHocShowNotes] = useState(false);
   const [adHocSearch, setAdHocSearch] = useState("");
   const [adHocSearchOpen, setAdHocSearchOpen] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await getAdHocCard();
+        if (!saved) return;
+        setAdHocCustomerId(saved.customerId);
+        setAdHocArrivalTime(saved.arrivalTime);
+        setAdHocCheckedIn(true);
+        setAdHocNotes(saved.notes);
+        setAdHocOrderNumber(saved.orderNumber);
+        setAdHocOrderQty(saved.orderQty);
+        setAdHocOrderAmount(saved.orderAmount);
+      } catch { /* IDB unavailable — start fresh */ }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!adHocCheckedIn || !adHocCustomerId || !adHocArrivalTime) return;
+    saveAdHocCard({
+      customerId: adHocCustomerId,
+      arrivalTime: adHocArrivalTime,
+      notes: adHocNotes,
+      orderNumber: adHocOrderNumber,
+      orderQty: adHocOrderQty,
+      orderAmount: adHocOrderAmount,
+    }).catch(() => {});
+  }, [adHocCheckedIn, adHocCustomerId, adHocArrivalTime, adHocNotes, adHocOrderNumber, adHocOrderQty, adHocOrderAmount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const uploadAdHocPhoto = async (repId: string, visitId: string, clientGeneratedId: string, blob: Blob): Promise<string | null> => {
     const queuePhoto = async () => {
@@ -166,10 +194,12 @@ export function AdHocVisitCard({
         toast.error("Failed to save visit. Please try again.");
       }
     }
+    clearAdHocCard().catch(() => {});
     setAdHocSubmitting(false);
   };
 
   const resetAdHoc = () => {
+    clearAdHocCard().catch(() => {});
     onCancel();
     setAdHocCustomerId(""); setAdHocNotes("");
     setAdHocOrderNumber(""); setAdHocOrderQty(""); setAdHocOrderAmount("");

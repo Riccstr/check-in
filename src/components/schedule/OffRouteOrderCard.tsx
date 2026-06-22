@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { X, Plus, Search } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { addOfflineVisit } from "@/lib/offlineDb";
+import { addOfflineVisit, saveOffRouteCard, getOffRouteCard, clearOffRouteCard } from "@/lib/offlineDb";
 import { C, isOfflineError, resetMobileZoom, Expand } from "./ScheduleHelpers";
 import type { Customer } from "./AdHocVisitCard";
 
@@ -48,6 +48,31 @@ export function OffRouteOrderCard({
   const [offRouteSubmitting, setOffRouteSubmitting] = useState(false);
   const [offRouteSearchOpen, setOffRouteSearchOpen] = useState(false);
   const [offRouteSearch, setOffRouteSearch] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await getOffRouteCard();
+        if (!saved) return;
+        setOffRouteCustomerId(saved.customerId);
+        setOffRouteOrderNumber(saved.orderNumber);
+        setOffRouteOrderQty(saved.orderQty);
+        setOffRouteOrderAmount(saved.orderAmount);
+        setOffRouteNotes(saved.notes);
+      } catch { /* IDB unavailable — start fresh */ }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!offRouteCustomerId) return;
+    saveOffRouteCard({
+      customerId: offRouteCustomerId,
+      orderNumber: offRouteOrderNumber,
+      orderQty: offRouteOrderQty,
+      orderAmount: offRouteOrderAmount,
+      notes: offRouteNotes,
+    }).catch(() => {});
+  }, [offRouteCustomerId, offRouteOrderNumber, offRouteOrderQty, offRouteOrderAmount, offRouteNotes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submitOffRoute = async () => {
     if (!repId || !offRouteCustomerId) { toast.error("Please select a customer"); return; }
@@ -159,11 +184,13 @@ export function OffRouteOrderCard({
         toast.error("Failed to save. Please try again.");
       }
     } finally {
+      clearOffRouteCard().catch(() => {});
       setOffRouteSubmitting(false);
     }
   };
 
   const resetOffRoute = () => {
+    clearOffRouteCard().catch(() => {});
     onCancel();
     setOffRouteCustomerId(""); setOffRouteOrderNumber(""); setOffRouteOrderQty("");
     setOffRouteOrderAmount(""); setOffRouteNotes("");
