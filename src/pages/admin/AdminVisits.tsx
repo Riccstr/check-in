@@ -376,7 +376,7 @@ export default function AdminVisits() {
             </div>
 
             {totalCount > PAGE_SIZE && (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 4px", marginTop: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 24, padding: "12px 4px", marginTop: 8 }}>
                 <button
                   type="button"
                   onClick={() => setPage((p) => Math.max(0, p - 1))}

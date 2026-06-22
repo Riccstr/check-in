@@ -5,7 +5,9 @@
       "Bash(npm run dev)",
       "Bash(node --version)",
       "Bash(npx tsc *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(find \"c:\\\\Users\\\\Ricardo\\\\Documents\\\\Code\\\\Projects\\\\Check In\" -name \"AdminDashboard.tsx\" -type f)",
+      "Read(//c/Users/Ricardo/Documents/Code/Projects/**)"
     ]
   }
 }

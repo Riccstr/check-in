@@ -120,7 +120,7 @@ function RepDeskRow({ card }: { card: RepCardData }) {
   const initials = card.rep.rep_name.split(/\s+/).map((s) => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1.4fr 0.9fr 1.3fr 1fr 0.7fr", padding: "11px 16px", alignItems: "center", borderBottom: `1px solid ${A.borderRow}`, fontFamily: A.sans }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 0.8fr 1.8fr 0.8fr 1fr", padding: "11px 16px", alignItems: "center", borderBottom: `1px solid ${A.borderRow}`, fontFamily: A.sans }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ width: 28, height: 28, borderRadius: 999, background: A.greenSoft, color: A.green, fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>{initials}</div>
         <div style={{ fontSize: 13, fontWeight: 500, color: A.ink }}>{card.rep.rep_name}</div>
@@ -516,7 +516,7 @@ export default function AdminDashboard() {
               <div style={{ padding: "40px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>No active reps found.</div>
             ) : (
               <>
-                <div style={{ display: "grid", gridTemplateColumns: "1.4fr 0.9fr 1.3fr 1fr 0.7fr", padding: "8px 16px", fontSize: 10.5, color: A.inkMute, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase", borderBottom: `1px solid ${A.borderSoft}` }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 0.8fr 1.8fr 0.8fr 1fr", padding: "8px 16px", fontSize: 10.5, color: A.inkMute, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase", borderBottom: `1px solid ${A.borderSoft}` }}>
                   <div>Name</div>
                   <div>Status</div>
                   <div>Current</div>
