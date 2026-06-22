@@ -104,6 +104,31 @@ export function ScheduleCard({
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!item.arrival_time || item.leaving_time) return;
+    (async () => {
+      try {
+        const card = await getActiveCard();
+        if (!card || card.scheduleItemId !== item.id) return;
+        if (card.visitId && !activeVisitId) {
+          setActiveVisitId(card.visitId);
+        }
+        if (card.clientGeneratedId && !clientGenIdRef.current) {
+          clientGenIdRef.current = card.clientGeneratedId;
+        }
+        if (card.orderNumber && !localOrderNumber) {
+          setLocalOrderNumber(card.orderNumber);
+        }
+        if (card.orderQty && !localOrderQty) {
+          setLocalOrderQty(card.orderQty);
+        }
+        if (card.orderAmount && !localOrderAmount) {
+          setLocalOrderAmount(card.orderAmount);
+        }
+      } catch { /* IDB unavailable — do nothing */ }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Silent pre-fill from IndexedDB when this card is expanded.
   // Runs whenever isExpanded flips to true. Only fills fields that the server
   // hasn't populated yet — never overwrites a value that came from the server.
