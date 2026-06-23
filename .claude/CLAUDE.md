@@ -29,7 +29,7 @@ Language: TypeScript throughout.
 - src/pages/admin/AdminAccount.tsx — Admin profile settings and account preferences (includes sign-out)
 - src/pages/admin/CustomerDashboard.tsx — Per-customer visit history
 - src/lib/adminUi.tsx — Admin design system: palette (A), status semantics, zar() formatter, AdminSidebar, PageHeader, buttons, chips
-- src/lib/offlineDb.ts — IndexedDB helpers (DB_VERSION: 5)
+- src/lib/offlineDb.ts — IndexedDB helpers (DB_VERSION: 6)
 - src/lib/reportData.ts — buildReportData() with single-day and multi-day schedule metric aggregation
 - src/lib/timeUtils.ts — Shared time and currency formatting utilities
 - src/lib/imageCompressor.ts — Photo compression before upload
@@ -78,15 +78,30 @@ Any new status must be added via SQL ALTER before frontend code can write it.
 - `adHocPhoto` in DailySchedule.tsx is `{ blob: Blob; preview: string } | null` — base64 conversion is lazy, only in offline/error fallback paths
 - AdminSchedules uses master-detail layout: rep rail (left) + week-cycle accordion (left-centre, expandable cards with day buttons) + day template editor (right)
 - reportData.ts handles both single-day and multi-day date ranges; multi-day aggregates travel time, schedule items, and calculates expectedProductiveMins as `(scheduleDaysCount * 540) - travelTimeMins`
+- DailySchedule.tsx uses lastFetchTimeRef to track last fetchSchedule() call time; fetchSchedule() has a 2-second debounce window to prevent duplicate fetches
+- fetchSchedule(force?: boolean) accepts force parameter to bypass debounce guard when explicitly requested (e.g., manual refresh)
+- onlineFetchDoneRef in DailySchedule.tsx gates the fetchUnscheduledVisits call to prevent double-counting when loading from IDB cache on app mount
+- AdHocVisitCard and OffRouteOrderCard persist state to active_adhoc_state and active_offroute_state IDB stores on mount restore and field change; cleared on submit or reset
+- ScheduleCard arrival now uses plain INSERT instead of upsert to ensure reliable arrival timestamps in schedule_items
+- ScheduleCard uploadPhotoOnline falls back to pending_photos IDB when photoBlob is null (recovery from backgrounding)
+- ScheduleCard restores activeVisitId and clientGenIdRef unconditionally on mount (not gated on isExpanded) to prevent duplicate visits after app backgrounding
+- CameraCapture calls onCapture(blob) before closeCamera() to ensure blob is processed before modal closes and to prevent Android touch propagation issues
+- CameraCapture overlay has pointer-events: auto when open, pointer-events: none when closed to prevent touch interference with background elements
+- Order input fields use inputMode="numeric" for order_number and order_quantity; inputMode="decimal" for order_amount; amount uses type="text" not type="number"
+- AdminVisits pagination controls centered (justifyContent: center with gap: 24) instead of space-between
+- Admin edit save patches linked schedule_items row via visit_id to sync field changes to rep's daily schedule view
+- Arrival/leaving time sync engine preserves client_generated_id in INSERT payload (never strip it) for reliable visit deduplication
 
-## IndexedDB Stores (DB_VERSION: 5)
+## IndexedDB Stores (DB_VERSION: 6)
 - offline_visits_queue — queued visit inserts (key: client_generated_id)
 - offline_schedule_item_updates — queued schedule item updates (supports visitId for PATCH vs INSERT)
 - cached_customers — bootstrapped customer list
 - cached_schedules — bootstrapped schedules (-2 to +7 days)
 - cached_user_auth — auth context for offline login
 - pending_photos — failed photo uploads (key: scheduleItemId, fields: base64, visitId, clientGeneratedId)
-- active_card_state — active card context (key: "current", fields: scheduleItemId, arrivalTime, notes, visitId, clientGeneratedId)
+- active_card_state — active visit card state (key: "current", fields: scheduleItemId, arrivalTime, notes, visitId, clientGeneratedId, orderNumber, orderQty, orderAmount)
+- active_adhoc_state — active unscheduled visit card state (key: "adhoc", fields: customer, arrivalTime, notes, photo, orderNumber, orderQty, orderAmount)
+- active_offroute_state — active off-route order card state (key: "offroute", fields: customer, notes, orderNumber, orderQty, orderAmount)
 Increment DB_VERSION whenever adding or renaming a store.
 
 ## Excel / PDF Exports

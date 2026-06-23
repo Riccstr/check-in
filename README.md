@@ -410,13 +410,17 @@ Main rep interface. Shows the day's customer visit schedule as expandable cards.
 **Notable logic:**
 - Real-time subscription on `schedule_items` (filter: `schedule_id=eq.{id}`) and `daily_schedules` (filter: `rep_id=eq.{repId}`) via Supabase Realtime
 - Offline queue: schedule item updates → `upsertOfflineScheduleItemUpdate()`, visits → `saveVisitOffline()` with photo as base64
-- Photo capture inline within each schedule card — photo is immediately persisted to `pending_photos` IndexedDB store on capture and restored on mount; cleared on checkout
-- Active visit state (arrival time, notes) persisted to `active_card_state` IndexedDB store; restored on mount if a matching in-progress item is found
+- Photo capture inline within each schedule card — photo is immediately persisted to `pending_photos` IndexedDB store on capture and restored on mount; cleared on checkout; falls back to `pending_photos` store on upload failure if photoBlob is null
+- Active visit state (arrival time, notes, order fields) persisted to `active_card_state` IndexedDB store; restored on mount unconditionally (not gated on isExpanded) to prevent duplicate visits after backgrounding; also restores activeVisitId and clientGenIdRef
 - Amber recovery banner shown when an in-progress item has a pending photo in IndexedDB (scroll-to + restore workflow); validated against current items to prevent stale banners after schedule regeneration
+- fetchSchedule() call has 2-second debounce via lastFetchTimeRef to prevent duplicate network calls; force parameter bypasses debounce when needed
+- fetchUnscheduledVisits gated by onlineFetchDoneRef to prevent double-counting when loading from IDB cache on app mount
 - Future dates show "Schedule not yet available" empty state and do not trigger auto-generation
-- Order fields: `order_number` (string), `order_quantity` (integer), `order_amount` (numeric)
-- Unscheduled visit card at bottom uses a check-in/check-out flow (Option 2 — component state): rep selects customer via inline search, taps 'Tap to check in' to stamp arrival, then captures photo/notes/order, then taps 'Tap to check out' to insert the visit row directly. No schedule_item is created. Photo uploaded via `uploadAdHocPhoto()` using `repId/visitId` path matching scheduled visits.
-- Off-route order card at bottom allows logging a sale outside the route — customer search, order fields, notes. Visit inserted with status `'off_route'`. Both unscheduled and off-route cards switch to the Done tab on successful submission.
+- Order fields: `order_number` (string), `order_quantity` (integer), `order_amount` (numeric); amount uses inputMode="decimal" and type="text" not type="number"
+- Arrival timestamp uses plain INSERT (not upsert) to ensure reliable first-arrival recording in schedule_items
+- client_generated_id is persisted to IndexedDB immediately on arrival and restored before checkout to prevent duplicate visits
+- Unscheduled visit card at bottom uses a check-in/check-out flow (Option 2 — component state): rep selects customer via inline search, taps 'Tap to check in' to stamp arrival, then captures photo/notes/order, then taps 'Tap to check out' to insert the visit row directly. No schedule_item is created. Ad-hoc state persisted to `active_adhoc_state` IndexedDB store on mount and field change. Photo uploaded via `uploadAdHocPhoto()` using `repId/visitId` path matching scheduled visits.
+- Off-route order card at bottom allows logging a sale outside the route — customer search, order fields, notes. Visit inserted with status `'off_route'`. Off-route state persisted to `active_offroute_state` IndexedDB store on mount and field change. Both unscheduled and off-route cards switch to the Done tab on successful submission.
 - Sign-out requires confirmation dialog to prevent accidental logout.
 - Completed visit cards use `VisitDetails` component with dual lookup: primary by `visit_id`, fallback by `rep_id + customer_id + visit_date` (handles offline-synced visits where `schedule_items.visit_id` may not be populated yet)
 - Times displayed as HH:MM (seconds stripped via `.slice(0, 5)`) — applies to arrival, leaving, and all chip row displays
@@ -460,7 +464,8 @@ All visits across all reps with edit/delete. Uses soft-delete (is_deleted flag) 
 - Real-time subscription via `supabase.channel('admin-visits-realtime')` listening for **INSERT + UPDATE only** (no DELETE) — updates local state on soft-delete
 - Delete action sets `is_deleted = true` (never physically removes rows)
 - Columns: Date, Rep, Customer, Account #, Arrival, Leaving, Duration, Photo, Order No., Qty, Amount, Notes
-- Edit modal includes all visit fields including order fields with time validation
+- Edit modal includes all visit fields including order fields with time validation; saving patches linked schedule_items row via visit_id to sync field changes to rep's daily schedule view
+- Pagination controls centered (justifyContent: center) with gap: 24 spacing
 - Skipped visits highlighted with red background
 
 #### `/admin/customers` — [AdminCustomers.tsx](src/pages/admin/AdminCustomers.tsx)
@@ -611,7 +616,8 @@ Centralized palette, components, and utilities for all admin pages. **Admin-only
 Full-screen camera overlay for taking store photos.
 - Uses `navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })`
 - **iOS requirement:** Must be triggered by a user gesture (tap) — cannot auto-open camera
-- Captures frame to canvas as JPEG blob
+- Captures frame to canvas as JPEG blob; calls onCapture(blob) before closeCamera() to ensure blob is processed before modal closes
+- Overlay has pointer-events: auto when open, pointer-events: none when closed to prevent touch interference with background elements (Android fix)
 - Consumed by: [DailySchedule.tsx](src/pages/DailySchedule.tsx), [LogVisit.tsx](src/pages/LogVisit.tsx)
 
 ### `AdminChrome` — *Sidebar wrapper for admin pages*
@@ -729,7 +735,7 @@ Without this rule, refreshing any non-root route in production returns a 404 fro
 
 ### IndexedDB Schema (`src/lib/offlineDb.ts`)
 
-Database name: `checkin-tracker-offline`, version **5** (increment version if adding stores)
+Database name: `checkin-tracker-offline`, version **6** (increment version if adding stores)
 
 | Store | Key | Stored Data |
 |-------|-----|-------------|
@@ -739,7 +745,9 @@ Database name: `checkin-tracker-offline`, version **5** (increment version if ad
 | `cached_schedules` | `key` (`{repId}_{date}`) | Full daily schedule + items |
 | `cached_user_auth` | `user_id` | `{role, rep_id, rep_name, profile, permissions, cached_at}` |
 | `pending_photos` | `scheduleItemId` | `{scheduleItemId, base64, visitId, clientGeneratedId}` — photo captured during active visit, base64 stored intentionally for iOS Safari IDB Blob compatibility |
-| `active_card_state` | `key` (`"current"`) | `{scheduleItemId, arrivalTime, notes, visitId, clientGeneratedId}` — in-progress visit card state, cleared on checkout |
+| `active_card_state` | `key` (`"current"`) | `{scheduleItemId, arrivalTime, notes, visitId, clientGeneratedId, orderNumber, orderQty, orderAmount}` — in-progress visit card state, cleared on checkout |
+| `active_adhoc_state` | `key` (`"adhoc"`) | `{customer, arrivalTime, notes, photo, orderNumber, orderQty, orderAmount}` — unscheduled visit card state, restored on mount, persisted on field change |
+| `active_offroute_state` | `key` (`"offroute"`) | `{customer, notes, orderNumber, orderQty, orderAmount}` — off-route order card state, restored on mount, persisted on field change |
 
 ### Sync Engine (`src/lib/syncEngine.ts`)
 
@@ -858,7 +866,7 @@ src/
 │   ├── adminUi.tsx            # Admin design system: palette (A), components, sidebar
 │   ├── imageCompressor.ts     # compressImage(), stampImage(), blobToBase64(), base64ToBlob()
 │   ├── offlineBootstrap.ts    # Pre-cache customers/schedules/auth on first online login
-│   ├── offlineDb.ts           # All IndexedDB read/write operations (DB_VERSION: 5)
+│   ├── offlineDb.ts           # All IndexedDB read/write operations (DB_VERSION: 6)
 │   ├── reportData.ts          # buildReportData() with single/multi-day schedule metrics
 │   ├── syncEngine.ts          # syncPendingVisits(), syncPendingScheduleItemUpdates()
 │   ├── timeUtils.ts           # Shared time and currency formatting utilities
@@ -983,3 +991,8 @@ VITE_SUPABASE_ANON_KEY=<your-anon-key>
 23. **`offlineDb.ts` IDB operations all throw `IDB_ERROR: <message>`** on failure — call sites should catch errors prefixed with `IDB_ERROR:` to identify storage failures and surface feedback to the user
 24. **`offline_schedule_item_updates` uses `schedule_item_id` as keyPath intentionally** — the sync pattern is state snapshotting; the checkout payload includes all fields (arrival_time, leaving_time, status, notes, orders). Do not redesign to auto-increment
 25. **`adHocPhoto` in `DailySchedule.tsx` is stored as `{ blob: Blob; preview: string } | null`** — base64 conversion happens lazily only in the offline/error fallback path. Object URLs are revoked on clear and reset
+26. **Ad-hoc and off-route form state persisted to IndexedDB** — `active_adhoc_state` and `active_offroute_state` stores preserve customer, order fields, and notes across app backgrounding. Restored on component mount and persisted on every field change. Cleared on submit or reset.
+27. **fetchSchedule() debounced with 2-second window via lastFetchTimeRef** — prevents duplicate network calls when app load, visibility change, and online event fire in quick succession. force parameter bypasses debounce for manual refresh.
+28. **onlineFetchDoneRef gates fetchUnscheduledVisits on app mount** — prevents double-counting visits when loading from IDB cache. The flag is set after the first successful online fetch and gates subsequent fetches until the next day.
+29. **activeVisitId and clientGenIdRef restored unconditionally on ScheduleCard mount** — not gated on isExpanded. This ensures that if a rep was in the middle of a visit when the app backgrounded, the visit context is immediately restored, preventing duplicate visits on reopen.
+30. **CameraCapture callback ordering: onCapture(blob) before closeCamera()** — ensures blob is fully processed by the parent component before the modal closes. This ordering combined with pointer-events management (auto when open, none when closed) prevents Android touch propagation issues and ensures reliable photo capture.
