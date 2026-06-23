@@ -227,7 +227,7 @@ export default function DailySchedule() {
           ? !!expandedItem.arrival_time && !expandedItem.leaving_time
           : false;
         if (!isInProgress) {
-          fetchSchedule();
+          fetchSchedule(true);
         }
       })
       .subscribe();
