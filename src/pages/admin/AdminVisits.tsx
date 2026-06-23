@@ -172,7 +172,31 @@ export default function AdminVisits() {
     const [lh, lm] = editLeaving.split(":").map(Number);
     const dur = (lh * 60 + lm) - (ah * 60 + am);
     if (dur <= 0) { toast.error("Invalid times"); return; }
-    await supabase.from("visits").update({ arrival_time: editArrival, leaving_time: editLeaving, duration_minutes: dur, notes: editNotes || null, visit_date: editDate, order_number: editOrderNumber || null, order_quantity: editOrderQty !== "" ? Number(editOrderQty) : null, order_amount: editOrderAmount !== "" ? Number(editOrderAmount) : null }).eq("id", editVisit.id);
+    await supabase.from("visits").update({
+      arrival_time: editArrival,
+      leaving_time: editLeaving,
+      duration_minutes: dur,
+      notes: editNotes || null,
+      visit_date: editDate,
+      order_number: editOrderNumber || null,
+      order_quantity: editOrderQty !== "" ? Number(editOrderQty) : null,
+      order_amount: editOrderAmount !== "" ? Number(editOrderAmount) : null,
+    }).eq("id", editVisit.id);
+
+    // Also patch the linked schedule_item so the rep's app reflects the change
+    // via its realtime subscription on schedule_items.
+    try {
+      await supabase
+        .from("schedule_items")
+        .update({
+          arrival_time: editArrival,
+          leaving_time: editLeaving,
+          duration_minutes: dur,
+          notes: editNotes || null,
+        })
+        .eq("visit_id", editVisit.id);
+    } catch { /* non-fatal — visit row already updated */ }
+
     toast.success("Updated"); setEditVisit(null); fetchVisits();
   };
 

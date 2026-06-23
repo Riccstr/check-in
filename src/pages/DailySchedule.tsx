@@ -72,6 +72,8 @@ export default function DailySchedule() {
   // Stable refs so visibility/online handlers always read the latest values without recreating
   const scheduleDateRef    = useRef(scheduleDate);
   const fetchScheduleRef   = useRef<() => Promise<void>>(async () => {});
+  const onlineFetchDoneRef = useRef(false);
+  const lastFetchTimeRef = useRef<number>(0);
 
   // bottom card expansion — mutually exclusive: "unscheduled" | "offroute" | null
   const [expandedBottomCard, setExpandedBottomCard] = useState<"unscheduled" | "offroute" | null>(null);
@@ -295,7 +297,11 @@ export default function DailySchedule() {
 
   const fetchSchedule = async () => {
     if (!repId) return;
+    const now = Date.now();
+    if (now - lastFetchTimeRef.current < 2000) return;
+    lastFetchTimeRef.current = now;
     setLoading(true);
+    onlineFetchDoneRef.current = false;
     let hasCachedSchedule = false;
 
     try {
@@ -327,6 +333,7 @@ export default function DailySchedule() {
         setSchedule(data);
         const sortedItems = (data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
         setItems(sortedItems);
+        onlineFetchDoneRef.current = true;
         resolveUnknownCustomers(sortedItems);
         validateScheduleItemCustomers(sortedItems);
         await setCachedSchedule(repId, scheduleDate, data);
@@ -346,6 +353,7 @@ export default function DailySchedule() {
             setSchedule(newData);
             const sortedNewItems = (newData?.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
             setItems(sortedNewItems);
+            onlineFetchDoneRef.current = true;
             resolveUnknownCustomers(sortedNewItems);
             validateScheduleItemCustomers(sortedNewItems);
             if (newData) await setCachedSchedule(repId, scheduleDate, newData);
@@ -392,6 +400,7 @@ export default function DailySchedule() {
 
   // Re-fetch unscheduled visits whenever scheduled items change (a new visit_id may appear)
   useEffect(() => {
+    if (!onlineFetchDoneRef.current) return;
     fetchUnscheduledVisits();
   }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
 
