@@ -183,12 +183,8 @@ export default function AdminVisits() {
       order_amount: editOrderAmount !== "" ? Number(editOrderAmount) : null,
     }).eq("id", editVisit.id);
 
-    // Patch the linked schedule_item so the rep's realtime subscription fires.
-    // Match by visit_id first (most reliable). If that matches zero rows (visit_id
-    // not yet stamped — common after offline sync), fall back to matching via the
-    // daily_schedules join using rep_id + visit_date + customer_id.
     try {
-      const { data: siData } = await (supabase as any)
+      await (supabase as any)
         .from("schedule_items")
         .update({
           arrival_time: editArrival,
@@ -196,32 +192,29 @@ export default function AdminVisits() {
           duration_minutes: dur,
           notes: editNotes || null,
         })
-        .eq("visit_id", editVisit.id)
-        .select("id");
+        .eq("visit_id", editVisit.id);
 
-      if (!siData || siData.length === 0) {
-        // Fallback: find schedule_items row via daily_schedules
-        const { data: ds } = await supabase
-          .from("daily_schedules")
-          .select("id")
-          .eq("rep_id", editVisit.rep_id)
-          .eq("schedule_date", editDate)
-          .maybeSingle();
+      // Safety net: also update by rep+date+customer in case visit_id is unlinked
+      const { data: ds } = await supabase
+        .from("daily_schedules")
+        .select("id")
+        .eq("rep_id", editVisit.rep_id)
+        .eq("schedule_date", editDate)
+        .maybeSingle();
 
-        if (ds?.id) {
-          await supabase
-            .from("schedule_items")
-            .update({
-              arrival_time: editArrival,
-              leaving_time: editLeaving,
-              duration_minutes: dur,
-              notes: editNotes || null,
-            })
-            .eq("schedule_id", ds.id)
-            .eq("customer_id", editVisit.customer_id);
-        }
+      if (ds?.id) {
+        await (supabase as any)
+          .from("schedule_items")
+          .update({
+            arrival_time: editArrival,
+            leaving_time: editLeaving,
+            duration_minutes: dur,
+            notes: editNotes || null,
+          })
+          .eq("schedule_id", ds.id)
+          .eq("customer_id", editVisit.customer_id);
       }
-    } catch { /* non-fatal — visit row already updated */ }
+    } catch { /* non-fatal */ }
 
     toast.success("Updated"); setEditVisit(null); fetchVisits();
   };
