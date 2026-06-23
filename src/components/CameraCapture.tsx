@@ -135,8 +135,8 @@ export const CameraCapture = forwardRef<HTMLButtonElement, CameraCaptureProps>(
     canvas.toBlob(
       (blob) => {
         if (blob) {
-          closeCamera();
           onCapture(blob);
+          closeCamera();
         }
       },
       "image/jpeg",
@@ -167,8 +167,8 @@ export const CameraCapture = forwardRef<HTMLButtonElement, CameraCaptureProps>(
         <div
           className={
             isOpen
-              ? "fixed inset-0 z-50 bg-black flex flex-col"
-              : "fixed -left-[200vw] -top-[200vh] w-px h-px overflow-hidden"
+              ? "fixed inset-0 z-50 bg-black flex flex-col pointer-events-auto"
+              : "fixed -left-[200vw] -top-[200vh] w-px h-px overflow-hidden pointer-events-none"
           }
         >
           <div className="flex justify-end p-3">
