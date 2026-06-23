@@ -216,10 +216,17 @@ export default function DailySchedule() {
     const channel = supabase
       .channel(`schedule-items-${schedule.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "schedule_items", filter: `schedule_id=eq.${schedule.id}` }, () => {
-        // Don't refresh if the user is actively editing a card (has one expanded in Active tab)
+        // Don't refresh if the user is actively editing a card in-progress
+        // (has an in-progress visit expanded in Active tab)
         // This prevents losing local state like captured photos
         // The schedule will refresh when they complete/skip the visit
-        if (!expandedActiveIdRef.current) {
+        const expandedItem = expandedActiveIdRef.current
+          ? itemsRef.current.find((i: any) => i.id === expandedActiveIdRef.current)
+          : null;
+        const isInProgress = expandedItem
+          ? !!expandedItem.arrival_time && !expandedItem.leaving_time
+          : false;
+        if (!isInProgress) {
           fetchSchedule();
         }
       })
