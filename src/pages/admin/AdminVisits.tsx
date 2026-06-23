@@ -188,7 +188,7 @@ export default function AdminVisits() {
     // not yet stamped — common after offline sync), fall back to matching via the
     // daily_schedules join using rep_id + visit_date + customer_id.
     try {
-      const { count: siCount } = await supabase
+      const { data: siData } = await (supabase as any)
         .from("schedule_items")
         .update({
           arrival_time: editArrival,
@@ -197,9 +197,9 @@ export default function AdminVisits() {
           notes: editNotes || null,
         })
         .eq("visit_id", editVisit.id)
-        .select("id", { count: "exact", head: true });
+        .select("id");
 
-      if (!siCount) {
+      if (!siData || siData.length === 0) {
         // Fallback: find schedule_items row via daily_schedules
         const { data: ds } = await supabase
           .from("daily_schedules")
