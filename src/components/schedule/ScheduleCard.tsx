@@ -951,6 +951,7 @@ export function ScheduleCard({
                       onChange={(e) => setDoneOrderNumber(e.target.value)}
                       onBlur={resetMobileZoom}
                       placeholder="PO-0000"
+                      inputMode="numeric"
                       style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }}
                     />
                   </label>
@@ -964,6 +965,7 @@ export function ScheduleCard({
                       onChange={(e) => setDoneOrderQty(e.target.value)}
                       onBlur={resetMobileZoom}
                       placeholder="0"
+                      inputMode="numeric"
                       style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }}
                     />
                   </label>
@@ -977,6 +979,7 @@ export function ScheduleCard({
                       onChange={(e) => setDoneOrderAmount(e.target.value)}
                       onBlur={resetMobileZoom}
                       placeholder="R 0,00"
+                      inputMode="decimal"
                       style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }}
                     />
                   </label>
@@ -1204,15 +1207,15 @@ export function ScheduleCard({
                   <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.6fr 1fr", gap: 8 }}>
                     <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
                       <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>№</div>
-                      <input type="text" value={localOrderNumber} onChange={(e) => setLocalOrderNumber(e.target.value)} onBlur={resetMobileZoom} placeholder="PO-0000" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                      <input type="text" value={localOrderNumber} onChange={(e) => setLocalOrderNumber(e.target.value)} onBlur={resetMobileZoom} placeholder="PO-0000" inputMode="numeric" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
                     </label>
                     <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
                       <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Qty</div>
-                      <input type="number" min="0" step="1" value={localOrderQty} onChange={(e) => setLocalOrderQty(e.target.value)} onBlur={resetMobileZoom} placeholder="0" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                      <input type="number" min="0" step="1" value={localOrderQty} onChange={(e) => setLocalOrderQty(e.target.value)} onBlur={resetMobileZoom} placeholder="0" inputMode="numeric" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
                     </label>
                     <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
                       <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Value</div>
-                      <input type="number" min="0" step="0.01" value={localOrderAmount} onChange={(e) => setLocalOrderAmount(e.target.value)} onBlur={resetMobileZoom} placeholder="R 0,00" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                      <input type="number" min="0" step="0.01" value={localOrderAmount} onChange={(e) => setLocalOrderAmount(e.target.value)} onBlur={resetMobileZoom} placeholder="R 0,00" inputMode="decimal" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
                     </label>
                   </div>
                 </div>
