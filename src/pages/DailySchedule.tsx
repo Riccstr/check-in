@@ -295,10 +295,10 @@ export default function DailySchedule() {
     }
   };
 
-  const fetchSchedule = async () => {
+  const fetchSchedule = async (force = false) => {
     if (!repId) return;
     const now = Date.now();
-    if (now - lastFetchTimeRef.current < 2000) return;
+    if (!force && now - lastFetchTimeRef.current < 2000) return;
     lastFetchTimeRef.current = now;
     setLoading(true);
     onlineFetchDoneRef.current = false;
@@ -967,7 +967,7 @@ export default function DailySchedule() {
                 item={item}
                 repId={repId!}
                 scheduleDate={scheduleDate}
-                onRefresh={fetchSchedule}
+                onRefresh={() => fetchSchedule(true)}
                 onLocalUpdate={handleLocalUpdate}
                 isExpanded={expandedActiveId === item.id}
                 onToggle={() => setExpandedActiveId((prev) => (prev === item.id ? null : item.id))}
@@ -1031,7 +1031,7 @@ export default function DailySchedule() {
                   item={item}
                   repId={repId!}
                   scheduleDate={scheduleDate}
-                  onRefresh={fetchSchedule}
+                  onRefresh={() => fetchSchedule(true)}
                   onLocalUpdate={handleLocalUpdate}
                   isExpanded={openCompletedId === item.id}
                   onToggle={() => setOpenCompletedId((prev) => (prev === item.id ? null : item.id))}
