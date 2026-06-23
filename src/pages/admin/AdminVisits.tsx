@@ -183,10 +183,12 @@ export default function AdminVisits() {
       order_amount: editOrderAmount !== "" ? Number(editOrderAmount) : null,
     }).eq("id", editVisit.id);
 
-    // Also patch the linked schedule_item so the rep's app reflects the change
-    // via its realtime subscription on schedule_items.
+    // Patch the linked schedule_item so the rep's realtime subscription fires.
+    // Match by visit_id first (most reliable). If that matches zero rows (visit_id
+    // not yet stamped — common after offline sync), fall back to matching via the
+    // daily_schedules join using rep_id + visit_date + customer_id.
     try {
-      await supabase
+      const { count: siCount } = await supabase
         .from("schedule_items")
         .update({
           arrival_time: editArrival,
@@ -194,7 +196,31 @@ export default function AdminVisits() {
           duration_minutes: dur,
           notes: editNotes || null,
         })
-        .eq("visit_id", editVisit.id);
+        .eq("visit_id", editVisit.id)
+        .select("id", { count: "exact", head: true });
+
+      if (!siCount) {
+        // Fallback: find schedule_items row via daily_schedules
+        const { data: ds } = await supabase
+          .from("daily_schedules")
+          .select("id")
+          .eq("rep_id", editVisit.rep_id)
+          .eq("schedule_date", editDate)
+          .maybeSingle();
+
+        if (ds?.id) {
+          await supabase
+            .from("schedule_items")
+            .update({
+              arrival_time: editArrival,
+              leaving_time: editLeaving,
+              duration_minutes: dur,
+              notes: editNotes || null,
+            })
+            .eq("schedule_id", ds.id)
+            .eq("customer_id", editVisit.customer_id);
+        }
+      }
     } catch { /* non-fatal — visit row already updated */ }
 
     toast.success("Updated"); setEditVisit(null); fetchVisits();
