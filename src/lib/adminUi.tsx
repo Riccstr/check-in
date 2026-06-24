@@ -2,6 +2,7 @@
 // Inline-styles approach mirroring src/pages/DailySchedule.tsx — palette values
 // match the rep app's `C` object so admin and rep feel like one product.
 
+import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { LayoutDashboard, Users, CalendarDays, Eye, Download, ShieldCheck, Settings, ChevronDown, ChevronRight, Search, LogOut } from "lucide-react";
 import type { ReactNode } from "react";
@@ -105,6 +106,7 @@ const SIDEBAR_ITEMS: { to: string; label: string; Icon: typeof LayoutDashboard }
  */
 export function AdminSidebar({ userInitials, userName, userSubtitle, onSignOut }: { userInitials: string; userName: string; userSubtitle: string; onSignOut?: () => void }) {
   const location = useLocation();
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   return (
     <div style={{ width: 224, background: A.panelTint, borderRight: `1px solid ${A.border}`, display: "flex", flexDirection: "column", padding: "18px 12px", flexShrink: 0, fontFamily: A.sans }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 8px 20px" }}>
@@ -127,22 +129,44 @@ export function AdminSidebar({ userInitials, userName, userSubtitle, onSignOut }
       </div>
       <div style={{ flex: 1 }} />
       <div style={{ borderTop: `1px solid ${A.borderSoft}`, marginTop: 10, paddingTop: 8 }}>
+        {confirmingSignOut && (
+          <div style={{ margin: "0 6px 8px", padding: "10px 12px", background: A.dangerBg, borderRadius: 8, border: `1px solid ${A.danger}22` }}>
+            <div style={{ fontSize: 11.5, fontWeight: 600, color: A.danger, marginBottom: 8 }}>Sign out?</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                type="button"
+                onClick={() => { setConfirmingSignOut(false); onSignOut?.(); }}
+                style={{ flex: 1, padding: "5px 0", background: A.danger, color: "#fff", border: "none", borderRadius: 6, fontSize: 11.5, fontWeight: 600, fontFamily: A.sans, cursor: "pointer" }}
+              >
+                Sign out
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingSignOut(false)}
+                style={{ flex: 1, padding: "5px 0", background: A.panel, color: A.inkSoft, border: `1px solid ${A.border}`, borderRadius: 6, fontSize: 11.5, fontWeight: 600, fontFamily: A.sans, cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 9px" }}>
           <div style={{ width: 28, height: 28, borderRadius: 999, background: A.greenDeep, color: A.cream, fontWeight: 600, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>{userInitials}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: A.ink, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{userName}</div>
             <div style={{ fontSize: 10.5, color: A.inkMute, lineHeight: 1.2 }}>{userSubtitle}</div>
           </div>
+          {onSignOut && (
+            <button
+              type="button"
+              onClick={() => setConfirmingSignOut(true)}
+              title="Sign out"
+              style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, background: "transparent", border: "none", borderRadius: 6, color: A.inkMute, cursor: "pointer", padding: 0 }}
+            >
+              <LogOut size={14} />
+            </button>
+          )}
         </div>
-        {onSignOut && (
-          <button
-            type="button"
-            onClick={onSignOut}
-            style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "7px 9px", background: "transparent", border: "none", borderRadius: 7, fontSize: 11.5, fontWeight: 600, color: A.danger, fontFamily: A.sans, cursor: "pointer", textAlign: "left" }}
-          >
-            <LogOut size={12} /> Sign out
-          </button>
-        )}
       </div>
     </div>
   );
