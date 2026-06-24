@@ -53,6 +53,7 @@ function AdminChrome({
         userInitials={initials}
         userName={displayName}
         userSubtitle="Admin"
+        onSignOut={signOut}
       />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0 }}>

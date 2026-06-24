@@ -4,21 +4,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Mail, Lock, Shield, Laptop, LogOut } from "lucide-react";
+import { Mail, Lock, Shield, Laptop } from "lucide-react";
 import { A, PageHeader, Tag, PrimaryButton, GhostButton } from "@/lib/adminUi";
-
-function SignOutButton() {
-  const { signOut } = useAuth();
-  return (
-    <button
-      type="button"
-      onClick={() => signOut()}
-      style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", background: A.panel, color: A.danger, border: `1px solid ${A.dangerBg}`, borderRadius: 7, fontSize: 11.5, fontWeight: 600, fontFamily: A.sans, cursor: "pointer" }}
-    >
-      <LogOut size={12} /> Sign out
-    </button>
-  );
-}
 
 export default function AdminAccount() {
   const { user } = useAuth();
@@ -200,11 +187,6 @@ export default function AdminAccount() {
                   {user?.last_sign_in_at && ` · since ${new Date(user.last_sign_in_at).toLocaleString("en-ZA", { dateStyle: "short", timeStyle: "short" })}`}
                 </div>
               </div>
-            </div>
-
-            <div style={{ padding: "12px 18px", borderTop: `1px solid ${A.borderRow}`, background: A.panelTint, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ fontSize: 11.5, color: A.inkMute }}>Sign out of this device</div>
-              <SignOutButton />
             </div>
           </div>
 

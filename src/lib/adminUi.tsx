@@ -3,7 +3,7 @@
 // match the rep app's `C` object so admin and rep feel like one product.
 
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, CalendarDays, Eye, Download, ShieldCheck, Settings, ChevronDown, ChevronRight, Search } from "lucide-react";
+import { LayoutDashboard, Users, CalendarDays, Eye, Download, ShieldCheck, Settings, ChevronDown, ChevronRight, Search, LogOut } from "lucide-react";
 import type { ReactNode } from "react";
 
 // ─── palette ────────────────────────────────────────────────────────────────
@@ -103,7 +103,7 @@ const SIDEBAR_ITEMS: { to: string; label: string; Icon: typeof LayoutDashboard }
  * Mounted by AppLayout for users with role === "admin"; pages render no chrome
  * of their own.
  */
-export function AdminSidebar({ userInitials, userName, userSubtitle }: { userInitials: string; userName: string; userSubtitle: string }) {
+export function AdminSidebar({ userInitials, userName, userSubtitle, onSignOut }: { userInitials: string; userName: string; userSubtitle: string; onSignOut?: () => void }) {
   const location = useLocation();
   return (
     <div style={{ width: 224, background: A.panelTint, borderRight: `1px solid ${A.border}`, display: "flex", flexDirection: "column", padding: "18px 12px", flexShrink: 0, fontFamily: A.sans }}>
@@ -126,12 +126,23 @@ export function AdminSidebar({ userInitials, userName, userSubtitle }: { userIni
         })}
       </div>
       <div style={{ flex: 1 }} />
-      <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 9px", borderTop: `1px solid ${A.borderSoft}`, marginTop: 10 }}>
-        <div style={{ width: 28, height: 28, borderRadius: 999, background: A.greenDeep, color: A.cream, fontWeight: 600, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>{userInitials}</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: A.ink, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{userName}</div>
-          <div style={{ fontSize: 10.5, color: A.inkMute, lineHeight: 1.2 }}>{userSubtitle}</div>
+      <div style={{ borderTop: `1px solid ${A.borderSoft}`, marginTop: 10, paddingTop: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 9px" }}>
+          <div style={{ width: 28, height: 28, borderRadius: 999, background: A.greenDeep, color: A.cream, fontWeight: 600, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>{userInitials}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: A.ink, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{userName}</div>
+            <div style={{ fontSize: 10.5, color: A.inkMute, lineHeight: 1.2 }}>{userSubtitle}</div>
+          </div>
         </div>
+        {onSignOut && (
+          <button
+            type="button"
+            onClick={onSignOut}
+            style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "7px 9px", background: "transparent", border: "none", borderRadius: 7, fontSize: 11.5, fontWeight: 600, color: A.danger, fontFamily: A.sans, cursor: "pointer", textAlign: "left" }}
+          >
+            <LogOut size={12} /> Sign out
+          </button>
+        )}
       </div>
     </div>
   );
