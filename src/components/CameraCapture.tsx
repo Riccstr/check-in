@@ -136,7 +136,7 @@ export const CameraCapture = forwardRef<HTMLButtonElement, CameraCaptureProps>(
       (blob) => {
         if (blob) {
           onCapture(blob);
-          closeCamera();
+          setTimeout(closeCamera, 0);
         }
       },
       "image/jpeg",
