@@ -173,6 +173,7 @@ export default function AppLayout() {
   return (
     <div className="min-h-screen bg-background">
       <PulseKeyframes />
+      <style>{`body { background-color: #F4ECDB; }`}</style>
 
       {needRefresh && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm font-medium"
@@ -206,9 +207,19 @@ export default function AppLayout() {
         </AdminChrome>
       ) : (
         <>
+        <div style={{
+          maxWidth: 480,
+          width: "100%",
+          marginLeft: "auto",
+          marginRight: "auto",
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          position: "relative",
+        }}>
           {!hideChrome && (
             <header className="sticky top-0 z-50 border-b bg-card">
-              <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
+              <div className="mx-auto flex h-14 max-w-full items-center justify-between px-4">
                 <Link to="/" className="flex items-center gap-2 font-bold text-foreground">
                   <img src={logoImg} alt="Check-In Tracker" className="h-8 w-8" />
                   <span className="hidden sm:inline">Check-In Tracker</span>
@@ -263,9 +274,10 @@ export default function AppLayout() {
             </header>
           )}
 
-          <main className={hideChrome ? "h-screen flex flex-col overflow-hidden" : "mx-auto max-w-7xl px-4 py-6"}>
+          <main className={hideChrome ? "h-screen flex flex-col overflow-hidden" : "px-4 py-6"}>
             <Outlet />
           </main>
+        </div>
         </>
       )}
     </div>
