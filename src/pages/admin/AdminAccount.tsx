@@ -20,17 +20,6 @@ function SignOutButton() {
   );
 }
 
-function PreferenceField({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div style={{ fontSize: 11, fontWeight: 600, color: A.inkSoft, letterSpacing: 0.3, textTransform: "uppercase", marginBottom: 5 }}>{label}</div>
-      <div style={{ padding: "8px 11px", background: A.panelTint, border: `1px solid ${A.border}`, borderRadius: 7, fontSize: 12.5, color: A.inkMute, fontFamily: A.sans, cursor: "not-allowed" }}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
 export default function AdminAccount() {
   const { user } = useAuth();
   const [email, setEmail] = useState(user?.email || "");
@@ -216,23 +205,6 @@ export default function AdminAccount() {
             <div style={{ padding: "12px 18px", borderTop: `1px solid ${A.borderRow}`, background: A.panelTint, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ fontSize: 11.5, color: A.inkMute }}>Sign out of this device</div>
               <SignOutButton />
-            </div>
-          </div>
-
-          {/* ── Preferences (UI surface only) ──────────────────────────── */}
-          <div style={{ background: A.panel, border: `1px solid ${A.border}`, borderRadius: 10, padding: "14px 18px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>Preferences</div>
-              <Tag tone="sun">Coming soon</Tag>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <PreferenceField label="Default landing page" value="Dashboard" />
-              <PreferenceField label="Timezone"             value="Africa/Johannesburg" />
-              <PreferenceField label="Date format"          value="26 May 2026" />
-              <PreferenceField label="Email digest"         value="Off" />
-            </div>
-            <div style={{ marginTop: 10, fontSize: 11, color: A.inkMute }}>
-              These preferences aren't stored anywhere yet. The next sprint will wire them to a <span style={{ fontFamily: A.mono }}>user_preferences</span> table.
             </div>
           </div>
 
