@@ -328,6 +328,23 @@ Used keys: `current_week_order` (int 1–4), `week_cycle_start_date` (date, e.g.
 
 ---
 
+### `sync_errors`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid PK | |
+| `rep_id` | uuid FK → `reps` | Rep who encountered the error |
+| `error_type` | text | Error category (e.g., `'ghost_card'`, `'network'`, `'validation'`) |
+| `message` | text | Human-readable error description |
+| `context` | jsonb | Additional error context (e.g., `{schedule_date, schedule_item_id, customer_name}`) |
+| `created_at` | timestamptz | When the error was recorded |
+| `cleared_at` | timestamptz | When the error was acknowledged/cleared by admin |
+| `cleared_by` | uuid FK → `auth.users` | Which admin cleared the error |
+
+RLS: Admins view/manage all; reps view own (created_at rows only, cannot clear). Writes via sync engine during offline->online reconciliation or via SyncErrorPanel when admin acknowledges.
+
+---
+
 ### Database Functions
 
 | Function | Signature | Purpose |
@@ -374,6 +391,7 @@ All tables have RLS enabled. The general pattern:
 | `daily_schedules` | Manage all | View own |
 | `schedule_items` | Manage all | View own, Update own |
 | `app_settings` | Manage all | View all |
+| `sync_errors` | Manage all, Clear own | View own (created rows only) |
 | `visit-photos` bucket | Implied full | INSERT own, SELECT all, DELETE own |
 
 Edge functions use the **service role key** and bypass RLS — they perform their own admin role check internally.
@@ -445,13 +463,21 @@ Manual visit logging form. Intended for ad-hoc visits outside the daily schedule
 #### `/admin/dashboard` — [AdminDashboard.tsx](src/pages/admin/AdminDashboard.tsx)
 Real-time dashboard showing live rep status and activity feed.
 
-**Tables read:** `daily_schedules`, `schedule_items`, `visits`, `reps`, `customers`, `app_settings`
+**Tables read:** `daily_schedules`, `schedule_items`, `visits`, `reps`, `customers`, `app_settings`, `sync_errors`
 
 **Notable logic:**
 - Live rep cards showing: status pill (checked_in / travelling / day_complete / not_started / no_schedule), progress meter (X/Y visits), current customer, areas served
 - Status detection: checked_in if arrival_time but no leaving_time; travelling if some items left but some pending; day_complete if all visited/skipped
 - Activity feed: real-time checkin, checkout, skip, and off-route events sorted by timestamp
 - Uses status pills from `adminUi.tsx` with live pulse animation
+
+**SyncErrorPanel component:**
+- Fixed bottom-right component that fetches uncleared `sync_errors` (cleared_at IS NULL) on mount
+- Realtime subscription on INSERT to sync_errors table; updates displayed error list automatically
+- Expanded view shows list of errors with rep name, error type, message, created timestamp, and per-error clear button
+- Collapsed state shows a badge with error count and danger-colored styling
+- Admin can clear individual errors by clicking the "Clear" button; updates `cleared_at` and `cleared_by` fields
+- Returns null if no uncleared errors exist
 
 #### `/admin/visits` — [AdminVisits.tsx](src/pages/admin/AdminVisits.tsx)
 All visits across all reps with edit/delete. Uses soft-delete (is_deleted flag) to preserve data integrity.
@@ -573,15 +599,15 @@ Full user account lifecycle management. Two-table layout filtered by role:
 - Role change (admin ↔ rep) updates `user_roles` table
 
 #### `/admin/account` — [AdminAccount.tsx](src/pages/admin/AdminAccount.tsx)
-Admin's own email/password settings and account preferences. **Placeholder UI** — features are rendered but not fully wired to backend.
+Admin's own email/password settings and active sessions. Sign-out is now located in the AdminSidebar user card (not here).
+
+**Functional sections:**
+- **Email change:** Update email via `supabase.auth.updateUser()` with confirmation link workflow
+- **Password change:** Update password via `supabase.auth.updateUser()` with strength meter (6 chars min, uppercase+lowercase+numbers recommended)
+- **Active sessions:** Shows current device (user agent) and last sign-in timestamp
 
 **Placeholder sections (TODO backend wiring):**
-- **2FA (Two-Factor Authentication):** UI present, toggle controls not yet implemented
-- **Active Sessions:** Lists current login sessions, not yet synced to backend
-- **Preferences:** Account preference toggles (notifications, theme, etc.), UI only
-
-**Functional:**
-- Email/password change via `supabase.auth.updateUser()` (direct call, no custom DB queries)
+- **2FA (Two-Factor Authentication):** UI present, toggle controls not yet implemented; "Coming soon" label shown
 
 ---
 
@@ -597,7 +623,7 @@ Main layout wrapper used on every authenticated page. Branches on user role:
   - Calls `setupAutoSync()` for reps on mount to start background sync loop (checks every 5s if online)
   - Handles `offline_bootstrap_required` state (shows guidance screen)
   - Route persistence: saves current path to `localStorage` for mobile background/restore
-- **AdminChrome:** Container for admin pages with `AdminSidebar` (left) and flexible main area (right). No top utility strip; offline status and sign-out now handled separately (sign-out button only on AdminAccount page).
+- **AdminChrome:** Container for admin pages with `AdminSidebar` (left) and flexible main area (right). No top utility strip. Sign-out button now in AdminSidebar user card (passed via `onSignOut` prop).
 - Consumed by: every page
 
 ### [adminUi.tsx](src/lib/adminUi.tsx) — *Admin-only design system*
@@ -608,7 +634,7 @@ Centralized palette, components, and utilities for all admin pages. **Admin-only
 - **Status:** `RepStatusKey` type and `STATUS_META` for pill rendering (checked_in, travelling, day_complete, not_started, no_schedule)
 - **Currency formatter:** `zar(n, opts)` — formats amounts as R-formatted numbers with optional compact notation
 - **Keyframes:** `PulseKeyframes()` — mounts once at App root to enable live indicator animations
-- **Sidebar:** `AdminSidebar({ userInitials, userName, userSubtitle })` — vertical left rail (224px) with nav items + user card (no sign-out button)
+- **Sidebar:** `AdminSidebar({ userInitials, userName, userSubtitle, onSignOut? })` — vertical left rail (224px) with nav items + user card. When `onSignOut` prop is provided, user card displays a sign-out button (LogOut icon). Clicking triggers a confirmation dialog with danger-themed styling (red background, white text) before calling `onSignOut()`
 - **Components:** `PageHeader`, `Pill`, `Tag`, `StatCard`, `FilterChip`, `PrimaryButton`, `GhostButton`, `ToolbarSearch`
 - **Used by:** All admin pages (`AdminDashboard`, `AdminCustomers`, `AdminSchedules`, `AdminVisits`, `AdminExports`, `AdminUsers`, `AdminAccount`)
 
@@ -616,8 +642,11 @@ Centralized palette, components, and utilities for all admin pages. **Admin-only
 Full-screen camera overlay for taking store photos.
 - Uses `navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })`
 - **iOS requirement:** Must be triggered by a user gesture (tap) — cannot auto-open camera
-- Captures frame to canvas as JPEG blob; calls onCapture(blob) before closeCamera() to ensure blob is processed before modal closes
-- Overlay has pointer-events: auto when open, pointer-events: none when closed to prevent touch interference with background elements (Android fix)
+- Captures frame to canvas as JPEG blob; burns timestamp onto image (date/time in white text on semi-transparent black background, bottom-right)
+- **Callback ordering:** Calls `onCapture(blob)` before `setTimeout(closeCamera, 0)` to ensure blob is fully processed by parent component before modal closes. This prevents Android touch propagation issues.
+- **Video overflow fix:** Video element wrapped in div with `{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }` to prevent Safari/iPad flex overflow. Video uses `{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }` for proper scaling.
+- **Safe area insets:** Overlay container uses CSS `env(safe-area-inset-top/left/right)` padding when open; capture button bar uses `env(safe-area-inset-bottom)` to push above notch/home indicator on iPhone X+
+- Overlay has `pointer-events: auto` when open, `pointer-events: none` when closed to prevent touch interference with background elements (Android/iPad fix)
 - Consumed by: [DailySchedule.tsx](src/pages/DailySchedule.tsx), [LogVisit.tsx](src/pages/LogVisit.tsx)
 
 ### `AdminChrome` — *Sidebar wrapper for admin pages*
@@ -728,6 +757,10 @@ On **activate**, the SW calls `clients.claim()` and re-caches `index.html` (via 
 ```
 
 Without this rule, refreshing any non-root route in production returns a 404 from Vercel's CDN.
+
+### 7. Rep App Width Constraint
+
+The rep-facing PWA is constrained to max-width 480px centred in [AppLayout.tsx](src/components/AppLayout.tsx) with cream (#F4ECDB) flanking background. This applies to both the header and main content area. The constraint is enforced via inline styles on the rep branch (not the admin branch). The `<style>` tag in the component sets `body { background-color: #F4ECDB; }`. The admin layout (`AdminChrome`) is a completely separate branch and is unaffected by any width constraints — it uses full viewport width.
 
 ---
 
@@ -996,3 +1029,8 @@ VITE_SUPABASE_ANON_KEY=<your-anon-key>
 28. **onlineFetchDoneRef gates fetchUnscheduledVisits on app mount** — prevents double-counting visits when loading from IDB cache. The flag is set after the first successful online fetch and gates subsequent fetches until the next day.
 29. **activeVisitId and clientGenIdRef restored unconditionally on ScheduleCard mount** — not gated on isExpanded. This ensures that if a rep was in the middle of a visit when the app backgrounded, the visit context is immediately restored, preventing duplicate visits on reopen.
 30. **CameraCapture callback ordering: onCapture(blob) before closeCamera()** — ensures blob is fully processed by the parent component before the modal closes. This ordering combined with pointer-events management (auto when open, none when closed) prevents Android touch propagation issues and ensures reliable photo capture.
+31. **sync_errors RLS uses EXISTS subquery, not has_role() cast** — the RLS policy for sync_errors was created with a raw `EXISTS (SELECT 1 FROM user_roles ...)` subquery instead of the `has_role()` function because the app_role cast fails in the Supabase SQL editor. Never replace this with `has_role()` without testing in production; the type resolution issue is environment-specific.
+32. **The rep app max-width constraint lives in AppLayout.tsx rep branch only** — the width constraint (`maxWidth: 480px`) and cream background (`#F4ECDB`) are applied only when `role !== 'admin'`. The AdminChrome branch is completely unaffected and uses full viewport width. Never apply width constraints to the AdminChrome branch or admin pages.
+33. **CameraCapture video must always be inside a div with minHeight:0** — removing this wrapper causes Safari/iPad to overflow the video element over the capture button. The wrapper allows the video to shrink below its content size within the flex layout; without it, the video stretches and breaks the layout on iPad.
+34. **viewport-fit=cover in index.html is required for safe-area-inset CSS** — the CSS environment variables (`env(safe-area-inset-top)`, `env(safe-area-inset-bottom)`, etc.) only work when `viewport-fit=cover` is set in the viewport meta tag. Without this, safe-area insets are always zero and notched devices (iPhone X+, iPad Pro with notch) will have content hidden under hardware features.
+35. **text-size-adjust:100% prevents unwanted iOS Safari zoom-on-orientation-change** — Safari on iOS/iPad auto-magnifies text when rotating from portrait to landscape. Setting `-webkit-text-size-adjust: 100%` and `text-size-adjust: 100%` on all elements via the universal selector in index.css prevents this unwanted reflow. This rule is applied globally to the entire document.

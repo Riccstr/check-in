@@ -243,7 +243,7 @@ export function ScheduleCard({
   const handleCameraCapture = async (blob: Blob) => {
     try {
       cameraCooldownRef.current = true;
-      setTimeout(() => { cameraCooldownRef.current = false; }, 300);
+      setTimeout(() => { cameraCooldownRef.current = false; }, 600);
       const compressed = await compressImage(blob);
       setPhotoBlob(compressed);
       setPhotoPreview(URL.createObjectURL(compressed));
@@ -485,14 +485,15 @@ export function ScheduleCard({
       setActionInProgress(false);
       if (newItem.status === "visited" || newItem.status === "skipped") {
         clearPendingPhoto(item.id).catch(() => {});
+        // Only clear active_card_state when the visit is fully completed —
+        // never clear it on intermediate updates (arrival, notes, etc.)
+        // because markArrived saves state there after this finally runs.
+        getActiveCard().then((card) => {
+          if (card?.scheduleItemId === item.id) {
+            clearActiveCard().catch(() => {});
+          }
+        }).catch(() => {});
       }
-      // Always clear active_card_state if this item was the active card,
-      // even if the status update failed — prevents stuck visit guard
-      getActiveCard().then((card) => {
-        if (card?.scheduleItemId === item.id) {
-          clearActiveCard().catch(() => {});
-        }
-      }).catch(() => {});
     }
   };
 
@@ -563,7 +564,7 @@ export function ScheduleCard({
 
   const reportSyncError = async (context: Record<string, any>) => {
     try {
-      await supabase.from("sync_errors").insert({
+      await (supabase as any).from("sync_errors").insert({
         rep_id: repId,
         error_type: "ghost_active_card",
         message: "Active card state found in IDB for a visit not present in today's schedule. Cleared automatically.",
@@ -573,6 +574,7 @@ export function ScheduleCard({
   };
 
   const markArrived = async () => {
+    if (cameraCooldownRef.current) return;
     // Guard: block if another visit is already open
     const alreadyOpen = allItems.find(
       (i: any) => i.arrival_time && !i.leaving_time && i.id !== item.id
@@ -616,7 +618,9 @@ export function ScheduleCard({
     const t = nowTime();
     setLocalArrival(t);
     // Always update schedule_items arrival_time (handles online/offline paths internally)
-    updateItem({ arrival_time: t });
+    // Must be awaited so the finally block in updateItem completes before we
+    // call saveActiveCard below — prevents a race that was clearing active_card_state.
+    await updateItem({ arrival_time: t });
 
     if (navigator.onLine) {
       try {

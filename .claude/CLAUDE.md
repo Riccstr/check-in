@@ -26,9 +26,9 @@ Language: TypeScript throughout.
 - src/pages/admin/AdminSchedules.tsx — Schedule template management and week rotation (accordion week-cycle layout with day buttons)
 - src/pages/admin/AdminVisits.tsx — All visits view with filters, soft-delete (is_deleted = true)
 - src/pages/admin/AdminExports.tsx — CSV/Excel/PDF export with quick-date buttons and toast feedback
-- src/pages/admin/AdminAccount.tsx — Admin profile settings and account preferences (includes sign-out)
+- src/pages/admin/AdminAccount.tsx — Admin profile, email/password change, 2FA placeholder, active sessions. Sign-out is now in the AdminSidebar user card, not here. Preferences block removed.
 - src/pages/admin/CustomerDashboard.tsx — Per-customer visit history
-- src/lib/adminUi.tsx — Admin design system: palette (A), status semantics, zar() formatter, AdminSidebar, PageHeader, buttons, chips
+- src/lib/adminUi.tsx — Admin design system: palette (A), status semantics, zar() formatter, AdminSidebar (now accepts onSignOut? prop with built-in confirm dialog), PageHeader, buttons, chips
 - src/lib/offlineDb.ts — IndexedDB helpers (DB_VERSION: 6)
 - src/lib/reportData.ts — buildReportData() with single-day and multi-day schedule metric aggregation
 - src/lib/timeUtils.ts — Shared time and currency formatting utilities
@@ -49,6 +49,7 @@ Language: TypeScript throughout.
 - customers — customer_name, account_number, area, is_active
 - reps — rep_name, user_id (links to profiles/auth), is_active
 - app_settings — current_week_order, week_cycle_start_date
+- sync_errors — rep_id (references reps.id), error_type, message, context (jsonb), created_at, cleared_at, cleared_by
 
 ## Database Functions
 - get_week_order_for_date(p_date date) → integer 1–4. Calculates from week_cycle_start_date anchor. Never use current_week_order as a floating baseline.
@@ -91,6 +92,15 @@ Any new status must be added via SQL ALTER before frontend code can write it.
 - AdminVisits pagination controls centered (justifyContent: center with gap: 24) instead of space-between
 - Admin edit save patches linked schedule_items row via visit_id to sync field changes to rep's daily schedule view
 - Arrival/leaving time sync engine preserves client_generated_id in INSERT payload (never strip it) for reliable visit deduplication
+- Rep app is constrained to max-width 480px centred column in AppLayout.tsx; body background is #F4ECDB (cream); admin layout is completely separate and untouched
+- CameraCapture calls onCapture(blob) then setTimeout(closeCamera, 0) — never closeCamera() synchronously
+- cameraCooldownRef in ScheduleCard blocks markLeft() for 300ms after handleCameraCapture fires
+- sync_errors RLS policy uses EXISTS (SELECT 1 FROM user_roles ...) not has_role() cast — has_role() type resolution fails in Supabase SQL editor for this table
+- AdminSidebar accepts onSignOut? prop and manages its own confirmingSignOut state internally
+- CameraCapture video element is wrapped in div with minHeight:0 to prevent Safari/iPad flex overflow
+- viewport-fit=cover in index.html and text-size-adjust:100% in index.css prevent iPad rotation zoom
+- Ghost IDB active_card_state (scheduleItemId not found in allItems) is auto-cleared in markArrived() and files a sync_errors row
+- SyncErrorPanel in AdminDashboard.tsx shows uncleared sync_errors as a fixed bottom-right badge; admins clear errors individually
 
 ## IndexedDB Stores (DB_VERSION: 6)
 - offline_visits_queue — queued visit inserts (key: client_generated_id)
