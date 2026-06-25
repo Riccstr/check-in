@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { fmtTime12h } from "@/lib/timeUtils";
 import { A, PageHeader, StatCard, Pill, Tag, ToolbarSearch, PulseKeyframes } from "@/lib/adminUi";
+import { useAuth } from "@/hooks/useAuth";
 
 // ─── local types ──────────────────────────────────────────────────────────────
 
@@ -66,6 +67,17 @@ interface ActivityEvent {
   sortKey: string;
   duration: number | null;
   notes: string | null;
+}
+
+interface SyncError {
+  id: string;
+  rep_id: string;
+  error_type: string;
+  message: string;
+  context: Record<string, any> | null;
+  created_at: string;
+  cleared_at: string | null;
+  reps?: { rep_name: string } | null;
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -184,6 +196,161 @@ function ActivityFeedRow({ event }: { event: ActivityEvent }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── SyncErrorPanel ──────────────────────────────────────────────────────────
+function SyncErrorPanel() {
+  const [errors, setErrors] = useState<SyncError[]>([]);
+  const [expanded, setExpanded] = useState(false);
+  const [clearing, setClearing] = useState<string | null>(null);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    fetchErrors();
+    const channel = supabase
+      .channel("sync-errors-panel")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "sync_errors" }, () => fetchErrors())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  const fetchErrors = async () => {
+    const { data } = await (supabase as any)
+      .from("sync_errors")
+      .select("*, reps(rep_name)")
+      .is("cleared_at", null)
+      .order("created_at", { ascending: false });
+    if (data) setErrors(data);
+  };
+
+  const clearError = async (id: string) => {
+    setClearing(id);
+    await (supabase as any)
+      .from("sync_errors")
+      .update({ cleared_at: new Date().toISOString(), cleared_by: user?.id })
+      .eq("id", id);
+    setErrors((prev) => prev.filter((e) => e.id !== id));
+    setClearing(null);
+  };
+
+  if (errors.length === 0) return null;
+
+  return (
+    <div style={{
+      position: "fixed",
+      bottom: 20,
+      right: 20,
+      zIndex: 100,
+      fontFamily: A.sans,
+      width: expanded ? 340 : "auto",
+    }}>
+      {expanded && (
+        <div style={{
+          background: A.panel,
+          border: `1px solid ${A.border}`,
+          borderRadius: 10,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+          marginBottom: 8,
+          overflow: "hidden",
+        }}>
+          <div style={{
+            padding: "10px 14px",
+            borderBottom: `1px solid ${A.border}`,
+            fontSize: 12,
+            fontWeight: 700,
+            color: A.ink,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}>
+            Sync Errors
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              style={{ background: "none", border: "none", cursor: "pointer", color: A.inkMute, fontSize: 16, lineHeight: 1, padding: 0 }}
+            >
+              ×
+            </button>
+          </div>
+          <div style={{ maxHeight: 320, overflowY: "auto" }}>
+            {errors.map((err) => (
+              <div key={err.id} style={{
+                padding: "10px 14px",
+                borderBottom: `1px solid ${A.borderRow}`,
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: A.ink }}>
+                    {err.reps?.rep_name ?? "Unknown rep"}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: A.inkMute, whiteSpace: "nowrap", fontFamily: A.mono }}>
+                    {new Date(err.created_at).toLocaleString("en-ZA", { dateStyle: "short", timeStyle: "short" })}
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: A.inkMute }}>{err.message}</div>
+                {err.context?.schedule_date && (
+                  <div style={{ fontSize: 10.5, color: A.inkMute, fontFamily: A.mono }}>
+                    Date: {err.context.schedule_date}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => clearError(err.id)}
+                  disabled={clearing === err.id}
+                  style={{
+                    alignSelf: "flex-end",
+                    marginTop: 2,
+                    padding: "3px 10px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    background: A.panelTint,
+                    border: `1px solid ${A.border}`,
+                    borderRadius: 6,
+                    color: A.inkSoft,
+                    cursor: clearing === err.id ? "not-allowed" : "pointer",
+                    fontFamily: A.sans,
+                  }}
+                >
+                  {clearing === err.id ? "Clearing…" : "Clear"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 7,
+          padding: "7px 13px",
+          background: A.dangerBg,
+          border: `1px solid ${A.danger}`,
+          borderRadius: 20,
+          color: A.danger,
+          fontSize: 12,
+          fontWeight: 700,
+          fontFamily: A.sans,
+          cursor: "pointer",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.10)",
+        }}
+      >
+        <span style={{
+          width: 7,
+          height: 7,
+          borderRadius: "50%",
+          background: A.danger,
+          flexShrink: 0,
+        }} />
+        {errors.length} sync {errors.length === 1 ? "error" : "errors"}
+      </button>
     </div>
   );
 }
@@ -546,6 +713,7 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+      <SyncErrorPanel />
     </div>
   );
 }
