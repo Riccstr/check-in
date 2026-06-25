@@ -561,6 +561,17 @@ export function ScheduleCard({
   const commitArrival = () => { if (localArrival !== (item.arrival_time || "")) updateItem({ arrival_time: localArrival }); };
   const commitLeaving = () => { if (localLeaving !== (item.leaving_time || "")) updateItem({ leaving_time: localLeaving }); };
 
+  const reportSyncError = async (context: Record<string, any>) => {
+    try {
+      await supabase.from("sync_errors").insert({
+        rep_id: repId,
+        error_type: "ghost_active_card",
+        message: "Active card state found in IDB for a visit not present in today's schedule. Cleared automatically.",
+        context,
+      });
+    } catch { /* non-critical — never block the rep */ }
+  };
+
   const markArrived = async () => {
     // Guard: block if another visit is already open
     const alreadyOpen = allItems.find(
@@ -583,6 +594,16 @@ export function ScheduleCard({
 
         if (isStale) {
           clearActiveCard().catch(() => {});
+          if (!openCardItem) {
+            // Ghost card — item no longer exists in today's schedule (multi-device drift)
+            reportSyncError({
+              stale_schedule_item_id: card.scheduleItemId,
+              current_item_id: item.id,
+              schedule_date: scheduleDate,
+              cleared_at: new Date().toISOString(),
+            });
+            toast.info("Cleared a stale visit from another device.");
+          }
           // do NOT return — allow markArrived to proceed
         } else {
           const customerName = openCardItem?.customers?.customer_name ?? "another customer";
