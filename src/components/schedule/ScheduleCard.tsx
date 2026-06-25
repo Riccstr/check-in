@@ -68,6 +68,9 @@ export function ScheduleCard({
   const [activeVisitId, setActiveVisitId] = useState<string | null>(null);
   // Stable UUID for the current visit session — used as conflict key in the arrival upsert.
   const clientGenIdRef = useRef<string | null>(null);
+  // Guard: blocks checkout from firing for 300ms after camera capture completes.
+  // Prevents Android ghost-click propagation from the camera overlay to the checkout button.
+  const cameraCooldownRef = useRef(false);
 
   // Skip flow state — tracks whether skip composer is open and the note being entered
   const [skipMode, setSkipMode] = useState(false);
@@ -239,6 +242,8 @@ export function ScheduleCard({
 
   const handleCameraCapture = async (blob: Blob) => {
     try {
+      cameraCooldownRef.current = true;
+      setTimeout(() => { cameraCooldownRef.current = false; }, 300);
       const compressed = await compressImage(blob);
       setPhotoBlob(compressed);
       setPhotoPreview(URL.createObjectURL(compressed));
@@ -659,7 +664,7 @@ export function ScheduleCard({
       }).catch(() => {});
     }
   };
-  const markLeft    = () => { const t = nowTime(); setLocalLeaving(t); updateItem({ leaving_time: t, status: "visited", notes: localNotes, order_number: localOrderNumber || null, order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null, order_amount: localOrderAmount !== "" ? Number(localOrderAmount) : null }); };
+  const markLeft    = () => { if (cameraCooldownRef.current) return; const t = nowTime(); setLocalLeaving(t); updateItem({ leaving_time: t, status: "visited", notes: localNotes, order_number: localOrderNumber || null, order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null, order_amount: localOrderAmount !== "" ? Number(localOrderAmount) : null }); };
 
   const skipItem = async (note: string = skipNote) => {
     if (actionInProgress) return;
