@@ -170,6 +170,11 @@ export const CameraCapture = forwardRef<HTMLButtonElement, CameraCaptureProps>(
               ? "fixed inset-0 z-50 bg-black flex flex-col pointer-events-auto"
               : "fixed -left-[200vw] -top-[200vh] w-px h-px overflow-hidden pointer-events-none"
           }
+          style={isOpen ? {
+            paddingTop: "env(safe-area-inset-top, 0px)",
+            paddingLeft: "env(safe-area-inset-left, 0px)",
+            paddingRight: "env(safe-area-inset-right, 0px)",
+          } : undefined}
         >
           <div className="flex justify-end p-3">
             <button
@@ -199,7 +204,7 @@ export const CameraCapture = forwardRef<HTMLButtonElement, CameraCaptureProps>(
                 muted
                 autoPlay
               />
-              <div className="p-4 flex justify-center bg-black">
+              <div className="p-4 flex justify-center bg-black" style={{ paddingBottom: "calc(16px + env(safe-area-inset-bottom, 0px))" }}>
                 <Button
                   type="button"
                   size="lg"
