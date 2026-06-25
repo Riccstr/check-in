@@ -196,14 +196,17 @@ export const CameraCapture = forwardRef<HTMLButtonElement, CameraCaptureProps>(
             </div>
           ) : (
             <>
-              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-              <video
-                ref={videoRef}
-                className="flex-1 w-full object-cover"
-                playsInline
-                muted
-                autoPlay
-              />
+              {/* Wrapper constrains the video to its flex allocation — prevents Safari/iPad overflow */}
+              <div style={{ flex: 1, minHeight: 0, overflow: "hidden", position: "relative" }}>
+                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                <video
+                  ref={videoRef}
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                  playsInline
+                  muted
+                  autoPlay
+                />
+              </div>
               <div className="p-4 flex justify-center bg-black" style={{ paddingBottom: "calc(16px + env(safe-area-inset-bottom, 0px))" }}>
                 <Button
                   type="button"
