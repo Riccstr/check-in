@@ -365,6 +365,7 @@ export default function AdminDashboard() {
   const [reps,      setReps]      = useState<RepRow[]>([]);
   const [schedules, setSchedules] = useState<DailyScheduleRow[]>([]);
   const [visits,    setVisits]    = useState<VisitRow[]>([]);
+  const [activityRepFilter, setActivityRepFilter] = useState<string>("all");
 
   // Ref keeps the realtime callback pointing at the latest fetchData closure
   // without needing to recreate the channels on every render.
@@ -626,6 +627,11 @@ export default function AdminDashboard() {
 
   activityEvents.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
 
+  // Derive filtered activity events based on rep filter
+  const filteredActivityEvents = activityRepFilter === "all"
+    ? activityEvents
+    : activityEvents.filter((ev) => ev.repName === (reps.find((r) => r.id === activityRepFilter)?.rep_name ?? ""));
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -698,13 +704,35 @@ export default function AdminDashboard() {
           <div style={{ background: A.panel, border: `1px solid ${A.border}`, borderRadius: 10, overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: `1px solid ${A.border}` }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}>Activity</div>
-              <div style={{ fontFamily: A.mono, fontSize: 11, color: A.inkMute }}>today · live</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <select
+                  value={activityRepFilter}
+                  onChange={(e) => setActivityRepFilter(e.target.value)}
+                  style={{
+                    fontSize: 11,
+                    fontFamily: A.sans,
+                    color: activityRepFilter === "all" ? A.inkMute : A.ink,
+                    background: A.panelTint,
+                    border: `1px solid ${A.border}`,
+                    borderRadius: 6,
+                    padding: "3px 8px",
+                    cursor: "pointer",
+                    outline: "none",
+                  }}
+                >
+                  <option value="all">All reps</option>
+                  {reps.map((r) => (
+                    <option key={r.id} value={r.id}>{r.rep_name}</option>
+                  ))}
+                </select>
+                <div style={{ fontFamily: A.mono, fontSize: 11, color: A.inkMute }}>today · live</div>
+              </div>
             </div>
-            {activityEvents.length === 0 ? (
-              <div style={{ padding: "40px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>No activity yet today.</div>
+            {filteredActivityEvents.length === 0 ? (
+              <div style={{ padding: "40px 16px", textAlign: "center", color: A.inkMute, fontSize: 13 }}>{activityRepFilter === "all" ? "No activity yet today." : "No activity from this rep yet today."}</div>
             ) : (
               <div style={{ maxHeight: 600, overflow: "auto" }}>
-                {activityEvents.map((ev, i) => <ActivityFeedRow key={i} event={ev} />)}
+                {filteredActivityEvents.map((ev, i) => <ActivityFeedRow key={i} event={ev} />)}
               </div>
             )}
           </div>
