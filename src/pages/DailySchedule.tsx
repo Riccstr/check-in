@@ -698,7 +698,10 @@ export default function DailySchedule() {
       <div
         style={{
           background: `radial-gradient(120% 80% at 50% 0%, ${C.greenMid} 0%, ${C.green} 38%, ${C.greenDeep} 100%)`,
-          padding: "10px 16px 12px",
+          paddingTop: "calc(10px + env(safe-area-inset-top, 0px))",
+          paddingBottom: "12px",
+          paddingLeft: "16px",
+          paddingRight: "16px",
           display: "flex",
           flexDirection: "column",
           gap: 6,
