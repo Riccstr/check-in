@@ -735,7 +735,7 @@ export function ScheduleCard({
     try {
       if (!navigator.onLine) {
         await queueScheduleItemUpdate(skippedUpdates);
-        await saveVisitOffline(repId, item.customer_id, scheduleDate, "00:00", "00:00", 0, note, item.customers?.customer_name, "skipped");
+        await saveVisitOffline(repId, item.customer_id, scheduleDate, null as any, null as any, 0, note, item.customers?.customer_name, "skipped");
         toast.success("Saved offline. Will sync when online.");
         return;
       }
@@ -743,19 +743,19 @@ export function ScheduleCard({
       if (error) {
         if (isOfflineError(error)) {
           await queueScheduleItemUpdate(skippedUpdates);
-          await saveVisitOffline(repId, item.customer_id, scheduleDate, "00:00", "00:00", 0, note, item.customers?.customer_name, "skipped");
+          await saveVisitOffline(repId, item.customer_id, scheduleDate, null as any, null as any, 0, note, item.customers?.customer_name, "skipped");
           toast.success("Saved offline. Will sync when online.");
           return;
         }
         toast.error(error.message); return;
       }
-      await supabase.from("visits").insert({ rep_id: repId, customer_id: item.customer_id, visit_date: scheduleDate, arrival_time: "00:00", leaving_time: "00:00", duration_minutes: 0, notes: note, status: "skipped" } as any);
+      await supabase.from("visits").insert({ rep_id: repId, customer_id: item.customer_id, visit_date: scheduleDate, arrival_time: null, leaving_time: null, duration_minutes: 0, notes: note, status: "skipped" } as any);
       onRefresh();
     } catch (err: any) {
       console.warn("[Schedule] Network error on skip:", err?.message);
       try {
         await queueScheduleItemUpdate(skippedUpdates);
-        await saveVisitOffline(repId, item.customer_id, scheduleDate, "00:00", "00:00", 0, note, item.customers?.customer_name, "skipped");
+        await saveVisitOffline(repId, item.customer_id, scheduleDate, null as any, null as any, 0, note, item.customers?.customer_name, "skipped");
         toast.success("Saved offline. Will sync when online.");
       } catch (idbErr) {
         console.error("[Schedule] IndexedDB save failed:", idbErr);
