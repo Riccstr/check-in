@@ -22,6 +22,7 @@ import {
   calcDuration,
   resetMobileZoom,
   Expand,
+  parseAmount,
 } from "./ScheduleHelpers";
 import { RippleButton } from "./Animations";
 
@@ -548,7 +549,7 @@ export function ScheduleCard({
       const { error } = await supabase.from("visits").update({
         order_number: doneOrderNumber || null,
         order_quantity: doneOrderQty !== "" ? Number(doneOrderQty) : null,
-        order_amount: doneOrderAmount !== "" ? Number(doneOrderAmount) : null,
+        order_amount: parseAmount(doneOrderAmount),
       } as any).eq("id", visitId);
       if (error) {
         toast.error(error.message);
@@ -722,7 +723,7 @@ export function ScheduleCard({
       notes: localNotes,
       order_number: localOrderNumber || null,
       order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null,
-      order_amount: localOrderAmount !== "" ? Number(localOrderAmount) : null,
+      order_amount: parseAmount(localOrderAmount),
     }).finally(() => { leavingRef.current = false; });
   };
 
@@ -774,7 +775,7 @@ export function ScheduleCard({
     }
   };
 
-  const markVisited = () => updateItem({ status: "visited", arrival_time: localArrival, leaving_time: localLeaving, notes: localNotes, order_number: localOrderNumber || null, order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null, order_amount: localOrderAmount !== "" ? Number(localOrderAmount) : null });
+  const markVisited = () => updateItem({ status: "visited", arrival_time: localArrival, leaving_time: localLeaving, notes: localNotes, order_number: localOrderNumber || null, order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null, order_amount: parseAmount(localOrderAmount) });
 
   const isInProgress = item.status === "pending" && item.arrival_time && !item.leaving_time;
   const customerName = item.customers?.customer_name ?? "Unknown";

@@ -7,7 +7,7 @@ import { compressImage, blobToBase64 } from "@/lib/imageCompressor";
 import { CameraCapture } from "@/components/CameraCapture";
 import { Button } from "@/components/ui/button";
 import { addOfflineVisit, savePendingPhoto, saveAdHocCard, getAdHocCard, clearAdHocCard } from "@/lib/offlineDb";
-import { C, isOfflineError, saveVisitOffline, nowTime, calcDuration, resetMobileZoom, Expand } from "./ScheduleHelpers";
+import { C, isOfflineError, saveVisitOffline, nowTime, calcDuration, resetMobileZoom, Expand, parseAmount } from "./ScheduleHelpers";
 
 export interface Customer {
   id: string;
@@ -130,12 +130,12 @@ export function AdHocVisitCard({
         client_generated_id: adHocClientId,
         order_number: adHocOrderNumber || null,
         order_quantity: adHocOrderQty !== "" ? Number(adHocOrderQty) : null,
-        order_amount: adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null,
+        order_amount: parseAmount(adHocOrderAmount),
       } as any).select("id").single();
       if (error) {
         if (isOfflineError(error)) {
           const photoB64 = adHocPhoto ? await blobToBase64(adHocPhoto.blob) : null;
-          await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrivalTime, adHocLeavingTime, dur, adHocNotes || null, customerName, "visited", photoB64, adHocOrderNumber || null, adHocOrderQty !== "" ? Number(adHocOrderQty) : null, adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null);
+          await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrivalTime, adHocLeavingTime, dur, adHocNotes || null, customerName, "visited", photoB64, adHocOrderNumber || null, adHocOrderQty !== "" ? Number(adHocOrderQty) : null, parseAmount(adHocOrderAmount));
           toast.success("Saved offline. Will sync when online.");
           onComplete({
             id: adHocClientId,
@@ -148,7 +148,7 @@ export function AdHocVisitCard({
             notes: adHocNotes || null,
             order_number: adHocOrderNumber || null,
             order_quantity: adHocOrderQty !== "" ? Number(adHocOrderQty) : null,
-            order_amount: adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null,
+            order_amount: parseAmount(adHocOrderAmount),
             photo_url: null,
             _offline: true,
           });
@@ -177,7 +177,7 @@ export function AdHocVisitCard({
           notes: adHocNotes || null,
           order_number: adHocOrderNumber || null,
           order_quantity: adHocOrderQty !== "" ? Number(adHocOrderQty) : null,
-          order_amount: adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null,
+          order_amount: parseAmount(adHocOrderAmount),
           photo_url: photoUrl,
           _offline: true,
         });
@@ -187,7 +187,7 @@ export function AdHocVisitCard({
       console.warn("[Schedule] Network error on ad-hoc:", err?.message);
       try {
         const photoB64 = adHocPhoto ? await blobToBase64(adHocPhoto.blob) : null;
-        await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrivalTime, adHocLeavingTime, dur, adHocNotes || null, customerName, "visited", photoB64, adHocOrderNumber || null, adHocOrderQty !== "" ? Number(adHocOrderQty) : null, adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null);
+        await saveVisitOffline(repId, adHocCustomerId, scheduleDate, adHocArrivalTime, adHocLeavingTime, dur, adHocNotes || null, customerName, "visited", photoB64, adHocOrderNumber || null, adHocOrderQty !== "" ? Number(adHocOrderQty) : null, parseAmount(adHocOrderAmount));
         toast.success("Saved offline. Will sync when online.");
         onComplete({
           id: adHocClientId,
@@ -200,7 +200,7 @@ export function AdHocVisitCard({
           notes: adHocNotes || null,
           order_number: adHocOrderNumber || null,
           order_quantity: adHocOrderQty !== "" ? Number(adHocOrderQty) : null,
-          order_amount: adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null,
+          order_amount: parseAmount(adHocOrderAmount),
           photo_url: null,
           _offline: true,
         });

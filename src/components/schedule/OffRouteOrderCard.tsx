@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { addOfflineVisit, saveOffRouteCard, getOffRouteCard, clearOffRouteCard } from "@/lib/offlineDb";
-import { C, isOfflineError, resetMobileZoom, Expand } from "./ScheduleHelpers";
+import { C, isOfflineError, resetMobileZoom, Expand, parseAmount } from "./ScheduleHelpers";
 import type { Customer } from "./AdHocVisitCard";
 
 export interface SyntheticOffRouteVisit {
@@ -88,7 +88,7 @@ export function OffRouteOrderCard({
       status: "off_route",
       order_number: offRouteOrderNumber || null,
       order_quantity: offRouteOrderQty !== "" ? Number(offRouteOrderQty) : null,
-      order_amount: offRouteOrderAmount !== "" ? Number(offRouteOrderAmount) : null,
+      order_amount: parseAmount(offRouteOrderAmount),
       notes: offRouteNotes || null,
       arrival_time: null,
       leaving_time: null,
@@ -125,7 +125,7 @@ export function OffRouteOrderCard({
               notes: offRouteNotes || null,
               order_number: offRouteOrderNumber || null,
               order_quantity: offRouteOrderQty !== "" ? Number(offRouteOrderQty) : null,
-              order_amount: offRouteOrderAmount !== "" ? Number(offRouteOrderAmount) : null,
+              order_amount: parseAmount(offRouteOrderAmount),
               photo_url: null,
               _offline: true,
             });
@@ -152,7 +152,7 @@ export function OffRouteOrderCard({
           notes: offRouteNotes || null,
           order_number: offRouteOrderNumber || null,
           order_quantity: offRouteOrderQty !== "" ? Number(offRouteOrderQty) : null,
-          order_amount: offRouteOrderAmount !== "" ? Number(offRouteOrderAmount) : null,
+          order_amount: parseAmount(offRouteOrderAmount),
           photo_url: null,
           _offline: true,
         });
@@ -175,7 +175,7 @@ export function OffRouteOrderCard({
           notes: offRouteNotes || null,
           order_number: offRouteOrderNumber || null,
           order_quantity: offRouteOrderQty !== "" ? Number(offRouteOrderQty) : null,
-          order_amount: offRouteOrderAmount !== "" ? Number(offRouteOrderAmount) : null,
+          order_amount: parseAmount(offRouteOrderAmount),
           photo_url: null,
           _offline: true,
         });

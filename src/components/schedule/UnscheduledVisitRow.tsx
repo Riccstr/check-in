@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Check, Clock, ChevronDown, Pencil, Plus } from "lucide-react";
 import { fmtDuration } from "@/lib/timeUtils";
-import { C, resetMobileZoom, Expand } from "./ScheduleHelpers";
+import { C, resetMobileZoom, Expand, parseAmount } from "./ScheduleHelpers";
 
 export function UnscheduledVisitRow({
   visit,
@@ -176,7 +176,7 @@ export function UnscheduledVisitRow({
                     const { error } = await supabase.from("visits").update({
                       order_number: orderNumber || null,
                       order_quantity: orderQty !== "" ? Number(orderQty) : null,
-                      order_amount: orderAmount !== "" ? Number(orderAmount) : null,
+                      order_amount: parseAmount(orderAmount),
                     } as any).eq("id", visit.id);
                     if (error) { toast.error(error.message); }
                     else { toast.success("Order updated"); setIsEditing(false); await onOrderUpdated(); }

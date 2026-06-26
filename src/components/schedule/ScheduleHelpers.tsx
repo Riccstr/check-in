@@ -184,3 +184,10 @@ export function Expand({ open, children, duration = 320 }: { open: boolean; chil
     </div>
   );
 }
+
+export function parseAmount(value: string): number | null {
+  if (value === "" || value == null) return null;
+  const normalised = value.replace(",", ".");
+  const parsed = Number(normalised);
+  return isNaN(parsed) ? null : parsed;
+}
