@@ -105,7 +105,12 @@ export default function DailySchedule() {
             for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
             const blob = new Blob([ab], { type: "image/jpeg" });
 
-            const fileName = `${p.clientGeneratedId || p.scheduleItemId}.jpg`;
+            const repIdForPath = p.visitId
+              ? (await supabase.from("visits").select("rep_id").eq("id", p.visitId).maybeSingle()).data?.rep_id
+              : null;
+            const fileName = repIdForPath && p.visitId
+              ? `${repIdForPath}/${p.visitId}.jpg`
+              : `${p.clientGeneratedId || p.scheduleItemId}.jpg`;
             const { error } = await supabase.storage
               .from("visit-photos")
               .upload(fileName, blob, { upsert: true });
