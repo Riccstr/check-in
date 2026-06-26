@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { fmtTime12h } from "@/lib/timeUtils";
-import { A, PageHeader, StatCard, Pill, Tag, ToolbarSearch, PulseKeyframes } from "@/lib/adminUi";
+import { A, PageHeader, StatCard, Pill, Tag, PulseKeyframes } from "@/lib/adminUi";
 import { useAuth } from "@/hooks/useAuth";
 
 // ─── local types ──────────────────────────────────────────────────────────────
@@ -652,16 +652,13 @@ export default function AdminDashboard() {
         title="Today"
         subtitle={format(new Date(), "EEEE, d MMMM yyyy")}
         right={
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 10px", background: A.greenSoft, borderRadius: 6 }}>
-              <span style={{ position: "relative", display: "inline-block", width: 6, height: 6 }}>
-                <span style={{ position: "absolute", inset: 0, borderRadius: 999, background: A.green }} />
-                <span style={{ position: "absolute", inset: -2, borderRadius: 999, background: A.green, opacity: 0.25, animation: "pulseA 1.4s ease-out infinite" }} />
-              </span>
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: A.green }}>Realtime · synced</span>
-            </div>
-            <ToolbarSearch placeholder="Search reps, customers…" />
-          </>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 10px", background: A.greenSoft, borderRadius: 6 }}>
+            <span style={{ position: "relative", display: "inline-block", width: 6, height: 6 }}>
+              <span style={{ position: "absolute", inset: 0, borderRadius: 999, background: A.green }} />
+              <span style={{ position: "absolute", inset: -2, borderRadius: 999, background: A.green, opacity: 0.25, animation: "pulseA 1.4s ease-out infinite" }} />
+            </span>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: A.green }}>Realtime · synced</span>
+          </div>
         }
       />
 

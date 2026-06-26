@@ -68,9 +68,13 @@ export function ScheduleCard({
   const [activeVisitId, setActiveVisitId] = useState<string | null>(null);
   // Stable UUID for the current visit session — used as conflict key in the arrival upsert.
   const clientGenIdRef = useRef<string | null>(null);
-  // Guard: blocks checkout from firing for 300ms after camera capture completes.
+  // Guard: blocks checkout from firing for 600ms after camera capture completes.
   // Prevents Android ghost-click propagation from the camera overlay to the checkout button.
   const cameraCooldownRef = useRef(false);
+  // Guard: blocks markArrived from being called a second time while the first call is still
+  // running. Uses a ref (not state) so it is set synchronously before any awaits.
+  const arrivingRef = useRef(false);
+  const [arriving, setArriving] = useState(false);
 
   // Skip flow state — tracks whether skip composer is open and the note being entered
   const [skipMode, setSkipMode] = useState(false);
@@ -243,7 +247,7 @@ export function ScheduleCard({
   const handleCameraCapture = async (blob: Blob) => {
     try {
       cameraCooldownRef.current = true;
-      setTimeout(() => { cameraCooldownRef.current = false; }, 600);
+      setTimeout(() => { cameraCooldownRef.current = false; }, 200);
       const compressed = await compressImage(blob);
       setPhotoBlob(compressed);
       setPhotoPreview(URL.createObjectURL(compressed));
@@ -574,7 +578,9 @@ export function ScheduleCard({
   };
 
   const markArrived = async () => {
-    if (cameraCooldownRef.current) return;
+    if (arrivingRef.current) return;
+    arrivingRef.current = true;
+    setArriving(true);
     // Guard: block if another visit is already open
     const alreadyOpen = allItems.find(
       (i: any) => i.arrival_time && !i.leaving_time && i.id !== item.id
@@ -688,6 +694,8 @@ export function ScheduleCard({
         clientGeneratedId: clientGenIdRef.current,
       }).catch(() => {});
     }
+    arrivingRef.current = false;
+    setArriving(false);
   };
   const markLeft    = () => { if (cameraCooldownRef.current) return; const t = nowTime(); setLocalLeaving(t); updateItem({ leaving_time: t, status: "visited", notes: localNotes, order_number: localOrderNumber || null, order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null, order_amount: localOrderAmount !== "" ? Number(localOrderAmount) : null }); };
 
@@ -1112,13 +1120,16 @@ export function ScheduleCard({
                 <button
                   type="button"
                   onClick={markArrived}
+                  disabled={arriving}
                   style={{
                     width: "100%",
                     height: 56,
                     borderRadius: 18,
                     border: "none",
-                    cursor: "pointer",
-                    background: `linear-gradient(180deg, ${C.greenMid} 0%, ${C.green} 100%)`,
+                    cursor: arriving ? "not-allowed" : "pointer",
+                    background: arriving
+                      ? `linear-gradient(180deg, ${C.inkSoft} 0%, ${C.inkSoft} 100%)`
+                      : `linear-gradient(180deg, ${C.greenMid} 0%, ${C.green} 100%)`,
                     color: "#fff",
                     fontFamily: "'Syne', sans-serif",
                     fontWeight: 700,
@@ -1128,11 +1139,13 @@ export function ScheduleCard({
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 10,
-                    boxShadow: `0 12px 24px -10px ${C.green}88`,
+                    boxShadow: arriving ? "none" : `0 12px 24px -10px ${C.green}88`,
                     marginBottom: 6,
+                    opacity: arriving ? 0.7 : 1,
+                    transition: "background 200ms, opacity 200ms",
                   }}
                 >
-                  <MapPin size={18} /> Tap to check in
+                  <MapPin size={18} /> {arriving ? "Checking in…" : "Tap to check in"}
                 </button>
                 <button
                   type="button"
