@@ -59,6 +59,20 @@ Language: TypeScript throughout.
 Valid values: visited, skipped, in_progress, off_route
 Any new status must be added via SQL ALTER before frontend code can write it.
 
+## Timestamps & Timezone (UTC vs SAST)
+Supabase stores `timestamptz` columns (e.g. `created_at`) in UTC. South Africa is UTC+2 (SAST).
+- `created_at` (UTC) = 10:37 → `created_at_sast` (SAST) = 12:37
+- **This does not affect reports or displays** — all time-sensitive columns used in reporting are plain `time` type (not `timestamptz`):
+  - `visits.arrival_time` — stored as local SAST from `nowTime()` on device
+  - `visits.leaving_time` — same
+  - `visits.visit_date` — plain `date`, no timezone
+- Only `timestamptz` columns are audit fields (`created_at`, `updated_at`, `cleared_at`), which are never used in rep-facing displays or export reports
+- **Debugging**: If querying `created_at` in the Supabase SQL editor, convert to SAST with:
+  ```sql
+  SELECT created_at AT TIME ZONE 'Africa/Johannesburg' AS created_at_sast FROM visits;
+  ```
+- **Never use `created_at` as a proxy for arrival_time** — always use `arrival_time`
+
 ## Critical Patterns
 - visits.rep_id references reps.id — never profiles.id or auth.users.id
 - adminUi.tsx exports admin-only design system (palette A, AdminSidebar, components); rep app uses inline C palette in schedule components
