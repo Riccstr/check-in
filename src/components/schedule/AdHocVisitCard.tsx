@@ -29,7 +29,7 @@ export interface SyntheticVisit {
   order_number: string | null;
   order_quantity: number | null;
   order_amount: number | null;
-  photo_url: null;
+  photo_url: string | null;
   _offline: true;
 }
 
@@ -157,14 +157,30 @@ export function AdHocVisitCard({
           toast.error(error.message);
         }
       } else {
+        let photoUrl: string | null = null;
         if (adHocPhoto && insertedVisit?.id) {
-          const photoUrl = await uploadAdHocPhoto(repId, insertedVisit.id, adHocClientId, adHocPhoto.blob);
+          photoUrl = await uploadAdHocPhoto(repId, insertedVisit.id, adHocClientId, adHocPhoto.blob);
           if (photoUrl) {
             await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", insertedVisit.id);
           }
         }
         toast.success("Ad-hoc visit logged");
-        onComplete(null);
+        const customerName = adHocCustomers.find((c) => c.id === adHocCustomerId)?.customer_name;
+        onComplete({
+          id: insertedVisit?.id ?? adHocClientId,
+          customer_id: adHocCustomerId,
+          customers: { customer_name: customerName ?? "Unknown" },
+          status: "visited",
+          arrival_time: adHocArrivalTime,
+          leaving_time: adHocLeavingTime,
+          duration_minutes: dur,
+          notes: adHocNotes || null,
+          order_number: adHocOrderNumber || null,
+          order_quantity: adHocOrderQty !== "" ? Number(adHocOrderQty) : null,
+          order_amount: adHocOrderAmount !== "" ? Number(adHocOrderAmount) : null,
+          photo_url: photoUrl,
+          _offline: true,
+        });
         resetAdHoc();
       }
     } catch (err: any) {
@@ -193,9 +209,10 @@ export function AdHocVisitCard({
         console.error("[Schedule] IndexedDB save failed:", idbErr);
         toast.error("Failed to save visit. Please try again.");
       }
+    } finally {
+      clearAdHocCard().catch(() => {});
+      setAdHocSubmitting(false);
     }
-    clearAdHocCard().catch(() => {});
-    setAdHocSubmitting(false);
   };
 
   const resetAdHoc = () => {

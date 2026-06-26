@@ -76,6 +76,7 @@ export function ScheduleCard({
   // running. Uses a ref (not state) so it is set synchronously before any awaits.
   const arrivingRef = useRef(false);
   const [arriving, setArriving] = useState(false);
+  const leavingRef = useRef(false);
 
   // Skip flow state — tracks whether skip composer is open and the note being entered
   const [skipMode, setSkipMode] = useState(false);
@@ -588,6 +589,8 @@ export function ScheduleCard({
     );
     if (alreadyOpen) {
       toast.error(`You have an open visit at ${alreadyOpen.customers?.customer_name ?? "another customer"}. Please check out first.`);
+      arrivingRef.current = false;
+      setArriving(false);
       return;
     }
 
@@ -617,6 +620,8 @@ export function ScheduleCard({
         } else {
           const customerName = openCardItem?.customers?.customer_name ?? "another customer";
           toast.error(`You have an open visit at ${customerName}. Please check out first.`);
+          arrivingRef.current = false;
+          setArriving(false);
           return;
         }
       }
@@ -698,7 +703,21 @@ export function ScheduleCard({
     arrivingRef.current = false;
     setArriving(false);
   };
-  const markLeft    = () => { if (cameraCooldownRef.current) return; const t = nowTime(); setLocalLeaving(t); updateItem({ leaving_time: t, status: "visited", notes: localNotes, order_number: localOrderNumber || null, order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null, order_amount: localOrderAmount !== "" ? Number(localOrderAmount) : null }); };
+  const markLeft = () => {
+    if (cameraCooldownRef.current) return;
+    if (leavingRef.current) return;
+    leavingRef.current = true;
+    const t = nowTime();
+    setLocalLeaving(t);
+    updateItem({
+      leaving_time: t,
+      status: "visited",
+      notes: localNotes,
+      order_number: localOrderNumber || null,
+      order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null,
+      order_amount: localOrderAmount !== "" ? Number(localOrderAmount) : null,
+    }).finally(() => { leavingRef.current = false; });
+  };
 
   const skipItem = async (note: string = skipNote) => {
     if (actionInProgress) return;
@@ -1265,13 +1284,16 @@ export function ScheduleCard({
 
                 <RippleButton
                   onClick={markLeft}
+                  disabled={actionInProgress}
                   style={{
                     width: "100%",
                     height: 60,
                     borderRadius: 18,
                     border: "none",
-                    cursor: "pointer",
-                    background: `linear-gradient(180deg, ${C.greenMid} 0%, ${C.green} 100%)`,
+                    cursor: actionInProgress ? "not-allowed" : "pointer",
+                    background: actionInProgress
+                      ? `linear-gradient(180deg, ${C.inkSoft} 0%, ${C.inkSoft} 100%)`
+                      : `linear-gradient(180deg, ${C.greenMid} 0%, ${C.green} 100%)`,
                     color: "#fff",
                     fontFamily: "'Syne', sans-serif",
                     fontWeight: 700,
@@ -1281,11 +1303,13 @@ export function ScheduleCard({
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 10,
-                    boxShadow: `0 12px 28px -10px ${C.green}aa, 0 1px 0 rgba(255,255,255,0.2) inset, 0 -1px 0 ${C.greenDeep}88 inset`,
+                    boxShadow: actionInProgress ? "none" : `0 12px 28px -10px ${C.green}aa, 0 1px 0 rgba(255,255,255,0.2) inset, 0 -1px 0 ${C.greenDeep}88 inset`,
                     marginBottom: 6,
+                    opacity: actionInProgress ? 0.7 : 1,
+                    transition: "background 200ms, opacity 200ms",
                   }}
                 >
-                  <Check size={20} /> Tap to check out
+                  <Check size={20} /> {actionInProgress ? "Checking out…" : "Tap to check out"}
                 </RippleButton>
                 <button
                   type="button"
