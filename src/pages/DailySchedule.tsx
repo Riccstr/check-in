@@ -341,6 +341,7 @@ export default function DailySchedule() {
         const sortedItems = (data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
         setItems(sortedItems);
         onlineFetchDoneRef.current = true;
+        fetchUnscheduledVisits();
         resolveUnknownCustomers(sortedItems);
         validateScheduleItemCustomers(sortedItems);
         await setCachedSchedule(repId, scheduleDate, data);
@@ -361,6 +362,7 @@ export default function DailySchedule() {
             const sortedNewItems = (newData?.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
             setItems(sortedNewItems);
             onlineFetchDoneRef.current = true;
+            fetchUnscheduledVisits();
             resolveUnknownCustomers(sortedNewItems);
             validateScheduleItemCustomers(sortedNewItems);
             if (newData) await setCachedSchedule(repId, scheduleDate, newData);

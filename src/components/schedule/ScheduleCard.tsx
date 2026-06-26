@@ -23,6 +23,7 @@ import {
   resetMobileZoom,
   Expand,
 } from "./ScheduleHelpers";
+import { RippleButton } from "./Animations";
 
 // ─── ScheduleCard ─────────────────────────────────────────────────────────────
 
@@ -1117,8 +1118,7 @@ export function ScheduleCard({
             {!isInProgress ? (
               /* Pending state — show arrive button */
               <>
-                <button
-                  type="button"
+                <RippleButton
                   onClick={markArrived}
                   disabled={arriving}
                   style={{
@@ -1146,7 +1146,7 @@ export function ScheduleCard({
                   }}
                 >
                   <MapPin size={18} /> {arriving ? "Checking in…" : "Tap to check in"}
-                </button>
+                </RippleButton>
                 <button
                   type="button"
                   onClick={() => { setSkipMode(true); setSkipNote(""); }}
@@ -1172,7 +1172,7 @@ export function ScheduleCard({
               </>
             ) : (
               /* Active state — show order, photo, checkout */
-              <>
+              <Expand open={isInProgress}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
                   <CameraCapture
                     onCapture={handleCameraCapture}
@@ -1263,8 +1263,7 @@ export function ScheduleCard({
                   </div>
                 </div>
 
-                <button
-                  type="button"
+                <RippleButton
                   onClick={markLeft}
                   style={{
                     width: "100%",
@@ -1287,7 +1286,7 @@ export function ScheduleCard({
                   }}
                 >
                   <Check size={20} /> Tap to check out
-                </button>
+                </RippleButton>
                 <button
                   type="button"
                   onClick={() => { setSkipMode(true); setSkipNote(""); }}
@@ -1310,7 +1309,7 @@ export function ScheduleCard({
                 >
                   <SkipForward size={14} /> Mark as skipped
                 </button>
-              </>
+              </Expand>
             )}
           </>
         )}

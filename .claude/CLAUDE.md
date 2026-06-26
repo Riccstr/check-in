@@ -121,7 +121,7 @@ Increment DB_VERSION whenever adding or renaming a store.
 ## Coding Rules
 - TypeScript only — no plain JS files
 - No new npm packages without explicit instruction
-- No new files unless explicitly instructed
+- Create new files when it is the right structural choice (e.g. a self-contained reusable component); avoid creating new files for trivial one-off additions that belong in an existing file
 - All refactoring stays in-file
 - Never physically delete visits or customers — use is_deleted or is_active flags
 - Camera must be triggered by user gesture only (iOS Safari requirement)
