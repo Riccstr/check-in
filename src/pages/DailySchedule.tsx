@@ -71,7 +71,7 @@ export default function DailySchedule() {
   const validationRanRef   = useRef<string | null>(null);
   // Stable refs so visibility/online handlers always read the latest values without recreating
   const scheduleDateRef    = useRef(scheduleDate);
-  const fetchScheduleRef   = useRef<() => Promise<void>>(async () => {});
+  const fetchScheduleRef   = useRef<(force?: boolean) => Promise<void>>(async () => {});
   const onlineFetchDoneRef = useRef(false);
   const lastFetchTimeRef = useRef<number>(0);
 
@@ -534,7 +534,9 @@ export default function DailySchedule() {
         const todayStr = new Date().toISOString().split("T")[0];
         if (scheduleDateRef.current !== todayStr) {
           validationRanRef.current = null;
-          fetchScheduleRef.current();
+          fetchScheduleRef.current(true);
+        } else {
+          fetchScheduleRef.current(true);
         }
       }
     };
