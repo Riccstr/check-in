@@ -652,8 +652,11 @@ export default function DailySchedule() {
     const skippedItems = items.filter((i) => i.status === "skipped");
 
     const v = visitedItems.map((i: any) => Array.isArray(i.visits) ? i.visits[0] : i.visits).filter(Boolean);
-    const orders = v.filter((v: any) => v?.order_number != null && v?.order_number !== "").length;
-    const totalOrderValue = v.reduce((sum: number, v: any) => sum + (Number(v?.order_amount) || 0), 0);
+    const offRouteVisits = unscheduledVisits.filter((uv: any) => uv.status === "off_route");
+    const orders = v.filter((v: any) => v?.order_number != null && v?.order_number !== "").length
+      + offRouteVisits.filter((uv: any) => uv.order_number != null && uv.order_number !== "").length;
+    const totalOrderValue = v.reduce((sum: number, v: any) => sum + (Number(v?.order_amount) || 0), 0)
+      + offRouteVisits.reduce((sum: number, uv: any) => sum + (Number(uv?.order_amount) || 0), 0);
 
     const durationsWithValue = visitedItems.filter((i) => i.duration_minutes > 0);
     const avgDuration =
@@ -670,7 +673,7 @@ export default function DailySchedule() {
       avgDuration,
     });
     setShowSummary(true);
-  }, [items, repId, scheduleDate, schedule]);
+  }, [items, unscheduledVisits, repId, scheduleDate, schedule]);
 
   const closeSummary = useCallback(() => {
     if (dismissedKey) localStorage.setItem(dismissedKey, "1");
