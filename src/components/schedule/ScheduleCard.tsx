@@ -663,6 +663,13 @@ export function ScheduleCard({
               await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", data.id);
           }
 
+          // Update pending_photos record with real IDs without overwriting base64
+          getPendingPhoto(item.id).then((existingBase64) => {
+            if (existingBase64) {
+              savePendingPhoto(item.id, existingBase64, data.id, cgid).catch(() => {});
+            }
+          }).catch(() => {});
+
           // Persist visitId in IDB so a background/resume cycle can restore it
           saveActiveCard({
             scheduleItemId: item.id,

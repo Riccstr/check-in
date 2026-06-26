@@ -109,7 +109,24 @@ export default function DailySchedule() {
             const { error } = await supabase.storage
               .from("visit-photos")
               .upload(fileName, blob, { upsert: true });
-            if (error) continue;
+            if (error) {
+              try {
+                await (supabase as any).from("sync_errors").insert({
+                  rep_id: p.visitId
+                    ? (await supabase.from("visits").select("rep_id").eq("id", p.visitId).maybeSingle()).data?.rep_id
+                    : null,
+                  error_type: "photo_upload_retry_failed",
+                  message: `Photo retry upload failed: ${error.message}`,
+                  context: {
+                    scheduleItemId: p.scheduleItemId,
+                    visitId: p.visitId,
+                    clientGeneratedId: p.clientGeneratedId,
+                    error: error.message,
+                  },
+                });
+              } catch { /* filing sync_error must never block the retry loop */ }
+              continue;
+            }
 
             const { data: urlData } = supabase.storage.from("visit-photos").getPublicUrl(fileName);
             const publicUrl = urlData?.publicUrl;
@@ -193,7 +210,6 @@ export default function DailySchedule() {
   }, [repId, scheduleDate]);
 
   const fetchWeekName = async () => {
-    setCurrentWeekName(""); // clear stale label immediately before the async lookup
     try {
       const { data: weekOrder } = await (supabase.rpc as any)("get_week_order_for_date", { p_date: scheduleDate });
       if (weekOrder) {
@@ -679,6 +695,7 @@ export default function DailySchedule() {
     setScheduleDate(`${yy}-${mm}-${dd}`);
     setExpandedActiveId(null);
     setOpenCompletedId(null);
+    setActiveTab("active");
   };
 
   const displayDate = new Date(scheduleDate + "T00:00:00");

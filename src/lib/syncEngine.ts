@@ -8,7 +8,6 @@ import {
   removeSyncedScheduleItemUpdates,
   savePendingPhoto,
 } from "./offlineDb";
-import { toast } from "sonner";
 import { base64ToBlob } from "./imageCompressor";
 
 async function syncPendingScheduleItemUpdates(): Promise<{ synced: number; errors: number }> {
@@ -246,7 +245,6 @@ export function setupAutoSync(onSyncComplete?: () => void) {
     if (!navigator.onLine) return;
     const result = await syncPendingVisits();
     if (result.synced > 0) {
-      toast.success(`${result.synced} offline change(s) synced`);
       onSyncComplete?.();
     }
     if (result.errors > 0) {
