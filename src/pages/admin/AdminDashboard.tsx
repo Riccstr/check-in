@@ -366,6 +366,19 @@ export default function AdminDashboard() {
   const [schedules, setSchedules] = useState<DailyScheduleRow[]>([]);
   const [visits,    setVisits]    = useState<VisitRow[]>([]);
   const [activityRepFilter, setActivityRepFilter] = useState<string>("all");
+  const [activityDropdownOpen, setActivityDropdownOpen] = useState(false);
+
+  const activityDropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!activityDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (activityDropdownRef.current && !activityDropdownRef.current.contains(e.target as Node)) {
+        setActivityDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [activityDropdownOpen]);
 
   // Ref keeps the realtime callback pointing at the latest fetchData closure
   // without needing to recreate the channels on every render.
@@ -652,36 +665,6 @@ export default function AdminDashboard() {
 
   return (
     <>
-      <style>{`
-        .activity-rep-select {
-          font-size: 12px;
-          font-family: inherit;
-          height: 32px;
-          padding: 0 28px 0 10px;
-          border-radius: 8px;
-          border: 1px solid ${A.border};
-          background-color: ${A.panel};
-          color: ${A.ink};
-          cursor: pointer;
-          outline: none;
-          appearance: none;
-          -webkit-appearance: none;
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-          background-repeat: no-repeat;
-          background-position: right 8px center;
-          font-weight: 500;
-          transition: border-color 0.15s, background-color 0.15s, color 0.15s;
-        }
-        .activity-rep-select:hover {
-          border-color: ${A.green};
-        }
-        .activity-rep-select.active {
-          background-color: ${A.green};
-          color: #fff;
-          border-color: ${A.green};
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-        }
-      `}</style>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", background: A.bg, minHeight: 0, fontFamily: A.sans, color: A.ink }}>
         <PulseKeyframes />
 
@@ -736,16 +719,97 @@ export default function AdminDashboard() {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: `1px solid ${A.border}` }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}>Activity</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <select
-                  className={`activity-rep-select${activityRepFilter !== "all" ? " active" : ""}`}
-                  value={activityRepFilter}
-                  onChange={(e) => setActivityRepFilter(e.target.value)}
-                >
-                  <option value="all">All reps</option>
-                  {reps.map((r) => (
-                    <option key={r.id} value={r.id}>{r.rep_name}</option>
-                  ))}
-                </select>
+                <div ref={activityDropdownRef} style={{ position: "relative" }}>
+                  <button
+                    type="button"
+                    onClick={() => setActivityDropdownOpen((v) => !v)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      height: 32,
+                      padding: "0 10px",
+                      border: `1px solid ${activityRepFilter !== "all" ? A.green : A.border}`,
+                      borderRadius: 8,
+                      background: activityRepFilter !== "all" ? A.green : A.panel,
+                      color: activityRepFilter !== "all" ? "#fff" : A.ink,
+                      fontSize: 12,
+                      fontWeight: 500,
+                      fontFamily: A.sans,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {activityRepFilter === "all"
+                      ? "All reps"
+                      : reps.find((r) => r.id === activityRepFilter)?.rep_name ?? "All reps"}
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+
+                  {activityDropdownOpen && (
+                    <div style={{
+                      position: "absolute",
+                      top: "calc(100% + 4px)",
+                      right: 0,
+                      zIndex: 50,
+                      minWidth: 160,
+                      background: A.panel,
+                      border: `1px solid ${A.border}`,
+                      borderRadius: 8,
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.10)",
+                      overflow: "hidden",
+                      fontFamily: A.sans,
+                    }}>
+                      {[{ id: "all", rep_name: "All reps" }, ...reps].map((r) => {
+                        const isSelected = activityRepFilter === r.id;
+                        return (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onClick={() => { setActivityRepFilter(r.id); setActivityDropdownOpen(false); }}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              width: "100%",
+                              padding: "8px 12px",
+                              background: isSelected ? A.greenSoft : "transparent",
+                              color: isSelected ? A.green : A.ink,
+                              border: "none",
+                              fontSize: 12.5,
+                              fontWeight: isSelected ? 600 : 400,
+                              fontFamily: A.sans,
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) {
+                                (e.currentTarget as HTMLButtonElement).style.background = A.greenSoft;
+                                (e.currentTarget as HTMLButtonElement).style.color = A.green;
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected) {
+                                (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+                                (e.currentTarget as HTMLButtonElement).style.color = A.ink;
+                              }
+                            }}
+                          >
+                            {isSelected && (
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="20 6 9 17 4 12" />
+                              </svg>
+                            )}
+                            {!isSelected && <span style={{ width: 11, display: "inline-block" }} />}
+                            {r.rep_name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
                 <div style={{ fontFamily: A.mono, fontSize: 11, color: A.inkMute }}>today · live</div>
               </div>
             </div>
