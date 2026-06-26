@@ -361,6 +361,7 @@ export default function DailySchedule() {
         resolveUnknownCustomers(sortedItems);
         validateScheduleItemCustomers(sortedItems);
         await setCachedSchedule(repId, scheduleDate, data);
+        if (isToday) repairMissingVisitIds(sortedItems);
       } else {
         // Only auto-generate for today or past dates — never pre-generate future schedules
         const todayStr = new Date().toISOString().split("T")[0];
@@ -382,6 +383,7 @@ export default function DailySchedule() {
             resolveUnknownCustomers(sortedNewItems);
             validateScheduleItemCustomers(sortedNewItems);
             if (newData) await setCachedSchedule(repId, scheduleDate, newData);
+            if (isToday) repairMissingVisitIds(sortedNewItems);
           } else {
             setSchedule(null); setItems([]);
           }
@@ -390,7 +392,6 @@ export default function DailySchedule() {
           setSchedule(null); setItems([]);
         }
       }
-      if (isToday) repairMissingVisitIds();
       if (isToday) {
         try {
           const today = new Date().toISOString().split("T")[0];
@@ -431,10 +432,10 @@ export default function DailySchedule() {
 
   // Silent background repair: stamps visit_id back onto schedule_items that missed it
   // due to network failures. Uses itemsRef so it doesn't need a stable closure dependency.
-  const repairMissingVisitIds = async () => {
+  const repairMissingVisitIds = async (currentItems: any[]) => {
     try {
       if (!repId) return;
-      const unlinked = itemsRef.current.filter(
+      const unlinked = currentItems.filter(
         (i: any) => (i.status === "visited" || i.status === "skipped") && !i.visit_id
       );
       if (!unlinked.length) { fetchUnscheduledVisits(); return; }
@@ -446,7 +447,7 @@ export default function DailySchedule() {
             .eq("rep_id", repId)
             .eq("customer_id", si.customer_id)
             .eq("visit_date", scheduleDate)
-            .eq("status", "visited")
+            .in("status", ["visited", "skipped"])
             .maybeSingle();
           if (visit?.id) {
             await supabase
