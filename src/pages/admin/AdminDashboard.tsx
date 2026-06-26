@@ -651,8 +651,39 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", background: A.bg, minHeight: 0, fontFamily: A.sans, color: A.ink }}>
-      <PulseKeyframes />
+    <>
+      <style>{`
+        .activity-rep-select {
+          font-size: 12px;
+          font-family: inherit;
+          height: 32px;
+          padding: 0 28px 0 10px;
+          border-radius: 8px;
+          border: 1px solid ${A.border};
+          background-color: ${A.panel};
+          color: ${A.ink};
+          cursor: pointer;
+          outline: none;
+          appearance: none;
+          -webkit-appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 8px center;
+          font-weight: 500;
+          transition: border-color 0.15s, background-color 0.15s, color 0.15s;
+        }
+        .activity-rep-select:hover {
+          border-color: ${A.green};
+        }
+        .activity-rep-select.active {
+          background-color: ${A.green};
+          color: #fff;
+          border-color: ${A.green};
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+        }
+      `}</style>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", background: A.bg, minHeight: 0, fontFamily: A.sans, color: A.ink }}>
+        <PulseKeyframes />
 
       <PageHeader
         title="Today"
@@ -706,19 +737,9 @@ export default function AdminDashboard() {
               <div style={{ fontSize: 13, fontWeight: 600 }}>Activity</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <select
+                  className={`activity-rep-select${activityRepFilter !== "all" ? " active" : ""}`}
                   value={activityRepFilter}
                   onChange={(e) => setActivityRepFilter(e.target.value)}
-                  style={{
-                    fontSize: 11,
-                    fontFamily: A.sans,
-                    color: activityRepFilter === "all" ? A.inkMute : A.ink,
-                    background: A.panelTint,
-                    border: `1px solid ${A.border}`,
-                    borderRadius: 6,
-                    padding: "3px 8px",
-                    cursor: "pointer",
-                    outline: "none",
-                  }}
                 >
                   <option value="all">All reps</option>
                   {reps.map((r) => (
@@ -740,5 +761,6 @@ export default function AdminDashboard() {
       </div>
       <SyncErrorPanel />
     </div>
+    </>
   );
 }
