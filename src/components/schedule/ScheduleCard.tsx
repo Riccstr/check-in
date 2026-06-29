@@ -986,8 +986,7 @@ export function ScheduleCard({
 
             {/* Edit Order button or form */}
             {!editingDone && (
-              <button
-                type="button"
+              <RippleButton
                 onClick={async () => {
                   let visitId = item.visit_id;
                   let visitData: any = null;
@@ -1026,7 +1025,7 @@ export function ScheduleCard({
                 }}
               >
                 <Pencil size={13} /> Edit details
-              </button>
+              </RippleButton>
             )}
 
             {editingDone && (
