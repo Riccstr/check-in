@@ -69,6 +69,11 @@ export function AdHocVisitCard({
         setAdHocCustomerId(saved.customerId);
         setAdHocArrivalTime(saved.arrivalTime);
         setAdHocCheckedIn(true);
+        setAdHocPhoto(null); // blob cannot survive IDB — rep must retake if needed
+        // If there was a photo before backgrounding, warn the rep
+        if (saved.hadPhoto) {
+          toast.warning("Photo was lost when the app backgrounded — please retake it.");
+        }
         setAdHocNotes(saved.notes);
         setAdHocOrderNumber(saved.orderNumber);
         setAdHocOrderQty(saved.orderQty);
@@ -86,8 +91,9 @@ export function AdHocVisitCard({
       orderNumber: adHocOrderNumber,
       orderQty: adHocOrderQty,
       orderAmount: adHocOrderAmount,
+      hadPhoto: adHocPhoto !== null,
     }).catch(() => {});
-  }, [adHocCheckedIn, adHocCustomerId, adHocArrivalTime, adHocNotes, adHocOrderNumber, adHocOrderQty, adHocOrderAmount]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [adHocCheckedIn, adHocCustomerId, adHocArrivalTime, adHocNotes, adHocOrderNumber, adHocOrderQty, adHocOrderAmount, adHocPhoto]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const uploadAdHocPhoto = async (repId: string, visitId: string, clientGeneratedId: string, blob: Blob): Promise<string | null> => {
     const queuePhoto = async () => {
@@ -472,13 +478,16 @@ export function AdHocVisitCard({
             <button type="button" onClick={() => { submitAdHoc(); }}
               disabled={adHocSubmitting}
               style={{ width: "100%", height: 60, borderRadius: 18, border: "none", cursor: "pointer", background: `linear-gradient(180deg, ${C.greenMid} 0%, ${C.green} 100%)`, color: "#fff", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 17, letterSpacing: 0.3, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, boxShadow: `0 12px 28px -10px ${C.green}aa, 0 1px 0 rgba(255,255,255,0.2) inset, 0 -1px 0 ${C.greenDeep}88 inset`, marginBottom: 6, opacity: adHocSubmitting ? 0.7 : 1 }}>
-              <Check size={20} /> Tap to check out
+              <Check size={20} /> {adHocSubmitting ? "Checking out…" : "Tap to check out"}
             </button>
 
             {/* Cancel button */}
             <Button
               type="button"
-              onClick={resetAdHoc}
+              onClick={() => {
+                if (!confirm("Cancel this visit? Your check-in and any entered details will be lost.")) return;
+                resetAdHoc();
+              }}
               className="w-full h-11 font-syne font-semibold"
               style={{ background: "transparent", color: C.inkSoft, border: `1px solid ${C.border}` }}
             >

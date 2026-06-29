@@ -140,7 +140,21 @@ export function OffRouteOrderCard({
           }
         } else {
           toast.success("Off-route order logged");
-          onComplete(null);
+          onComplete({
+            id: clientId,
+            customer_id: offRouteCustomerId,
+            customers: { customer_name: adHocCustomers?.find((c: any) => c.id === offRouteCustomerId)?.customer_name ?? "Unknown" },
+            status: "off_route",
+            arrival_time: null,
+            leaving_time: null,
+            duration_minutes: null,
+            notes: offRouteNotes || null,
+            order_number: offRouteOrderNumber || null,
+            order_quantity: offRouteOrderQty !== "" ? Number(offRouteOrderQty) : null,
+            order_amount: parseAmount(offRouteOrderAmount),
+            photo_url: null,
+            _offline: true,
+          });
         }
       } else {
         await saveOffline();
@@ -349,6 +363,7 @@ export function OffRouteOrderCard({
           <Button
             onClick={submitOffRoute}
             disabled={offRouteSubmitting || !offRouteCustomerId}
+            title={navigator.onLine ? "Will submit now" : "You're offline — will sync later"}
             className="flex-1 h-11 font-syne font-semibold"
             style={offRouteSubmitting ? {
               background: `linear-gradient(90deg, ${C.greenMid} 25%, ${C.green} 50%, ${C.greenMid} 75%)`,
@@ -360,7 +375,7 @@ export function OffRouteOrderCard({
               color: "#fff",
             } : { background: `linear-gradient(135deg, ${C.greenMid} 0%, ${C.green} 100%)`, color: "#fff" }}
           >
-            Log order
+            {offRouteSubmitting ? "Logging…" : "Log order"}
           </Button>
         </div>
         </div>
