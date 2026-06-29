@@ -63,6 +63,7 @@ export function ScheduleCard({
   const [doneOrderAmount, setDoneOrderAmount] = useState("");
   const [doneArrival, setDoneArrival]         = useState("");
   const [doneLeaving, setDoneLeaving]         = useState("");
+  const [loadingDoneEdit, setLoadingDoneEdit] = useState(false);
 
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBlob, setPhotoBlob]       = useState<Blob | null>(null);
@@ -986,28 +987,56 @@ export function ScheduleCard({
 
             {/* Edit Order button or form */}
             {!editingDone && (
-              <RippleButton
+              <button
+                type="button"
+                disabled={loadingDoneEdit}
                 onClick={async () => {
-                  let visitId = item.visit_id;
-                  let visitData: any = null;
-                  if (visitId) {
-                    const res = await supabase.from("visits").select("order_number, order_quantity, order_amount").eq("id", visitId).maybeSingle();
-                    visitData = res.data;
+                  if (loadingDoneEdit) return;
+                  setLoadingDoneEdit(true);
+                  try {
+                    let visitId = item.visit_id;
+                    let visitData: any = null;
+                    if (visitId) {
+                      const res = await supabase.from("visits").select("order_number, order_quantity, order_amount").eq("id", visitId).maybeSingle();
+                      visitData = res.data;
+                    }
+                    if (!visitData) {
+                      const res = await (supabase.from("visits").select("order_number, order_quantity, order_amount")
+                        .eq("rep_id", repId).eq("customer_id", item.customer_id).eq("visit_date", scheduleDate)
+                        .order("created_at", { ascending: false }).limit(1).maybeSingle() as any);
+                      visitData = res.data;
+                    }
+                    setDoneArrival(item.arrival_time ? item.arrival_time.slice(0, 5) : "");
+                    setDoneLeaving(item.leaving_time ? item.leaving_time.slice(0, 5) : "");
+                    setDoneOrderNumber(visitData?.order_number || "");
+                    setDoneOrderQty(visitData?.order_quantity != null ? String(visitData.order_quantity) : "");
+                    setDoneOrderAmount(visitData?.order_amount != null ? String(visitData.order_amount) : "");
+                    setEditingDone(true);
+                  } finally {
+                    setLoadingDoneEdit(false);
                   }
-                  if (!visitData) {
-                    const res = await (supabase.from("visits").select("order_number, order_quantity, order_amount")
-                      .eq("rep_id", repId).eq("customer_id", item.customer_id).eq("visit_date", scheduleDate)
-                      .order("created_at", { ascending: false }).limit(1).maybeSingle() as any);
-                    visitData = res.data;
-                  }
-                  setDoneOrderNumber(visitData?.order_number || "");
-                  setDoneOrderQty(visitData?.order_quantity != null ? String(visitData.order_quantity) : "");
-                  setDoneOrderAmount(visitData?.order_amount != null ? String(visitData.order_amount) : "");
-                  setDoneArrival(item.arrival_time ? item.arrival_time.slice(0, 5) : "");
-                  setDoneLeaving(item.leaving_time ? item.leaving_time.slice(0, 5) : "");
-                  setEditingDone(true);
                 }}
-                style={{
+                style={loadingDoneEdit ? {
+                  width: "100%",
+                  height: 38,
+                  borderRadius: 12,
+                  border: "none",
+                  cursor: "not-allowed",
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontWeight: 600,
+                  fontSize: 12.5,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  color: "#fff",
+                  background: `linear-gradient(90deg, ${C.greenMid} 25%, ${C.green} 50%, ${C.greenMid} 75%)`,
+                  backgroundSize: "200% 100%",
+                  animationName: "btn-shimmer",
+                  animationDuration: "1.2s",
+                  animationIterationCount: "infinite",
+                  animationTimingFunction: "linear",
+                } : {
                   width: "100%",
                   height: 38,
                   borderRadius: 12,
@@ -1024,8 +1053,8 @@ export function ScheduleCard({
                   gap: 6,
                 }}
               >
-                <Pencil size={13} /> Edit details
-              </RippleButton>
+                <Pencil size={13} /> {loadingDoneEdit ? "Loading…" : "Edit details"}
+              </button>
             )}
 
             {editingDone && (
