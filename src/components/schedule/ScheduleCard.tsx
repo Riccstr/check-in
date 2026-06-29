@@ -779,7 +779,7 @@ export function ScheduleCard({
 
   const markVisited = () => updateItem({ status: "visited", arrival_time: localArrival, leaving_time: localLeaving, notes: localNotes, order_number: localOrderNumber || null, order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null, order_amount: parseAmount(localOrderAmount) });
 
-  const isInProgress = item.status === "pending" && item.arrival_time && !item.leaving_time;
+  const isInProgress = item.status === "pending" && (item.arrival_time || localArrival) && !item.leaving_time;
   const customerName = item.customers?.customer_name ?? "Unknown";
   const accountNum   = item.customers?.account_number;
 
