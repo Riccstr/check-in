@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { X, Plus, Search } from "lucide-react";
@@ -49,6 +49,8 @@ export function OffRouteOrderCard({
   const [offRouteSearchOpen, setOffRouteSearchOpen] = useState(false);
   const [offRouteSearch, setOffRouteSearch] = useState("");
 
+  const submittingRef = useRef(false);
+
   useEffect(() => {
     (async () => {
       try {
@@ -75,7 +77,9 @@ export function OffRouteOrderCard({
   }, [offRouteCustomerId, offRouteOrderNumber, offRouteOrderQty, offRouteOrderAmount, offRouteNotes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submitOffRoute = async () => {
+    if (submittingRef.current) return;
     if (!repId || !offRouteCustomerId) { toast.error("Please select a customer"); return; }
+    submittingRef.current = true;
     const hasOrder = offRouteOrderNumber || offRouteOrderQty !== "" || offRouteOrderAmount !== "";
     if (!hasOrder) { toast.error("Please fill in at least one order field"); return; }
     setOffRouteSubmitting(true);
@@ -185,6 +189,7 @@ export function OffRouteOrderCard({
       }
     } finally {
       clearOffRouteCard().catch(() => {});
+      submittingRef.current = false;
       setOffRouteSubmitting(false);
     }
   };

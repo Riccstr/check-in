@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Check, X, MapPin, Camera, FileText, Search, Pin } from "lucide-react";
@@ -59,6 +59,8 @@ export function AdHocVisitCard({
   const [adHocSearch, setAdHocSearch] = useState("");
   const [adHocSearchOpen, setAdHocSearchOpen] = useState(false);
 
+  const submittingRef = useRef(false);
+
   useEffect(() => {
     (async () => {
       try {
@@ -114,12 +116,25 @@ export function AdHocVisitCard({
   };
 
   const submitAdHoc = async () => {
+    if (submittingRef.current) return;
     if (!repId || !adHocCustomerId || !adHocArrivalTime) return;
+    submittingRef.current = true;
     const adHocLeavingTime = nowTime();
     const dur = calcDuration(adHocArrivalTime, adHocLeavingTime);
     if (dur <= 0) { toast.error("Unable to calculate duration. Please try again."); return; }
     setAdHocSubmitting(true);
     const adHocClientId = uuidv4();
+    // Persist so that if the app backgrounds mid-submit, resume can detect the
+    // in-flight clientId and avoid a duplicate INSERT on re-submit.
+    saveAdHocCard({
+      customerId: adHocCustomerId,
+      arrivalTime: adHocArrivalTime,
+      notes: adHocNotes,
+      orderNumber: adHocOrderNumber,
+      orderQty: adHocOrderQty,
+      orderAmount: adHocOrderAmount,
+      submittingClientId: adHocClientId,
+    }).catch(() => {});
     const customerName = adHocCustomers.find((c) => c.id === adHocCustomerId)?.customer_name;
 
     try {
@@ -211,6 +226,7 @@ export function AdHocVisitCard({
       }
     } finally {
       clearAdHocCard().catch(() => {});
+      submittingRef.current = false;
       setAdHocSubmitting(false);
     }
   };
