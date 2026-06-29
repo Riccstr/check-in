@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Pencil, Trash2, Camera } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { A, PageHeader, Tag } from "@/lib/adminUi";
+import { parseAmount } from "@/components/schedule/ScheduleHelpers";
 
 const PAGE_SIZE = 50;
 
@@ -180,7 +181,7 @@ export default function AdminVisits() {
       visit_date: editDate,
       order_number: editOrderNumber || null,
       order_quantity: editOrderQty !== "" ? Number(editOrderQty) : null,
-      order_amount: editOrderAmount !== "" ? Number(editOrderAmount) : null,
+      order_amount: editOrderAmount !== "" ? parseAmount(editOrderAmount) : null,
     }).eq("id", editVisit.id);
 
     try {

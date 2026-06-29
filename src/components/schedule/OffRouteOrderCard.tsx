@@ -82,7 +82,7 @@ export function OffRouteOrderCard({
     if (!repId || !offRouteCustomerId) { toast.error("Please select a customer"); return; }
     submittingRef.current = true;
     const hasOrder = offRouteOrderNumber || offRouteOrderQty !== "" || offRouteOrderAmount !== "";
-    if (!hasOrder) { toast.error("Please fill in at least one order field"); return; }
+    if (!hasOrder) { submittingRef.current = false; toast.error("Please fill in at least one order field"); return; }
     setOffRouteSubmitting(true);
     const clientId = uuidv4();
     const customerName = adHocCustomers.find((c) => c.id === offRouteCustomerId)?.customer_name;

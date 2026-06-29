@@ -127,7 +127,7 @@ export function AdHocVisitCard({
     submittingRef.current = true;
     const adHocLeavingTime = nowTime();
     const dur = calcDuration(adHocArrivalTime, adHocLeavingTime);
-    if (dur <= 0) { toast.error("Unable to calculate duration. Please try again."); return; }
+    if (dur <= 0) { submittingRef.current = false; toast.error("Unable to calculate duration. Please try again."); return; }
     setAdHocSubmitting(true);
     const adHocClientId = uuidv4();
     // Persist so that if the app backgrounds mid-submit, resume can detect the
