@@ -159,10 +159,10 @@ export default function AdminVisits() {
   }, []);
 
   const del = async (id: string) => {
-    if (!confirm("Delete this visit?")) return;
-    const { error } = await supabase.from("visits").update({ is_deleted: true } as any).eq("id", id);
+    if (!confirm("Permanently delete this visit? This cannot be undone.")) return;
+    const { error } = await supabase.from("visits").delete().eq("id", id);
     if (error) { toast.error("Failed to delete: " + error.message); return; }
-    toast.success("Deleted"); fetchVisits();
+    toast.success("Visit deleted"); fetchVisits();
   };
 
   const openEdit = (v: any) => { setEditVisit(v); setEditArrival(v.arrival_time); setEditLeaving(v.leaving_time); setEditNotes(v.notes || ""); setEditDate(v.visit_date); setEditOrderNumber(v.order_number || ""); setEditOrderQty(v.order_quantity != null ? String(v.order_quantity) : ""); setEditOrderAmount(v.order_amount != null ? String(v.order_amount) : ""); };
