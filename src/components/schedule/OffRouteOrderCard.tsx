@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { addOfflineVisit, saveOffRouteCard, getOffRouteCard, clearOffRouteCard } from "@/lib/offlineDb";
 import { C, isOfflineError, resetMobileZoom, Expand, parseAmount } from "./ScheduleHelpers";
+import { ShimmerButton } from "./Animations";
 import type { Customer } from "./AdHocVisitCard";
 
 export interface SyntheticOffRouteVisit {
@@ -360,23 +361,28 @@ export function OffRouteOrderCard({
           >
             Cancel
           </Button>
-          <Button
-            onClick={submitOffRoute}
+          <ShimmerButton
+            loading={offRouteSubmitting}
             disabled={offRouteSubmitting || !offRouteCustomerId}
-            title={navigator.onLine ? "Will submit now" : "You're offline — will sync later"}
-            className="flex-1 h-11 font-syne font-semibold"
-            style={offRouteSubmitting ? {
-              background: `linear-gradient(90deg, ${C.greenMid} 25%, ${C.green} 50%, ${C.greenMid} 75%)`,
-              backgroundSize: "200% 100%",
-              animationName: "btn-shimmer",
-              animationDuration: "1.2s",
-              animationIterationCount: "infinite",
-              animationTimingFunction: "linear",
+            loadingLabel="Logging…"
+            idleStyle={{
+              flex: 1,
+              height: 44,
+              borderRadius: 8,
+              border: "none",
+              background: `linear-gradient(135deg, ${C.greenMid} 0%, ${C.green} 100%)`,
               color: "#fff",
-            } : { background: `linear-gradient(135deg, ${C.greenMid} 0%, ${C.green} 100%)`, color: "#fff" }}
+              fontFamily: "'Syne', sans-serif",
+              fontWeight: 700,
+              fontSize: 14,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            onClick={submitOffRoute}
           >
-            {offRouteSubmitting ? "Logging…" : "Log order"}
-          </Button>
+            Log order
+          </ShimmerButton>
         </div>
         </div>
       </Expand>

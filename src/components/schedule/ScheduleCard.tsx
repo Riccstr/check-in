@@ -24,7 +24,7 @@ import {
   Expand,
   parseAmount,
 } from "./ScheduleHelpers";
-import { RippleButton } from "./Animations";
+import { RippleButton, ShimmerButton } from "./Animations";
 
 // ─── ScheduleCard ─────────────────────────────────────────────────────────────
 
@@ -987,9 +987,25 @@ export function ScheduleCard({
 
             {/* Edit Order button or form */}
             {!editingDone && (
-              <button
-                type="button"
+              <ShimmerButton
+                loading={loadingDoneEdit}
                 disabled={loadingDoneEdit}
+                loadingLabel={<><Pencil size={13} /> Loading…</>}
+                idleStyle={{
+                  width: "100%",
+                  height: 38,
+                  borderRadius: 12,
+                  border: `1px solid ${C.border}`,
+                  background: C.surface,
+                  color: C.inkSoft,
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontWeight: 600,
+                  fontSize: 12.5,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                }}
                 onClick={async () => {
                   if (loadingDoneEdit) return;
                   setLoadingDoneEdit(true);
@@ -1016,45 +1032,9 @@ export function ScheduleCard({
                     setLoadingDoneEdit(false);
                   }
                 }}
-                style={loadingDoneEdit ? {
-                  width: "100%",
-                  height: 38,
-                  borderRadius: 12,
-                  border: "none",
-                  cursor: "not-allowed",
-                  fontFamily: "'DM Sans', sans-serif",
-                  fontWeight: 600,
-                  fontSize: 12.5,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  color: "#fff",
-                  background: `linear-gradient(90deg, ${C.greenMid} 25%, ${C.green} 50%, ${C.greenMid} 75%)`,
-                  backgroundSize: "200% 100%",
-                  animationName: "btn-shimmer",
-                  animationDuration: "1.2s",
-                  animationIterationCount: "infinite",
-                  animationTimingFunction: "linear",
-                } : {
-                  width: "100%",
-                  height: 38,
-                  borderRadius: 12,
-                  border: `1px solid ${C.border}`,
-                  background: C.surface,
-                  color: C.inkSoft,
-                  cursor: "pointer",
-                  fontFamily: "'DM Sans', sans-serif",
-                  fontWeight: 600,
-                  fontSize: 12.5,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                }}
               >
-                <Pencil size={13} /> {loadingDoneEdit ? "Loading…" : "Edit details"}
-              </button>
+                <Pencil size={13} /> Edit details
+              </ShimmerButton>
             )}
 
             {editingDone && (
