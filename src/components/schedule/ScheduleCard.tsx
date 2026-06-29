@@ -61,6 +61,8 @@ export function ScheduleCard({
   const [doneOrderNumber, setDoneOrderNumber] = useState("");
   const [doneOrderQty, setDoneOrderQty]       = useState("");
   const [doneOrderAmount, setDoneOrderAmount] = useState("");
+  const [doneArrival, setDoneArrival]         = useState("");
+  const [doneLeaving, setDoneLeaving]         = useState("");
 
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBlob, setPhotoBlob]       = useState<Blob | null>(null);
@@ -526,6 +528,12 @@ export function ScheduleCard({
 
   const saveDoneOrder = async () => {
     if (actionInProgress) return;
+    if (doneArrival && doneLeaving) {
+      const [ah, am] = doneArrival.split(":").map(Number);
+      const [lh, lm] = doneLeaving.split(":").map(Number);
+      const dur = (lh * 60 + lm) - (ah * 60 + am);
+      if (dur <= 0) { toast.error("Leaving time must be after arrival time"); return; }
+    }
     setActionInProgress(true);
     try {
       let visitId = item.visit_id;
@@ -546,18 +554,39 @@ export function ScheduleCard({
         setActionInProgress(false);
         return;
       }
-      const { error } = await supabase.from("visits").update({
+
+      const visitUpdates: any = {
         order_number: doneOrderNumber || null,
         order_quantity: doneOrderQty !== "" ? Number(doneOrderQty) : null,
         order_amount: parseAmount(doneOrderAmount),
-      } as any).eq("id", visitId);
+      };
+      const scheduleItemUpdates: any = {};
+
+      if (doneArrival && doneLeaving) {
+        const [ah, am] = doneArrival.split(":").map(Number);
+        const [lh, lm] = doneLeaving.split(":").map(Number);
+        const dur = (lh * 60 + lm) - (ah * 60 + am);
+        visitUpdates.arrival_time = doneArrival;
+        visitUpdates.leaving_time = doneLeaving;
+        visitUpdates.duration_minutes = dur;
+        scheduleItemUpdates.arrival_time = doneArrival;
+        scheduleItemUpdates.leaving_time = doneLeaving;
+        scheduleItemUpdates.duration_minutes = dur;
+      }
+
+      const { error } = await supabase.from("visits").update(visitUpdates as any).eq("id", visitId);
       if (error) {
         toast.error(error.message);
-      } else {
-        toast.success("Order updated");
-        setEditingDone(false);
-        onRefresh();
+        return;
       }
+
+      if (Object.keys(scheduleItemUpdates).length > 0) {
+        await supabase.from("schedule_items").update(scheduleItemUpdates).eq("id", item.id);
+      }
+
+      toast.success("Details updated");
+      setEditingDone(false);
+      onRefresh();
     } catch {
       toast.error("Failed to update");
     } finally {
@@ -975,6 +1004,8 @@ export function ScheduleCard({
                   setDoneOrderNumber(visitData?.order_number || "");
                   setDoneOrderQty(visitData?.order_quantity != null ? String(visitData.order_quantity) : "");
                   setDoneOrderAmount(visitData?.order_amount != null ? String(visitData.order_amount) : "");
+                  setDoneArrival(item.arrival_time ? item.arrival_time.slice(0, 5) : "");
+                  setDoneLeaving(item.leaving_time ? item.leaving_time.slice(0, 5) : "");
                   setEditingDone(true);
                 }}
                 style={{
@@ -994,7 +1025,7 @@ export function ScheduleCard({
                   gap: 6,
                 }}
               >
-                <Pencil size={13} /> Edit order details
+                <Pencil size={13} /> Edit details
               </button>
             )}
 
@@ -1005,9 +1036,28 @@ export function ScheduleCard({
                     <div style={{ fontSize: 10.5, color: C.inkMute, letterSpacing: 1.4, textTransform: "uppercase", fontWeight: 700, fontFamily: "'DM Sans', sans-serif" }}>
                       Edit order
                     </div>
-                    <div style={{ fontSize: 10, color: C.inkMute, fontFamily: "'DM Sans', sans-serif", display: "inline-flex", alignItems: "center", gap: 3 }}>
-                      <Lock size={10} /> Times &amp; locked
-                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                    <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                      <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Arrived</div>
+                      <input
+                        type="time"
+                        value={doneArrival}
+                        onChange={(e) => setDoneArrival(e.target.value)}
+                        onBlur={resetMobileZoom}
+                        style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }}
+                      />
+                    </label>
+                    <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
+                      <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Left</div>
+                      <input
+                        type="time"
+                        value={doneLeaving}
+                        onChange={(e) => setDoneLeaving(e.target.value)}
+                        onBlur={resetMobileZoom}
+                        style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }}
+                      />
+                    </label>
                   </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.6fr 1fr", gap: 8, marginBottom: 10 }}>
                   {/* PadInput-style inputs */}
