@@ -545,6 +545,7 @@ export default function DailySchedule() {
 
   // Reset validation ref when the rep navigates to a different date
   useEffect(() => {
+    lastFetchTimeRef.current = 0;
     scheduleDateRef.current = scheduleDate;
     validationRanRef.current = null;
   }, [scheduleDate]);
