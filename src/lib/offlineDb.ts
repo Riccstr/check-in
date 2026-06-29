@@ -448,6 +448,8 @@ export interface ActiveAdHocState {
   orderNumber: string;
   orderQty: string;
   orderAmount: string;
+  hadPhoto?: boolean;
+  submittingClientId?: string | null;
 }
 
 export interface ActiveOffRouteState {
