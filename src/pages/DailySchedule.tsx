@@ -25,6 +25,8 @@ import {
   saveActiveCard,
   getActiveCard,
   clearActiveCard,
+  getAdHocCard,
+  getOffRouteCard,
 } from "@/lib/offlineDb";
 import { resetMobileZoom, C, isOfflineError, saveVisitOffline, nowTime, calcDuration, OfflineBanner, Expand } from "@/components/schedule/ScheduleHelpers";
 import { EodSummaryModal, SummaryStats } from "@/components/schedule/EodSummaryModal";
@@ -77,6 +79,20 @@ export default function DailySchedule() {
 
   // bottom card expansion — mutually exclusive: "unscheduled" | "offroute" | null
   const [expandedBottomCard, setExpandedBottomCard] = useState<"unscheduled" | "offroute" | null>(null);
+
+  // restore expanded bottom card from IDB on mount (survives app backgrounding)
+  useEffect(() => {
+    (async () => {
+      try {
+        const adhoc = await getAdHocCard();
+        if (adhoc) { setExpandedBottomCard("unscheduled"); return; }
+        const offroute = await getOffRouteCard();
+        if (offroute) { setExpandedBottomCard("offroute"); }
+      } catch {
+        // IDB unavailable — leave card collapsed
+      }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ad-hoc visit state
   const [adHocCustomers,   setAdHocCustomers]   = useState<any[]>([]);
