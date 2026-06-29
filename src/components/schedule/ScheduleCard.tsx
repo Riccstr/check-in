@@ -582,6 +582,8 @@ export function ScheduleCard({
 
   const markArrived = async () => {
     if (arrivingRef.current) return;
+    // Guard: already arrived — activeVisitId or localArrival means INSERT already succeeded
+    if (activeVisitId || localArrival) return;
     arrivingRef.current = true;
     setArriving(true);
     // Guard: block if another visit is already open
