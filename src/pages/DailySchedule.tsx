@@ -516,9 +516,10 @@ export default function DailySchedule() {
           .from("schedule_items")
           .select("id", { count: "exact", head: true })
           .eq("schedule_id", schedule.id)
-          .or("arrival_time.not.is.null,status.in.(visited,skipped)");
+          .not("arrival_time", "is", null)
+          .is("leaving_time", null);
         if (countErr) return;
-        if ((count ?? 0) > 0) return; // visits in progress — leave it alone
+        if ((count ?? 0) > 0) return; // genuine in-progress visit — leave it alone
 
         // Step 5: delete the stale row (cascade removes its schedule_items)
         const { error: delErr } = await supabase
