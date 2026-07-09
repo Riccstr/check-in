@@ -216,10 +216,11 @@ export function ScheduleCard({
     }).catch(() => {});
   }, [localNotes, localOrderNumber, localOrderQty, localOrderAmount]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const queueScheduleItemUpdate = async (newItem: any) => {
-    // Resolve visitId: prefer component state, fall back to IDB for the
-    // offline-at-arrival → offline-at-checkout case.
-    let queueVisitId: string | null = activeVisitId;
+  const queueScheduleItemUpdate = async (newItem: any, knownVisitId: string | null = null) => {
+    // Resolve visitId: prefer an explicit override (e.g. a visitId just resolved
+    // via DB lookup in this same call, before setActiveVisitId has committed),
+    // then component state, then IDB for the offline-at-arrival → offline-at-checkout case.
+    let queueVisitId: string | null = knownVisitId ?? activeVisitId;
     if (!queueVisitId) {
       try {
         const card = await getActiveCard();
@@ -421,13 +422,30 @@ export function ScheduleCard({
           } as any).eq("id", patchVisitId);
 
           if (patchErr) {
-            if (isOfflineError(patchErr)) {
-              await queueScheduleItemUpdate(newItem);
-              // Visit already exists — do NOT queue a duplicate INSERT
-              toast.success("Saved offline. Will sync when online.");
-              return;
-            }
+            // Any patch failure — offline or otherwise — leaves schedule_items.leaving_time
+            // set with no matching visits.leaving_time (ghost visit), because schedule_items
+            // was already updated successfully above. Queue a retry the same way for both
+            // cases, passing patchVisitId explicitly so the retry can't lose track of which
+            // visit row to PATCH, and file a sync_errors row so admins have visibility even
+            // if the retry eventually succeeds on its own.
             console.error("[Schedule] visit patch error:", patchErr.code, patchErr.message, patchErr.details, patchErr.hint);
+            await queueScheduleItemUpdate(newItem, patchVisitId);
+            reportSyncError(
+              {
+                schedule_item_id: item.id,
+                visit_id: patchVisitId,
+                schedule_date: scheduleDate,
+                patch_error: patchErr.message,
+              },
+              "visit_patch_failed",
+              "Checkout PATCH to visits failed after schedule_items was already updated. Queued for retry."
+            );
+            if (isOfflineError(patchErr)) {
+              toast.success("Saved offline. Will sync when online.");
+            } else {
+              toast.warning("Checkout saved — finishing sync in the background.");
+            }
+            return;
           } else {
             await supabase.from("schedule_items").update({ visit_id: patchVisitId }).eq("id", item.id);
             setActiveVisitId(null);
@@ -458,21 +476,20 @@ export function ScheduleCard({
             const photoUrl = await uploadPhotoOnline(existing.id, clientGenIdRef.current);
             if (photoUrl)
               await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", existing.id);
-            return;
-          }
-
-          // No existing row — safe to insert
-          const insertPayload = { rep_id: repId, customer_id: item.customer_id, visit_date: scheduleDate, ...checkoutData };
-          const { data: visit, error: insertErr } = await supabase
-            .from("visits")
-            .insert(insertPayload as any)
-            .select("id")
-            .single();
-          if (visit) {
-            await supabase.from("schedule_items").update({ visit_id: visit.id }).eq("id", item.id);
-            const photoUrl = await uploadPhotoOnline(visit.id, clientGenIdRef.current);
-            if (photoUrl)
-              await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", visit.id);
+          } else {
+            // No existing row — safe to insert
+            const insertPayload = { rep_id: repId, customer_id: item.customer_id, visit_date: scheduleDate, ...checkoutData };
+            const { data: visit, error: insertErr } = await supabase
+              .from("visits")
+              .insert(insertPayload as any)
+              .select("id")
+              .single();
+            if (visit) {
+              await supabase.from("schedule_items").update({ visit_id: visit.id }).eq("id", item.id);
+              const photoUrl = await uploadPhotoOnline(visit.id, clientGenIdRef.current);
+              if (photoUrl)
+                await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", visit.id);
+            }
           }
         }
       }
@@ -599,12 +616,16 @@ export function ScheduleCard({
   const commitArrival = () => { if (localArrival !== (item.arrival_time || "")) updateItem({ arrival_time: localArrival }); };
   const commitLeaving = () => { if (localLeaving !== (item.leaving_time || "")) updateItem({ leaving_time: localLeaving }); };
 
-  const reportSyncError = async (context: Record<string, any>) => {
+  const reportSyncError = async (
+    context: Record<string, any>,
+    errorType: string = "ghost_active_card",
+    message: string = "Active card state found in IDB for a visit not present in today's schedule. Cleared automatically."
+  ) => {
     try {
       await (supabase as any).from("sync_errors").insert({
         rep_id: repId,
-        error_type: "ghost_active_card",
-        message: "Active card state found in IDB for a visit not present in today's schedule. Cleared automatically.",
+        error_type: errorType,
+        message,
         context,
       });
     } catch { /* non-critical — never block the rep */ }
