@@ -432,9 +432,13 @@ export interface ActiveCardState {
   scheduleItemId: string;
   arrivalTime: string;
   notes: string;
-  /** Supabase visits.id created at online arrival. Used for PATCH at checkout. */
+  /** @deprecated No longer written. Visits are only ever created at checkout now,
+   *  never at arrival, so there is nothing to PATCH and nothing to restore here.
+   *  Left in place only so getActiveCard() can still read pre-existing IDB entries
+   *  from before this change without throwing. */
   visitId?: string | null;
-  /** UUID generated at arrival for idempotent upsert. */
+  /** UUID generated at arrival, reused unchanged as the idempotency key for the
+   *  single visits row created at checkout. */
   clientGeneratedId?: string | null;
   orderNumber?: string | null;
   orderQty?: string | null;

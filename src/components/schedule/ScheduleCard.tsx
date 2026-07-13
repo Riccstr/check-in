@@ -69,9 +69,9 @@ export function ScheduleCard({
   const [photoBlob, setPhotoBlob]       = useState<Blob | null>(null);
   const [showNotes, setShowNotes]       = useState(false);
 
-  // Tracks the Supabase visits.id created at online arrival so checkout can PATCH it.
-  const [activeVisitId, setActiveVisitId] = useState<string | null>(null);
-  // Stable UUID for the current visit session — used as conflict key in the arrival upsert.
+  // Stable UUID for the current visit session — generated once at arrival, persisted to
+  // IDB, and reused as the idempotency key for the single visits row created at checkout
+  // (online or via the offline queue). Never regenerated for the same visit.
   const clientGenIdRef = useRef<string | null>(null);
   // Guard: blocks checkout from firing for 600ms after camera capture completes.
   // Prevents Android ghost-click propagation from the camera overlay to the checkout button.
@@ -123,9 +123,6 @@ export function ScheduleCard({
       try {
         const card = await getActiveCard();
         if (!card || card.scheduleItemId !== item.id) return;
-        if (card.visitId && !activeVisitId) {
-          setActiveVisitId(card.visitId);
-        }
         if (card.clientGeneratedId && !clientGenIdRef.current) {
           clientGenIdRef.current = card.clientGeneratedId;
         }
@@ -145,7 +142,7 @@ export function ScheduleCard({
   // Silent pre-fill from IndexedDB when this card is expanded.
   // Runs whenever isExpanded flips to true. Only fills fields that the server
   // hasn't populated yet — never overwrites a value that came from the server.
-  // Also restores activeVisitId / clientGeneratedId so the PATCH path is used at checkout.
+  // Also restores clientGeneratedId so the same idempotency key is reused at checkout.
   useEffect(() => {
     if (!isExpanded) return;
     (async () => {
@@ -157,9 +154,6 @@ export function ScheduleCard({
         }
         if (!item.notes && card.notes) {
           setLocalNotes(card.notes);
-        }
-        if (card.visitId && !activeVisitId) {
-          setActiveVisitId(card.visitId);
         }
         if (card.clientGeneratedId && !clientGenIdRef.current) {
           clientGenIdRef.current = card.clientGeneratedId;
@@ -179,36 +173,15 @@ export function ScheduleCard({
     })();
   }, [isExpanded]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Part C — on reconnect, restore activeVisitId from IDB so that checkout uses
-  // the PATCH path rather than inserting a duplicate visit row.
-  useEffect(() => {
-    if (!isExpanded) return;
-    const onOnline = async () => {
-      if (activeVisitId) return; // already restored
-      try {
-        const card = await getActiveCard();
-        if (card?.scheduleItemId === item.id) {
-          if (card.visitId) setActiveVisitId(card.visitId);
-          if (card.clientGeneratedId && !clientGenIdRef.current) {
-            clientGenIdRef.current = card.clientGeneratedId;
-          }
-        }
-      } catch { /* IDB unavailable — do nothing */ }
-    };
-    window.addEventListener("online", onOnline);
-    return () => window.removeEventListener("online", onOnline);
-  }, [isExpanded, activeVisitId]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Auto-persist notes to IndexedDB while a visit is in-progress.
-  // Merges with any visitId / clientGeneratedId already in the stored record so
-  // that the notes sync doesn't accidentally clobber the PATCH routing fields.
+  // Merges with any clientGeneratedId already in the stored record so the notes
+  // sync doesn't accidentally clobber the idempotency key checkout will reuse.
   useEffect(() => {
     if (!item.arrival_time || item.leaving_time) return;
     saveActiveCard({
       scheduleItemId: item.id,
       arrivalTime: item.arrival_time,
       notes: localNotes,
-      visitId: activeVisitId,
       clientGeneratedId: clientGenIdRef.current,
       orderNumber: localOrderNumber || null,
       orderQty: localOrderQty || null,
@@ -216,24 +189,19 @@ export function ScheduleCard({
     }).catch(() => {});
   }, [localNotes, localOrderNumber, localOrderQty, localOrderAmount]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const queueScheduleItemUpdate = async (newItem: any, knownVisitId: string | null = null) => {
-    // Resolve visitId: prefer an explicit override (e.g. a visitId just resolved
-    // via DB lookup in this same call, before setActiveVisitId has committed),
-    // then component state, then IDB for the offline-at-arrival → offline-at-checkout case.
-    let queueVisitId: string | null = knownVisitId ?? activeVisitId;
-    if (!queueVisitId) {
-      try {
-        const card = await getActiveCard();
-        if (card?.scheduleItemId === item.id && card.visitId) queueVisitId = card.visitId;
-      } catch { /* IDB unavailable */ }
-    }
-
+  const queueScheduleItemUpdate = async (newItem: any) => {
+    // No visitId to resolve any more — a visits row is only ever created at checkout,
+    // as a single insert/upsert (see handleOfflineVisitSave), never patched separately.
+    // NOTE: syncEngine.ts's syncPendingScheduleItemUpdates() still knows how to PATCH
+    // visits when a queued row happens to carry a visitId — that branch is now normally
+    // dead code, kept only to safely drain any pre-existing queued items created by an
+    // older app version before this change was deployed. Do not remove it there.
     await upsertOfflineScheduleItemUpdate({
       schedule_item_id: item.id,
       rep_id: repId,
       schedule_date: scheduleDate,
       customer_id: item.customer_id,
-      visitId: queueVisitId,
+      visitId: null,
       payload: {
         arrival_time: newItem.arrival_time || null,
         leaving_time: newItem.leaving_time || null,
@@ -338,8 +306,7 @@ export function ScheduleCard({
     try {
       if (!navigator.onLine) {
         await queueScheduleItemUpdate(newItem);
-        // Skip offline visit INSERT when the visit was already created at arrival
-        if (!activeVisitId) await handleOfflineVisitSave(newItem);
+        await handleOfflineVisitSave(newItem, clientGenIdRef.current);
         return;
       }
 
@@ -357,7 +324,7 @@ export function ScheduleCard({
       if (error) {
         if (isOfflineError(error)) {
           await queueScheduleItemUpdate(newItem);
-          if (!activeVisitId) await handleOfflineVisitSave(newItem);
+          await handleOfflineVisitSave(newItem, clientGenIdRef.current);
           return;
         }
         toast.error(error.message);
@@ -370,7 +337,17 @@ export function ScheduleCard({
         newItem.leaving_time &&
         newItem.duration_minutes >= 0
       ) {
+        // Generate the idempotency key on first use and keep it for the rest of this
+        // visit's checkout attempts (including any retry) — client_generated_id has a
+        // UNIQUE constraint on visits, so upserting against it means a retried checkout
+        // can never create a second row, and a genuinely new checkout always inserts.
+        if (!clientGenIdRef.current) clientGenIdRef.current = uuidv4();
+        const cgid = clientGenIdRef.current;
+
         const checkoutData: any = {
+          rep_id: repId,
+          customer_id: item.customer_id,
+          visit_date: scheduleDate,
           arrival_time: newItem.arrival_time,
           leaving_time: newItem.leaving_time,
           duration_minutes: newItem.duration_minutes,
@@ -379,117 +356,44 @@ export function ScheduleCard({
           order_quantity: newItem.order_quantity ?? null,
           order_amount: newItem.order_amount ?? null,
           status: "visited",
+          client_generated_id: cgid,
         };
 
-        // ── Resolve the visit id to PATCH (state → IDB → fall through to legacy) ──
-        let patchVisitId: string | null = activeVisitId;
-        if (!patchVisitId) {
-          try {
-            const card = await getActiveCard();
-            if (card?.scheduleItemId === item.id && card.visitId) {
-              patchVisitId = card.visitId;
-              setActiveVisitId(card.visitId); // sync state for future calls
-              if (card.clientGeneratedId && !clientGenIdRef.current) {
-                clientGenIdRef.current = card.clientGeneratedId;
-              }
-            }
-          } catch { /* IDB unavailable */ }
-        }
+        const { data: visit, error: insertErr } = await supabase
+          .from("visits")
+          .upsert(checkoutData as any, { onConflict: "client_generated_id" })
+          .select("id")
+          .single();
 
-        // Also fall back to client_generated_id upsert if patchVisitId is
-        // still null but clientGenIdRef.current exists — this handles the
-        // case where arrival upsert succeeded but visitId was never stored
-        if (!patchVisitId && clientGenIdRef.current) {
-          try {
-            const { data } = await supabase
-              .from("visits")
-              .select("id")
-              .eq("client_generated_id", clientGenIdRef.current)
-              .maybeSingle();
-            if (data?.id) {
-              patchVisitId = data.id;
-              setActiveVisitId(data.id);
-            }
-          } catch { /* DB unavailable */ }
-        }
-
-        if (patchVisitId) {
-          // ── PATCH path: visit was already inserted at arrival ──
-          const photoUrl = await uploadPhotoOnline(patchVisitId, clientGenIdRef.current);
-          const { error: patchErr } = await supabase.from("visits").update({
-            ...checkoutData,
-            ...(photoUrl ? { photo_url: photoUrl } : {}),
-          } as any).eq("id", patchVisitId);
-
-          if (patchErr) {
-            // Any patch failure — offline or otherwise — leaves schedule_items.leaving_time
-            // set with no matching visits.leaving_time (ghost visit), because schedule_items
-            // was already updated successfully above. Queue a retry the same way for both
-            // cases, passing patchVisitId explicitly so the retry can't lose track of which
-            // visit row to PATCH, and file a sync_errors row so admins have visibility even
-            // if the retry eventually succeeds on its own.
-            console.error("[Schedule] visit patch error:", patchErr.code, patchErr.message, patchErr.details, patchErr.hint);
-            await queueScheduleItemUpdate(newItem, patchVisitId);
-            reportSyncError(
-              {
-                schedule_item_id: item.id,
-                visit_id: patchVisitId,
-                schedule_date: scheduleDate,
-                patch_error: patchErr.message,
-              },
-              "visit_patch_failed",
-              "Checkout PATCH to visits failed after schedule_items was already updated. Queued for retry."
-            );
-            if (isOfflineError(patchErr)) {
-              toast.success("Saved offline. Will sync when online.");
-            } else {
-              toast.warning("Checkout saved — finishing sync in the background.");
-            }
-            return;
+        if (insertErr) {
+          // schedule_items is already correct at this point (updated above) — queue the
+          // same single write for retry so it can't be lost, online-but-failed or offline.
+          console.error("[Schedule] visit checkout error:", insertErr.code, insertErr.message, insertErr.details, insertErr.hint);
+          await queueScheduleItemUpdate(newItem);
+          await handleOfflineVisitSave(newItem, cgid);
+          reportSyncError(
+            {
+              schedule_item_id: item.id,
+              schedule_date: scheduleDate,
+              client_generated_id: cgid,
+              checkout_error: insertErr.message,
+            },
+            "visit_checkout_failed",
+            "Checkout write to visits failed after schedule_items was already updated. Queued for retry."
+          );
+          if (isOfflineError(insertErr)) {
+            toast.success("Saved offline. Will sync when online.");
           } else {
-            await supabase.from("schedule_items").update({ visit_id: patchVisitId }).eq("id", item.id);
-            setActiveVisitId(null);
+            toast.warning("Checkout saved — finishing sync in the background.");
           }
-        } else if (item.visit_id) {
-          // ── Legacy update: visit_id already linked on schedule_item ──
-          const { error: updateErr } = await supabase.from("visits").update(checkoutData).eq("id", item.visit_id);
-          if (updateErr) console.error("[Schedule] visit update error:", updateErr.code, updateErr.message, updateErr.details, updateErr.hint);
-          const photoUrl = await uploadPhotoOnline(item.visit_id, null);
-          if (photoUrl)
-            await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", item.visit_id);
-        } else {
-          // ── Insert path: no prior visit row exists ──
-          // Guard: check if a visited row already exists for this visit
-          const { data: existing } = await supabase
-            .from("visits")
-            .select("id")
-            .eq("rep_id", repId)
-            .eq("customer_id", item.customer_id)
-            .eq("visit_date", scheduleDate)
-            .eq("arrival_time", newItem.arrival_time)
-            .maybeSingle();
+          return;
+        }
 
-          if (existing?.id) {
-            // Row already exists — PATCH it instead of inserting a duplicate
-            await supabase.from("visits").update(checkoutData).eq("id", existing.id);
-            await supabase.from("schedule_items").update({ visit_id: existing.id }).eq("id", item.id);
-            const photoUrl = await uploadPhotoOnline(existing.id, clientGenIdRef.current);
-            if (photoUrl)
-              await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", existing.id);
-          } else {
-            // No existing row — safe to insert
-            const insertPayload = { rep_id: repId, customer_id: item.customer_id, visit_date: scheduleDate, ...checkoutData };
-            const { data: visit, error: insertErr } = await supabase
-              .from("visits")
-              .insert(insertPayload as any)
-              .select("id")
-              .single();
-            if (visit) {
-              await supabase.from("schedule_items").update({ visit_id: visit.id }).eq("id", item.id);
-              const photoUrl = await uploadPhotoOnline(visit.id, clientGenIdRef.current);
-              if (photoUrl)
-                await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", visit.id);
-            }
+        if (visit?.id) {
+          await supabase.from("schedule_items").update({ visit_id: visit.id }).eq("id", item.id);
+          const photoUrl = await uploadPhotoOnline(visit.id, cgid);
+          if (photoUrl) {
+            await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", visit.id);
           }
         }
       }
@@ -507,7 +411,7 @@ export function ScheduleCard({
         }
       }).catch(() => {});
       await queueScheduleItemUpdate(newItem);
-      if (!activeVisitId) await handleOfflineVisitSave(newItem);
+      await handleOfflineVisitSave(newItem, clientGenIdRef.current);
     } finally {
       setActionInProgress(false);
       if (newItem.status === "visited" || newItem.status === "skipped") {
@@ -524,7 +428,7 @@ export function ScheduleCard({
     }
   };
 
-  const handleOfflineVisitSave = async (newItem: any) => {
+  const handleOfflineVisitSave = async (newItem: any, clientGeneratedId: string | null = null) => {
     if (newItem.arrival_time && newItem.leaving_time && newItem.duration_minutes >= 0) {
       try {
         let photoB64: string | null = null;
@@ -535,6 +439,7 @@ export function ScheduleCard({
           newItem.duration_minutes, newItem.notes || null,
           item.customers?.customer_name, undefined, photoB64,
           newItem.order_number ?? null, newItem.order_quantity ?? null, newItem.order_amount ?? null,
+          clientGeneratedId,
         );
         toast.success("Saved offline. Will sync when online.");
       } catch (idbErr) {
@@ -633,8 +538,8 @@ export function ScheduleCard({
 
   const markArrived = async () => {
     if (arrivingRef.current) return;
-    // Guard: already arrived — activeVisitId or localArrival means INSERT already succeeded
-    if (activeVisitId || localArrival) return;
+    // Guard: already arrived — localArrival means the schedule_items update already succeeded
+    if (localArrival) return;
     arrivingRef.current = true;
     setArriving(true);
     // Guard: block if another visit is already open
@@ -683,84 +588,22 @@ export function ScheduleCard({
 
     const t = nowTime();
     setLocalArrival(t);
-    // Always update schedule_items arrival_time (handles online/offline paths internally)
+    // Always update schedule_items arrival_time (handles online/offline paths internally).
+    // This is the ONLY write that happens at arrival — no visits row is created here.
     // Must be awaited so the finally block in updateItem completes before we
     // call saveActiveCard below — prevents a race that was clearing active_card_state.
     await updateItem({ arrival_time: t });
 
-    if (navigator.onLine) {
-      try {
-        // Generate a stable client-side id for idempotent upsert — persists across retries
-        if (!clientGenIdRef.current) clientGenIdRef.current = uuidv4();
-        const cgid = clientGenIdRef.current;
+    // Generate the idempotency key now so it's stable for this visit's entire duration —
+    // reused as-is for the single visits row created at checkout, online or offline.
+    if (!clientGenIdRef.current) clientGenIdRef.current = uuidv4();
+    saveActiveCard({
+      scheduleItemId: item.id,
+      arrivalTime: t,
+      notes: localNotes,
+      clientGeneratedId: clientGenIdRef.current,
+    }).catch(() => {});
 
-        const { data, error } = await supabase
-          .from("visits")
-          .insert({
-            rep_id: repId,
-            customer_id: item.customer_id,
-            visit_date: scheduleDate,
-            arrival_time: t,
-            status: "in_progress",
-            client_generated_id: cgid,
-          } as any)
-          .select("id")
-          .single();
-
-        if (!error && data?.id) {
-          setActiveVisitId(data.id);
-
-          // Upload photo if the rep had already captured one before tapping the clock
-          if (photoBlob) {
-            const photoUrl = await uploadPhotoOnline(data.id, cgid);
-            if (photoUrl)
-              await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", data.id);
-          }
-
-          // Update pending_photos record with real IDs without overwriting base64
-          getPendingPhoto(item.id).then((existingBase64) => {
-            if (existingBase64) {
-              savePendingPhoto(item.id, existingBase64, data.id, cgid).catch(() => {});
-            }
-          }).catch(() => {});
-
-          // Persist visitId in IDB so a background/resume cycle can restore it
-          saveActiveCard({
-            scheduleItemId: item.id,
-            arrivalTime: t,
-            notes: localNotes,
-            visitId: data.id,
-            clientGeneratedId: cgid,
-          }).catch(() => {});
-        } else {
-          // Upsert failed (network or schema) — treat as offline, keep cgid for later
-          saveActiveCard({
-            scheduleItemId: item.id,
-            arrivalTime: t,
-            notes: localNotes,
-            clientGeneratedId: cgid,
-          }).catch(() => {});
-        }
-      } catch {
-        // Network exception — fall through to offline path
-        if (!clientGenIdRef.current) clientGenIdRef.current = uuidv4();
-        saveActiveCard({
-          scheduleItemId: item.id,
-          arrivalTime: t,
-          notes: localNotes,
-          clientGeneratedId: clientGenIdRef.current,
-        }).catch(() => {});
-      }
-    } else {
-      // Offline path — store cgid so the sync engine can do an idempotent INSERT later
-      if (!clientGenIdRef.current) clientGenIdRef.current = uuidv4();
-      saveActiveCard({
-        scheduleItemId: item.id,
-        arrivalTime: t,
-        notes: localNotes,
-        clientGeneratedId: clientGenIdRef.current,
-      }).catch(() => {});
-    }
     arrivingRef.current = false;
     setArriving(false);
   };

@@ -125,46 +125,16 @@ export async function syncPendingVisits(): Promise<{ synced: number; errors: num
         try {
           const payload = visit.payload as any;
 
-          // Check if already exists by client_generated_id (idempotency).
-          // Guard against the column not existing in the DB — if the query errors
-          // we skip this check and fall through to the duplicate check instead.
-          const { data: existing, error: existingErr } = await supabase
-            .from("visits")
-            .select("id")
-            .eq("client_generated_id", visit.client_generated_id)
-            .maybeSingle();
-
-          if (!existingErr && existing) {
-            await updateVisitSyncStatus(visit.client_generated_id, "synced");
-            synced++;
-            syncedVisitsCount++;
-            continue;
-          }
-
-          // Duplicate check: same rep + customer + date + times
-          const { data: recentDupe } = await supabase
-            .from("visits")
-            .select("id")
-            .eq("rep_id", payload.rep_id)
-            .eq("customer_id", payload.customer_id)
-            .eq("visit_date", payload.visit_date)
-            .eq("arrival_time", payload.arrival_time)
-            .eq("leaving_time", payload.leaving_time)
-            .maybeSingle();
-
-          if (recentDupe) {
-            await updateVisitSyncStatus(visit.client_generated_id, "synced");
-            synced++;
-            syncedVisitsCount++;
-            continue;
-          }
-
+          // Upsert on client_generated_id (UNIQUE on visits) instead of select-then-insert.
+          // A prior successful sync that never got its local sync_status updated (e.g. the
+          // app was killed right after the write) safely resolves to the same row instead
+          // of racing a fresh SELECT against a concurrent sync pass.
           const insertPayload = { ...payload };
-          console.log("[Sync] inserting offline visit:", JSON.stringify(insertPayload));
+          console.log("[Sync] syncing offline visit:", JSON.stringify(insertPayload));
 
           const { data: insertedVisit, error } = await supabase
             .from("visits")
-            .insert(insertPayload)
+            .upsert(insertPayload, { onConflict: "client_generated_id" })
             .select("id")
             .maybeSingle();
 

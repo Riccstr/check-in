@@ -63,8 +63,9 @@ export async function saveVisitOffline(
   orderNumber?: string | null,
   orderQuantity?: number | null,
   orderAmount?: number | null,
+  clientGeneratedId?: string | null,
 ) {
-  const clientId = uuidv4();
+  const clientId = clientGeneratedId || uuidv4();
   await addOfflineVisit({
     client_generated_id: clientId,
     payload: {
