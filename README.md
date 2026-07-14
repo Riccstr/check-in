@@ -231,7 +231,7 @@ Unique: `(rep_id, customer_id)`. Upsert on conflict is used. RLS: Admins manage 
 | `latitude` | double precision | Reserved (GPS — currently unused) |
 | `longitude` | double precision | Reserved (GPS — currently unused) |
 | `location_address` | text | Reserved (reverse geocode — currently unused) |
-| `client_generated_id` | uuid UNIQUE | Client-generated UUID for offline deduplication |
+| `client_generated_id` | uuid UNIQUE | Client-generated UUID for offline deduplication. **Verify this constraint actually exists on the live table before relying on it for an `upsert(...).onConflict(...)` call** — it was documented here before it was actually enforced in the database, which caused every checkout to fail with Postgres 42P10 until the constraint was added via SQL Editor on 2026-07-14. |
 | `created_at` | timestamptz | |
 
 RLS: Admins manage all; reps can INSERT/SELECT/UPDATE/DELETE own visits (verified via `reps.user_id = auth.uid()`).
@@ -428,15 +428,15 @@ Main rep interface. Shows the day's customer visit schedule as expandable cards.
 **Notable logic:**
 - Real-time subscription on `schedule_items` (filter: `schedule_id=eq.{id}`) and `daily_schedules` (filter: `rep_id=eq.{repId}`) via Supabase Realtime
 - Offline queue: schedule item updates → `upsertOfflineScheduleItemUpdate()`, visits → `saveVisitOffline()` with photo as base64
-- Photo capture inline within each schedule card — photo is immediately persisted to `pending_photos` IndexedDB store on capture and restored on mount; cleared on checkout; falls back to `pending_photos` store on upload failure if photoBlob is null
-- Active visit state (arrival time, notes, order fields) persisted to `active_card_state` IndexedDB store; restored on mount unconditionally (not gated on isExpanded) to prevent duplicate visits after backgrounding; also restores activeVisitId and clientGenIdRef
+- Photo capture inline within each schedule card — photo is immediately persisted to `pending_photos` IndexedDB store on capture and restored on mount; uploaded once at checkout regardless of when it was captured; falls back to `pending_photos` store on upload failure if photoBlob is null
+- Active visit state (arrival time, notes, order fields) persisted to `active_card_state` IndexedDB store; restored on mount unconditionally (not gated on isExpanded) to survive backgrounding; also restores clientGenIdRef, the idempotency key reused unchanged through checkout
 - Amber recovery banner shown when an in-progress item has a pending photo in IndexedDB (scroll-to + restore workflow); validated against current items to prevent stale banners after schedule regeneration
 - fetchSchedule() call has 2-second debounce via lastFetchTimeRef to prevent duplicate network calls; force parameter bypasses debounce when needed
 - fetchUnscheduledVisits gated by onlineFetchDoneRef to prevent double-counting when loading from IDB cache on app mount
 - Future dates show "Schedule not yet available" empty state and do not trigger auto-generation
 - Order fields: `order_number` (string), `order_quantity` (integer), `order_amount` (numeric); amount uses inputMode="decimal" and type="text" not type="number"
-- Arrival timestamp uses plain INSERT (not upsert) to ensure reliable first-arrival recording in schedule_items
-- client_generated_id is persisted to IndexedDB immediately on arrival and restored before checkout to prevent duplicate visits
+- Arrival only ever writes schedule_items.arrival_time (plain UPDATE) — no visits row is created at arrival. This is the local-first checkout architecture introduced 2026-07-13 (commit e509a51) specifically to close a recurring ghost/duplicate-visit bug family that came from tracking a server-created visit id across the whole visit duration. See CLAUDE.md's Critical Patterns for detail.
+- A single visits row is created exactly once, at checkout, via `upsert(checkoutData, { onConflict: "client_generated_id" })` (online) or the offline_visits_queue (offline or on failure) — both paths use the same client_generated_id, generated once at arrival and never regenerated for the same visit, so a retried checkout can never create a second row.
 - Unscheduled visit card at bottom uses a check-in/check-out flow (Option 2 — component state): rep selects customer via inline search, taps 'Tap to check in' to stamp arrival, then captures photo/notes/order, then taps 'Tap to check out' to insert the visit row directly. No schedule_item is created. Ad-hoc state persisted to `active_adhoc_state` IndexedDB store on mount and field change. Photo uploaded via `uploadAdHocPhoto()` using `repId/visitId` path matching scheduled visits.
 - Off-route order card at bottom allows logging a sale outside the route — customer search, order fields, notes. Visit inserted with status `'off_route'`. Off-route state persisted to `active_offroute_state` IndexedDB store on mount and field change. Both unscheduled and off-route cards switch to the Done tab on successful submission.
 - Sign-out requires confirmation dialog to prevent accidental logout.
@@ -772,13 +772,13 @@ Database name: `checkin-tracker-offline`, version **6** (increment version if ad
 
 | Store | Key | Stored Data |
 |-------|-----|-------------|
-| `offline_visits_queue` | `client_generated_id` | Full visit payload + `photo_base64` (JPEG data URL) + `sync_status` |
-| `offline_schedule_item_updates` | `schedule_item_id` | Schedule item update payload + sync metadata |
+| `offline_visits_queue` | `client_generated_id` | Full visit payload + `photo_base64` (JPEG data URL) + `sync_status` — the single mechanism that creates/updates visits rows, synced via `upsert(..., { onConflict: "client_generated_id" })` |
+| `offline_schedule_item_updates` | `schedule_item_id` | Schedule item update payload + sync metadata. `visitId` field is legacy — no current code sets it; kept so old queued entries from before commit e509a51 can still drain safely |
 | `cached_customers` | `id` | `{id, customer_name, account_number, area}` |
 | `cached_schedules` | `key` (`{repId}_{date}`) | Full daily schedule + items |
 | `cached_user_auth` | `user_id` | `{role, rep_id, rep_name, profile, permissions, cached_at}` |
-| `pending_photos` | `scheduleItemId` | `{scheduleItemId, base64, visitId, clientGeneratedId}` — photo captured during active visit, base64 stored intentionally for iOS Safari IDB Blob compatibility |
-| `active_card_state` | `key` (`"current"`) | `{scheduleItemId, arrivalTime, notes, visitId, clientGeneratedId, orderNumber, orderQty, orderAmount}` — in-progress visit card state, cleared on checkout |
+| `pending_photos` | `scheduleItemId` | `{scheduleItemId, base64, visitId, clientGeneratedId}` — photo captured during active visit, base64 stored intentionally for iOS Safari IDB Blob compatibility. `visitId` populated only when a visits row was created but its storage upload specifically failed. |
+| `active_card_state` | `key` (`"current"`) | `{scheduleItemId, arrivalTime, notes, clientGeneratedId, orderNumber, orderQty, orderAmount}` — in-progress visit card state, cleared on checkout. `visitId` field is @deprecated on the type, no longer written. |
 | `active_adhoc_state` | `key` (`"adhoc"`) | `{customer, arrivalTime, notes, photo, orderNumber, orderQty, orderAmount}` — unscheduled visit card state, restored on mount, persisted on field change |
 | `active_offroute_state` | `key` (`"offroute"`) | `{customer, notes, orderNumber, orderQty, orderAmount}` — off-route order card state, restored on mount, persisted on field change |
 
@@ -792,10 +792,9 @@ Triggered by:
 
 **Visit sync flow (idempotent):**
 1. Get all `pending` / `error` visits from IndexedDB, sorted by `created_at_local`
-2. Per visit: check for existing record by `client_generated_id`; check for duplicate (same `rep_id + customer_id + visit_date + times`)
-3. If new: INSERT into `visits`
-4. On success: `linkVisitToScheduleItem()` updates the matching `schedule_items` row; upload `photo_base64` to `visit-photos` bucket; UPDATE `visits.photo_url`
-5. Mark as `synced` in IndexedDB; remove synced records after pass completes
+2. Per visit: `upsert` into `visits` with `{ onConflict: "client_generated_id" }` — a retried sync of an already-synced entry resolves to the same row instead of racing a separate SELECT check against a concurrent sync pass (this replaced a select-then-insert pattern in commit e509a51 — do not reintroduce it)
+3. On success: `linkVisitToScheduleItem()` updates the matching `schedule_items` row; upload `photo_base64` to `visit-photos` bucket; UPDATE `visits.photo_url`
+4. Mark as `synced` in IndexedDB; remove synced records after pass completes
 
 **Schedule item sync:** Updates `schedule_items` fields (arrival/leaving/duration/notes/status) from `offline_schedule_item_updates` queue.
 
@@ -1014,7 +1013,7 @@ VITE_SUPABASE_ANON_KEY=<your-anon-key>
 13. **Template saves delete future unstarted daily schedules** — this is intentional to force regeneration from the updated template
 14. **`auto_generate_daily_schedule` is idempotent** — safe to call multiple times; it will not create duplicate schedules
 15. **Supabase API routes must use NetworkOnly** in the service worker — never cache auth or database responses
-16. **The sync engine is idempotent** — re-running it never creates duplicates thanks to `client_generated_id` + the duplicate-check query
+16. **The sync engine is idempotent** — re-running it never creates duplicates thanks to the `client_generated_id` UNIQUE constraint and the `upsert(..., { onConflict: "client_generated_id" })` call. This constraint is load-bearing — if it's ever missing on the live table, every upsert fails with Postgres error 42P10. Verify it exists directly in the DB if this class of error resurfaces; do not assume from documentation alone.
 17. **Account number uniqueness** is enforced at both DB level (UNIQUE constraint) and UI level (debounced real-time check) — both layers are needed
 18. **`auto_generate_daily_schedule` must never run for future dates** — the guard exists in both the SQL function (`p_schedule_date > CURRENT_DATE` → return null) and the frontend (`scheduleDate <= todayStr`). Do not remove either guard; pre-generating future schedules breaks the week-rotation logic when the anchor changes
 19. **Manual week override must update both `app_settings` keys** — setting only `current_week_order` is not enough; `week_cycle_start_date` must also be back-calculated and upserted so `get_week_order_for_date()` stays consistent for all dates
@@ -1027,7 +1026,7 @@ VITE_SUPABASE_ANON_KEY=<your-anon-key>
 26. **Ad-hoc and off-route form state persisted to IndexedDB** — `active_adhoc_state` and `active_offroute_state` stores preserve customer, order fields, and notes across app backgrounding. Restored on component mount and persisted on every field change. Cleared on submit or reset.
 27. **fetchSchedule() debounced with 2-second window via lastFetchTimeRef** — prevents duplicate network calls when app load, visibility change, and online event fire in quick succession. force parameter bypasses debounce for manual refresh.
 28. **onlineFetchDoneRef gates fetchUnscheduledVisits on app mount** — prevents double-counting visits when loading from IDB cache. The flag is set after the first successful online fetch and gates subsequent fetches until the next day.
-29. **activeVisitId and clientGenIdRef restored unconditionally on ScheduleCard mount** — not gated on isExpanded. This ensures that if a rep was in the middle of a visit when the app backgrounded, the visit context is immediately restored, preventing duplicate visits on reopen.
+29. **clientGenIdRef restored unconditionally on ScheduleCard mount** — not gated on isExpanded. This ensures that if a rep was in the middle of a visit when the app backgrounded, the visit context is immediately restored, and the same checkout idempotency key (`client_generated_id`) is reused, preventing duplicate visits on reopen. The `activeVisitId` field was removed in commit e509a51 (local-first checkout refactor) — there is no longer a separate tracked-id-to-PATCH model.
 30. **CameraCapture callback ordering: onCapture(blob) before closeCamera()** — ensures blob is fully processed by the parent component before the modal closes. This ordering combined with pointer-events management (auto when open, none when closed) prevents Android touch propagation issues and ensures reliable photo capture.
 31. **sync_errors RLS uses EXISTS subquery, not has_role() cast** — the RLS policy for sync_errors was created with a raw `EXISTS (SELECT 1 FROM user_roles ...)` subquery instead of the `has_role()` function because the app_role cast fails in the Supabase SQL editor. Never replace this with `has_role()` without testing in production; the type resolution issue is environment-specific.
 32. **The rep app max-width constraint lives in AppLayout.tsx rep branch only** — the width constraint (`maxWidth: 480px`) and cream background (`#F4ECDB`) are applied only when `role !== 'admin'`. The AdminChrome branch is completely unaffected and uses full viewport width. Never apply width constraints to the AdminChrome branch or admin pages.
