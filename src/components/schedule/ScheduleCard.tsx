@@ -73,9 +73,6 @@ export function ScheduleCard({
   // IDB, and reused as the idempotency key for the single visits row created at checkout
   // (online or via the offline queue). Never regenerated for the same visit.
   const clientGenIdRef = useRef<string | null>(null);
-  // Guard: blocks checkout from firing for 600ms after camera capture completes.
-  // Prevents Android ghost-click propagation from the camera overlay to the checkout button.
-  const cameraCooldownRef = useRef(false);
   // Guard: blocks markArrived from being called a second time while the first call is still
   // running. Uses a ref (not state) so it is set synchronously before any awaits.
   const arrivingRef = useRef(false);
@@ -221,8 +218,6 @@ export function ScheduleCard({
 
   const handleCameraCapture = async (blob: Blob) => {
     try {
-      cameraCooldownRef.current = true;
-      setTimeout(() => { cameraCooldownRef.current = false; }, 600);
       const compressed = await compressImage(blob);
       setPhotoBlob(compressed);
       setPhotoPreview(URL.createObjectURL(compressed));
@@ -608,7 +603,6 @@ export function ScheduleCard({
     setArriving(false);
   };
   const markLeft = () => {
-    if (cameraCooldownRef.current) return;
     if (leavingRef.current) return;
     const t = nowTime();
     const arr = localArrival || item.arrival_time || "";
