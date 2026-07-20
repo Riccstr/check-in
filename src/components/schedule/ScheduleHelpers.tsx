@@ -100,7 +100,11 @@ export function calcDuration(arr: string, lv: string): number {
   if (!arr || !lv) return 0;
   const [ah, am] = arr.split(":").map(Number);
   const [lh, lm] = lv.split(":").map(Number);
-  return lh * 60 + lm - (ah * 60 + am);
+  let mins = (lh * 60 + lm) - (ah * 60 + am);
+  // Leaving crossed midnight (e.g. 23:50 -> 00:05): wrap by 24h so the
+  // duration is positive rather than a garbage negative.
+  if (mins < 0) mins += 24 * 60;
+  return mins;
 }
 
 // ─── small UI helpers ──────────────────────────────────────────────────────────
@@ -188,7 +192,27 @@ export function Expand({ open, children, duration = 320 }: { open: boolean; chil
 
 export function parseAmount(value: string): number | null {
   if (value === "" || value == null) return null;
-  const normalised = value.replace(",", ".");
-  const parsed = Number(normalised);
+  let s = String(value).trim();
+  if (s === "") return null;
+  // Strip spaces (thousands separators): "1 234,56" -> "1234,56"
+  s = s.replace(/\s/g, "");
+  const hasComma = s.includes(",");
+  const hasDot = s.includes(".");
+  if (hasComma && hasDot) {
+    // Both present: the LAST-occurring symbol is the decimal separator,
+    // the other is a thousands separator. Strip the thousands one.
+    if (s.lastIndexOf(",") > s.lastIndexOf(".")) {
+      // comma is decimal: "1.234,56" -> "1234.56"
+      s = s.replace(/\./g, "").replace(",", ".");
+    } else {
+      // dot is decimal: "1,234.56" -> "1234.56"
+      s = s.replace(/,/g, "");
+    }
+  } else if (hasComma) {
+    // Only comma -> decimal separator: "3333,33" -> "3333.33"
+    s = s.replace(",", ".");
+  }
+  // Only dot, or no separator: already valid.
+  const parsed = Number(s);
   return isNaN(parsed) ? null : parsed;
 }
