@@ -222,7 +222,7 @@ export function ScheduleCard({
   const handleCameraCapture = async (blob: Blob) => {
     try {
       cameraCooldownRef.current = true;
-      setTimeout(() => { cameraCooldownRef.current = false; }, 200);
+      setTimeout(() => { cameraCooldownRef.current = false; }, 600);
       const compressed = await compressImage(blob);
       setPhotoBlob(compressed);
       setPhotoPreview(URL.createObjectURL(compressed));
@@ -610,8 +610,16 @@ export function ScheduleCard({
   const markLeft = () => {
     if (cameraCooldownRef.current) return;
     if (leavingRef.current) return;
-    leavingRef.current = true;
     const t = nowTime();
+    const arr = localArrival || item.arrival_time || "";
+    // Backstop: never write a same-minute (0-min) checkout as a real visit.
+    // A genuine store visit is never zero minutes; a 0-min checkout is a stray
+    // tap, not an intentional check-out.
+    if (arr && calcDuration(arr, t) <= 0) {
+      toast.error("You just checked in. Add your photo and details, then check out.");
+      return;
+    }
+    leavingRef.current = true;
     setLocalLeaving(t);
     updateItem({
       leaving_time: t,

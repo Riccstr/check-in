@@ -82,8 +82,9 @@ Supabase stores `timestamptz` columns (e.g. `created_at`) in UTC. South Africa i
 - active_card_state in IndexedDB must be cleared on every checkout path (online PATCH, offline queue, and error/catch paths)
 - expandedActiveIdRef realtime guard must always be preserved — never remove it
 - schedule_template_items GROUP BY queries must always include weekly_template_id to avoid cross-week deletions
-- client_generated_id is used for idempotent visit upsert at arrival — must be persisted to IndexedDB immediately and restored before checkout
-- On checkout: resolve patchVisitId from state → IDB → client_generated_id DB lookup, in that order. Only INSERT if all three return null.
+- Local-first checkout (as of 2026-07-13, commit e509a51): visits rows are only ever created at checkout, never at arrival. Arrival only writes schedule_items.arrival_time. Checkout does a single `supabase.from("visits").upsert(checkoutData, { onConflict: "client_generated_id" })` — no separate arrival INSERT, no PATCH, no visit-id resolution chain. client_generated_id is generated once at arrival, persisted to IDB, and reused unchanged through checkout (including any retry) as the sole idempotency key.
+- Do not reintroduce an eager arrival-time visits INSERT or an activeVisitId-style tracked-id-to-PATCH pattern — that was the root cause of the RHODES STAR/WEESGERUS/SILCOR FOODS ghost-visit bug family (see git history, commits c510ecf through e509a51). If a similar duplicate/ghost visit bug appears again, the fix belongs in the checkout upsert or client_generated_id handling, not a new client-side guard layered on top.
+- visits.client_generated_id has a live UNIQUE constraint in Supabase (added via SQL Editor 2026-07-14 — it was documented as UNIQUE before this but was never actually enforced on the table, which caused every checkout to fail with Postgres error 42P10 until fixed). Any future onConflict-based upsert against this column depends on that constraint existing — verify it directly in the DB, not just from documentation, if this class of error resurfaces.
 - Week self-heal runs on every fetchSchedule() call (isToday only) — compares get_week_order_for_date() to stored current_week_order and upserts correction silently
 - Never pre-generate future daily_schedules — breaks week rotation on anchor change
 - Off-route orders: excluded from strike rate and visit counts, included in order value totals
@@ -99,13 +100,13 @@ Supabase stores `timestamptz` columns (e.g. `created_at`) in UTC. South Africa i
 - AdHocVisitCard and OffRouteOrderCard persist state to active_adhoc_state and active_offroute_state IDB stores on mount restore and field change; cleared on submit or reset
 - ScheduleCard arrival now uses plain INSERT instead of upsert to ensure reliable arrival timestamps in schedule_items
 - ScheduleCard uploadPhotoOnline falls back to pending_photos IDB when photoBlob is null (recovery from backgrounding)
-- ScheduleCard restores activeVisitId and clientGenIdRef unconditionally on mount (not gated on isExpanded) to prevent duplicate visits after app backgrounding
+- ScheduleCard restores clientGenIdRef unconditionally on mount (not gated on isExpanded) so a backgrounded/resumed app reuses the same checkout idempotency key. There is no activeVisitId anymore — removed in commit e509a51.
 - CameraCapture calls onCapture(blob) before closeCamera() to ensure blob is processed before modal closes and to prevent Android touch propagation issues
 - CameraCapture overlay has pointer-events: auto when open, pointer-events: none when closed to prevent touch interference with background elements
 - Order input fields use inputMode="numeric" for order_number and order_quantity; inputMode="decimal" for order_amount; amount uses type="text" not type="number"
 - AdminVisits pagination controls centered (justifyContent: center with gap: 24) instead of space-between
 - Admin edit save patches linked schedule_items row via visit_id to sync field changes to rep's daily schedule view
-- Arrival/leaving time sync engine preserves client_generated_id in INSERT payload (never strip it) for reliable visit deduplication
+- syncEngine.ts's syncPendingVisits() upserts on client_generated_id (onConflict) rather than inserting — never strip client_generated_id from the queued payload, and never revert this to a plain insert() or a select-then-insert check, both of which reintroduce a check-then-act race.
 - Rep app is constrained to max-width 480px centred column in AppLayout.tsx; body background is #F4ECDB (cream); admin layout is completely separate and untouched
 - CameraCapture calls onCapture(blob) then setTimeout(closeCamera, 0) — never closeCamera() synchronously
 - cameraCooldownRef in ScheduleCard blocks markLeft() for 300ms after handleCameraCapture fires
@@ -117,13 +118,13 @@ Supabase stores `timestamptz` columns (e.g. `created_at`) in UTC. South Africa i
 - SyncErrorPanel in AdminDashboard.tsx shows uncleared sync_errors as a fixed bottom-right badge; admins clear errors individually
 
 ## IndexedDB Stores (DB_VERSION: 6)
-- offline_visits_queue — queued visit inserts (key: client_generated_id)
-- offline_schedule_item_updates — queued schedule item updates (supports visitId for PATCH vs INSERT)
+- offline_visits_queue — queued full visit records (key: client_generated_id), upserted on sync — this is the only mechanism that creates/updates visits rows, online or offline
+- offline_schedule_item_updates — queued schedule item updates. Its `visitId` field is no longer set by any current code path (was used for a PATCH-vs-INSERT distinction that no longer exists post-e509a51) — kept only so syncEngine.ts can safely drain any pre-existing queued entries from before that change
 - cached_customers — bootstrapped customer list
 - cached_schedules — bootstrapped schedules (-2 to +7 days)
 - cached_user_auth — auth context for offline login
-- pending_photos — failed photo uploads (key: scheduleItemId, fields: base64, visitId, clientGeneratedId)
-- active_card_state — active visit card state (key: "current", fields: scheduleItemId, arrivalTime, notes, visitId, clientGeneratedId, orderNumber, orderQty, orderAmount)
+- pending_photos — failed photo uploads (key: scheduleItemId, fields: base64, visitId, clientGeneratedId) — visitId here is still real and used, populated only when a visit row was successfully created but its storage upload specifically failed
+- active_card_state — active visit card state (key: "current", fields: scheduleItemId, arrivalTime, notes, clientGeneratedId, orderNumber, orderQty, orderAmount). The visitId field on this store's type is @deprecated and no longer written — left only for backward-compatible reads of pre-existing IDB entries.
 - active_adhoc_state — active unscheduled visit card state (key: "adhoc", fields: customer, arrivalTime, notes, photo, orderNumber, orderQty, orderAmount)
 - active_offroute_state — active off-route order card state (key: "offroute", fields: customer, notes, orderNumber, orderQty, orderAmount)
 Increment DB_VERSION whenever adding or renaming a store.
