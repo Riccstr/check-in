@@ -1,62 +1,96 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Check, SkipForward, X, Pencil, Clock, Camera, FileText, Lock, MapPin, ChevronDown } from "lucide-react";
-import { v4 as uuidv4 } from "uuid";
-import { compressImage, blobToBase64 } from "@/lib/imageCompressor";
 import { CameraCapture } from "@/components/CameraCapture";
-import {
-  upsertOfflineScheduleItemUpdate,
-  savePendingPhoto,
-  getPendingPhoto,
-  clearPendingPhoto,
-  saveActiveCard,
-  getActiveCard,
-  clearActiveCard,
-} from "@/lib/offlineDb";
-import {
-  C,
-  isOfflineError,
-  saveVisitOffline,
-  nowTime,
-  calcDuration,
-  resetMobileZoom,
-  Expand,
-  parseAmount,
-} from "./ScheduleHelpers";
+import { C, resetMobileZoom, Expand } from "./ScheduleHelpers";
 import { RippleButton, ShimmerButton } from "./Animations";
+import type { ActiveVisit } from "@/lib/offlineDb";
 
 // ─── ScheduleCard ─────────────────────────────────────────────────────────────
+//
+// Prop-driven. This component holds NO in-progress truth of its own — the open
+// visit's state lives in `activeVisit` (owned by DailySchedule, backed by the
+// active_visit IDB record). All mutations go through callbacks. The card reads,
+// renders, and calls up; it never touches IDB, the outbox, or the visits table
+// for the in-progress lifecycle. (It still does a direct read for the done-state
+// "Edit details" prefill, which is a completed-visit lookup, not in-progress.)
 
 export function ScheduleCard({
   item,
   repId,
   scheduleDate,
-  onRefresh,
-  onLocalUpdate,
+  activeVisit,
+  isActiveStop,
+  busy,
+  onCheckIn,
+  onCheckOut,
+  onCapturePhoto,
+  onClearPhoto,
+  onUpdateDraft,
+  onSkip,
+  onEditCompleted,
   isExpanded,
   onToggle,
   index,
-  allItems,
 }: {
   item: any;
   repId: string;
   scheduleDate: string;
-  onRefresh: () => void;
-  onLocalUpdate: (itemId: string, updates: any) => void;
+  // The single open visit, or null. This card is "active" only when
+  // isActiveStop is true (activeVisit belongs to this card's customer).
+  activeVisit: ActiveVisit | null;
+  isActiveStop: boolean;
+  // True while a machine transition for this card is in flight (check-in/out/skip).
+  busy: boolean;
+  onCheckIn: () => void;
+  onCheckOut: () => void;
+  onCapturePhoto: (blob: Blob) => void;
+  onClearPhoto: () => void;
+  onUpdateDraft: (fields: { notes?: string; orderNumber?: string; orderQty?: string; orderAmount?: string }) => void;
+  onSkip: (reason: string) => void;
+  onEditCompleted: (args: {
+    clientId: string;
+    arrivalTime: string | null;
+    leavingTime: string | null;
+    orderNumber: string;
+    orderQty: string;
+    orderAmount: string;
+    notes: string | null;
+  }) => Promise<void> | void;
   isExpanded: boolean;
   onToggle: () => void;
   index: number;
-  allItems: any[];
 }) {
-  const [localNotes, setLocalNotes]           = useState(item.notes || "");
-  const [localArrival, setLocalArrival]       = useState(item.arrival_time || "");
-  const [localLeaving, setLocalLeaving]       = useState(item.leaving_time || "");
-  const [localOrderNumber, setLocalOrderNumber] = useState("");
-  const [localOrderQty, setLocalOrderQty]       = useState("");
-  const [localOrderAmount, setLocalOrderAmount] = useState("");
-  const [actionInProgress, setActionInProgress] = useState(false);
+  // ── Local input mirrors (typing responsiveness only) ──
+  // Seeded from activeVisit; reset whenever the active stop identity changes.
+  // activeVisit remains the source of truth — these just hold live keystrokes,
+  // pushed up via onUpdateDraft.
+  const [draftNotes, setDraftNotes]       = useState("");
+  const [draftOrderNumber, setDraftOrderNumber] = useState("");
+  const [draftOrderQty, setDraftOrderQty]       = useState("");
+  const [draftOrderAmount, setDraftOrderAmount] = useState("");
+  const [showNotes, setShowNotes]         = useState(false);
 
+  // Reseed local mirrors when this becomes (or stops being) the active stop,
+  // or when the active visit's clientId changes (new visit started here).
+  const activeKey = isActiveStop && activeVisit ? activeVisit.clientId : null;
+  useEffect(() => {
+    if (isActiveStop && activeVisit) {
+      setDraftNotes(activeVisit.notes || "");
+      setDraftOrderNumber(activeVisit.orderNumber || "");
+      setDraftOrderQty(activeVisit.orderQty || "");
+      setDraftOrderAmount(activeVisit.orderAmount || "");
+    } else {
+      setDraftNotes("");
+      setDraftOrderNumber("");
+      setDraftOrderQty("");
+      setDraftOrderAmount("");
+      setShowNotes(false);
+    }
+  }, [activeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Done-state edit ──
   const [editingDone, setEditingDone]         = useState(false);
   const [doneOrderNumber, setDoneOrderNumber] = useState("");
   const [doneOrderQty, setDoneOrderQty]       = useState("");
@@ -64,620 +98,106 @@ export function ScheduleCard({
   const [doneArrival, setDoneArrival]         = useState("");
   const [doneLeaving, setDoneLeaving]         = useState("");
   const [loadingDoneEdit, setLoadingDoneEdit] = useState(false);
+  const [savingDone, setSavingDone]           = useState(false);
 
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [photoBlob, setPhotoBlob]       = useState<Blob | null>(null);
-  const [showNotes, setShowNotes]       = useState(false);
-
-  // Stable UUID for the current visit session — generated once at arrival, persisted to
-  // IDB, and reused as the idempotency key for the single visits row created at checkout
-  // (online or via the offline queue). Never regenerated for the same visit.
-  const clientGenIdRef = useRef<string | null>(null);
-  // Guard: blocks markArrived from being called a second time while the first call is still
-  // running. Uses a ref (not state) so it is set synchronously before any awaits.
-  const arrivingRef = useRef(false);
-  const [arriving, setArriving] = useState(false);
-  const leavingRef = useRef(false);
-
-  // Skip flow state — tracks whether skip composer is open and the note being entered
+  // ── Skip composer ──
   const [skipMode, setSkipMode] = useState(false);
   const [skipNote, setSkipNote] = useState("");
 
-  useEffect(() => { setLocalNotes(item.notes || "");     }, [item.notes]);
-  useEffect(() => { setLocalArrival(item.arrival_time || ""); }, [item.arrival_time]);
-  useEffect(() => { setLocalLeaving(item.leaving_time || ""); }, [item.leaving_time]);
+  // Photo preview comes from the active visit's stored base64 (source of truth).
+  const photoPreview =
+    isActiveStop && activeVisit?.photoBase64 ? activeVisit.photoBase64 : null;
+  const hasPhoto = !!photoPreview;
 
-  // Restore captured photo from IndexedDB on mount (survives app background/resume)
-  useEffect(() => {
-    if (!item.arrival_time || item.leaving_time) return;
-    getPendingPhoto(item.id).then((base64) => {
-      if (!base64) return;
-      try {
-        const raw = base64.includes(",") ? base64.split(",")[1] : base64;
-        const byteStr = atob(raw);
-        const arr = new Uint8Array(byteStr.length);
-        for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
-        const blob = new Blob([arr], { type: "image/jpeg" });
-        setPhotoBlob(blob);
-        setPhotoPreview(URL.createObjectURL(blob));
-      } catch { /* corrupt base64 — ignore */ }
-    }).catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Arrival shown in the stepper: the active visit's arrival, or the persisted
+  // item arrival (after a completed checkout the item carries it).
+  const shownArrival = isActiveStop && activeVisit ? activeVisit.arrivalTime : (item.arrival_time || "");
 
-  // Restore unsaved notes from IndexedDB on mount (runs after the item.notes sync above)
-  useEffect(() => {
-    if (!item.arrival_time || item.leaving_time) return;
-    getActiveCard().then((card) => {
-      if (card?.scheduleItemId === item.id && card.notes) {
-        setLocalNotes(card.notes);
-      }
-    }).catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // In-progress = this is the active stop (device-owned open visit).
+  const isInProgress = isActiveStop && !!activeVisit;
 
-  useEffect(() => {
-    if (!item.arrival_time || item.leaving_time) return;
-    (async () => {
-      try {
-        const card = await getActiveCard();
-        if (!card || card.scheduleItemId !== item.id) return;
-        if (card.clientGeneratedId && !clientGenIdRef.current) {
-          clientGenIdRef.current = card.clientGeneratedId;
-        }
-        if (card.orderNumber && !localOrderNumber) {
-          setLocalOrderNumber(card.orderNumber);
-        }
-        if (card.orderQty && !localOrderQty) {
-          setLocalOrderQty(card.orderQty);
-        }
-        if (card.orderAmount && !localOrderAmount) {
-          setLocalOrderAmount(card.orderAmount);
-        }
-      } catch { /* IDB unavailable — do nothing */ }
-    })();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const customerName = item.customers?.customer_name ?? "Unknown";
+  const accountNum   = item.customers?.account_number;
 
-  // Silent pre-fill from IndexedDB when this card is expanded.
-  // Runs whenever isExpanded flips to true. Only fills fields that the server
-  // hasn't populated yet — never overwrites a value that came from the server.
-  // Also restores clientGeneratedId so the same idempotency key is reused at checkout.
-  useEffect(() => {
-    if (!isExpanded) return;
-    (async () => {
-      try {
-        const card = await getActiveCard();
-        if (!card || card.scheduleItemId !== item.id) return;
-        if (!item.arrival_time && card.arrivalTime) {
-          setLocalArrival(card.arrivalTime);
-        }
-        if (!item.notes && card.notes) {
-          setLocalNotes(card.notes);
-        }
-        if (card.clientGeneratedId && !clientGenIdRef.current) {
-          clientGenIdRef.current = card.clientGeneratedId;
-        }
-        if (card.orderNumber && !localOrderNumber) {
-          setLocalOrderNumber(card.orderNumber);
-        }
-        if (card.orderQty && !localOrderQty) {
-          setLocalOrderQty(card.orderQty);
-        }
-        if (card.orderAmount && !localOrderAmount) {
-          setLocalOrderAmount(card.orderAmount);
-        }
-      } catch {
-        // IDB unavailable — do nothing silently
-      }
-    })();
-  }, [isExpanded]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ── draft push helpers (update local mirror + bubble up) ──
+  const pushNotes = (v: string) => { setDraftNotes(v); onUpdateDraft({ notes: v }); };
+  const pushOrderNumber = (v: string) => { setDraftOrderNumber(v); onUpdateDraft({ orderNumber: v }); };
+  const pushOrderQty = (v: string) => { setDraftOrderQty(v); onUpdateDraft({ orderQty: v }); };
+  const pushOrderAmount = (v: string) => { setDraftOrderAmount(v); onUpdateDraft({ orderAmount: v }); };
 
-  // Auto-persist notes to IndexedDB while a visit is in-progress.
-  // Merges with any clientGeneratedId already in the stored record so the notes
-  // sync doesn't accidentally clobber the idempotency key checkout will reuse.
-  useEffect(() => {
-    if (!item.arrival_time || item.leaving_time) return;
-    saveActiveCard({
-      scheduleItemId: item.id,
-      arrivalTime: item.arrival_time,
-      notes: localNotes,
-      clientGeneratedId: clientGenIdRef.current,
-      orderNumber: localOrderNumber || null,
-      orderQty: localOrderQty || null,
-      orderAmount: localOrderAmount || null,
-    }).catch(() => {});
-  }, [localNotes, localOrderNumber, localOrderQty, localOrderAmount]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const queueScheduleItemUpdate = async (newItem: any) => {
-    // No visitId to resolve any more — a visits row is only ever created at checkout,
-    // as a single insert/upsert (see handleOfflineVisitSave), never patched separately.
-    // NOTE: syncEngine.ts's syncPendingScheduleItemUpdates() still knows how to PATCH
-    // visits when a queued row happens to carry a visitId — that branch is now normally
-    // dead code, kept only to safely drain any pre-existing queued items created by an
-    // older app version before this change was deployed. Do not remove it there.
-    await upsertOfflineScheduleItemUpdate({
-      schedule_item_id: item.id,
-      rep_id: repId,
-      schedule_date: scheduleDate,
-      customer_id: item.customer_id,
-      visitId: null,
-      payload: {
-        arrival_time: newItem.arrival_time || null,
-        leaving_time: newItem.leaving_time || null,
-        duration_minutes: newItem.duration_minutes ?? null,
-        notes: newItem.notes || null,
-        status: newItem.status || "pending",
-        order_number: newItem.order_number ?? undefined,
-        order_quantity: newItem.order_quantity ?? undefined,
-        order_amount: newItem.order_amount ?? undefined,
-      },
-      created_at_local: new Date().toISOString(),
-      sync_status: "pending",
-      last_sync_attempt: null,
-      error_message: null,
-    });
+  const doSkip = (note: string) => {
+    if (!note.trim()) { toast.error("Please provide a reason before skipping"); return; }
+    onSkip(note);
+    setSkipMode(false);
+    setSkipNote("");
   };
 
-  const handleCameraCapture = async (blob: Blob) => {
+  const openDoneEdit = async () => {
+    if (loadingDoneEdit) return;
+    setLoadingDoneEdit(true);
     try {
-      const compressed = await compressImage(blob);
-      setPhotoBlob(compressed);
-      setPhotoPreview(URL.createObjectURL(compressed));
-      // Persist immediately so a background/resume cycle cannot lose the photo
-      blobToBase64(compressed).then((b64) => savePendingPhoto(item.id, b64, null, null)).catch(() => {});
-    } catch {
-      toast.error("Failed to process photo");
-    }
-  };
-
-  const clearPhoto = () => {
-    setPhotoBlob(null);
-    if (photoPreview) URL.revokeObjectURL(photoPreview);
-    setPhotoPreview(null);
-    clearPendingPhoto(item.id).catch(() => {});
-  };
-
-  const uploadPhotoOnline = async (visitId: string, clientGeneratedId: string | null = null): Promise<string | null> => {
-    let blobToUpload = photoBlob;
-
-    // If photoBlob was lost (app backgrounded), try to restore from pending_photos IDB
-    if (!blobToUpload) {
-      try {
-        const b64 = await getPendingPhoto(item.id);
-        if (b64) {
-          const raw = b64.includes(",") ? b64.split(",")[1] : b64;
-          const byteStr = atob(raw);
-          const arr = new Uint8Array(byteStr.length);
-          for (let i = 0; i < byteStr.length; i++) arr[i] = byteStr.charCodeAt(i);
-          blobToUpload = new Blob([arr], { type: "image/jpeg" });
-        }
-      } catch { /* IDB unavailable — proceed without photo */ }
-    }
-
-    if (!blobToUpload) return null;
-
-    const queuePhoto = async () => {
-      try {
-        const b64 = await blobToBase64(blobToUpload!);
-        await savePendingPhoto(item.id, b64, visitId, clientGeneratedId);
-        toast.warning("Photo saved for upload — will retry when connection improves");
-      } catch { /* IDB write failure must not block checkout */ }
-    };
-    try {
-      const path = `${repId}/${visitId}.jpg`;
-      const { error } = await supabase.storage
-        .from("visit-photos")
-        .upload(path, blobToUpload, { contentType: "image/jpeg", upsert: true });
-      if (error) {
-        console.warn("[Photo] Upload failed:", error.message);
-        await queuePhoto();
-        return null;
-      }
-      const { data: urlData } = supabase.storage.from("visit-photos").getPublicUrl(path);
-      return urlData?.publicUrl || null;
-    } catch {
-      await queuePhoto();
-      return null;
-    }
-  };
-
-  const updateItem = async (
-    updates: Partial<{ arrival_time: string; leaving_time: string; notes: string; status: string; duration_minutes: number; order_number: string | null; order_quantity: number | null; order_amount: number | null }>
-  ) => {
-    if (actionInProgress) return;
-    setActionInProgress(true);
-
-    const newItem = { ...item, ...updates };
-    if (newItem.arrival_time && newItem.leaving_time) {
-      newItem.duration_minutes = calcDuration(newItem.arrival_time, newItem.leaving_time);
-    }
-
-    onLocalUpdate(item.id, {
-      arrival_time: newItem.arrival_time || null,
-      leaving_time: newItem.leaving_time || null,
-      duration_minutes: newItem.duration_minutes || null,
-      notes: newItem.notes || null,
-      status: newItem.status,
-    });
-
-    try {
-      if (!navigator.onLine) {
-        await queueScheduleItemUpdate(newItem);
-        await handleOfflineVisitSave(newItem, clientGenIdRef.current);
-        return;
-      }
-
-      const { error } = await supabase
-        .from("schedule_items")
-        .update({
-          arrival_time: newItem.arrival_time || null,
-          leaving_time: newItem.leaving_time || null,
-          duration_minutes: newItem.duration_minutes || null,
-          notes: newItem.notes || null,
-          status: newItem.status,
-        })
-        .eq("id", item.id);
-
-      if (error) {
-        if (isOfflineError(error)) {
-          await queueScheduleItemUpdate(newItem);
-          await handleOfflineVisitSave(newItem, clientGenIdRef.current);
-          return;
-        }
-        toast.error(error.message);
-        return;
-      }
-
-      if (
-        newItem.status === "visited" &&
-        newItem.arrival_time &&
-        newItem.leaving_time &&
-        newItem.duration_minutes >= 0
-      ) {
-        // Generate the idempotency key on first use and keep it for the rest of this
-        // visit's checkout attempts (including any retry) — client_generated_id has a
-        // UNIQUE constraint on visits, so upserting against it means a retried checkout
-        // can never create a second row, and a genuinely new checkout always inserts.
-        if (!clientGenIdRef.current) clientGenIdRef.current = uuidv4();
-        const cgid = clientGenIdRef.current;
-
-        const checkoutData: any = {
-          rep_id: repId,
-          customer_id: item.customer_id,
-          visit_date: scheduleDate,
-          arrival_time: newItem.arrival_time,
-          leaving_time: newItem.leaving_time,
-          duration_minutes: newItem.duration_minutes,
-          notes: newItem.notes || null,
-          order_number: newItem.order_number ?? null,
-          order_quantity: newItem.order_quantity ?? null,
-          order_amount: newItem.order_amount ?? null,
-          status: "visited",
-          client_generated_id: cgid,
-        };
-
-        const { data: visit, error: insertErr } = await supabase
+      let visitData: any = null;
+      if (item.visit_id) {
+        const res = await supabase
           .from("visits")
-          .upsert(checkoutData as any, { onConflict: "client_generated_id" })
-          .select("id")
-          .single();
-
-        if (insertErr) {
-          // schedule_items is already correct at this point (updated above) — queue the
-          // same single write for retry so it can't be lost, online-but-failed or offline.
-          console.error("[Schedule] visit checkout error:", insertErr.code, insertErr.message, insertErr.details, insertErr.hint);
-          await queueScheduleItemUpdate(newItem);
-          await handleOfflineVisitSave(newItem, cgid);
-          reportSyncError(
-            {
-              schedule_item_id: item.id,
-              schedule_date: scheduleDate,
-              client_generated_id: cgid,
-              checkout_error: insertErr.message,
-            },
-            "visit_checkout_failed",
-            "Checkout write to visits failed after schedule_items was already updated. Queued for retry."
-          );
-          if (isOfflineError(insertErr)) {
-            toast.success("Saved offline. Will sync when online.");
-          } else {
-            toast.warning("Checkout saved — finishing sync in the background.");
-          }
-          return;
-        }
-
-        if (visit?.id) {
-          await supabase.from("schedule_items").update({ visit_id: visit.id }).eq("id", item.id);
-          const photoUrl = await uploadPhotoOnline(visit.id, cgid);
-          if (photoUrl) {
-            await supabase.from("visits").update({ photo_url: photoUrl } as any).eq("id", visit.id);
-          }
-        }
+          .select("order_number, order_quantity, order_amount, client_generated_id")
+          .eq("id", item.visit_id)
+          .maybeSingle();
+        visitData = res.data;
       }
-      // Only refresh the full schedule when the visit status changes to visited/skipped
-      // For intermediate edits (arrival, notes, etc.), the local update is sufficient
-      if (newItem.status === "visited" || newItem.status === "skipped") {
-        onRefresh();
+      if (!visitData) {
+        const res = await (supabase
+          .from("visits")
+          .select("order_number, order_quantity, order_amount, client_generated_id")
+          .eq("rep_id", repId)
+          .eq("customer_id", item.customer_id)
+          .eq("visit_date", scheduleDate)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle() as any);
+        visitData = res.data;
       }
-    } catch (err: any) {
-      console.warn("[Schedule] Network error on update:", err?.message);
-      // Clear active card state even on network error to prevent stuck guard
-      getActiveCard().then((card) => {
-        if (card?.scheduleItemId === item.id) {
-          clearActiveCard().catch(() => {});
-        }
-      }).catch(() => {});
-      await queueScheduleItemUpdate(newItem);
-      await handleOfflineVisitSave(newItem, clientGenIdRef.current);
+      setDoneArrival(item.arrival_time ? item.arrival_time.slice(0, 5) : "");
+      setDoneLeaving(item.leaving_time ? item.leaving_time.slice(0, 5) : "");
+      setDoneOrderNumber(visitData?.order_number || "");
+      setDoneOrderQty(visitData?.order_quantity != null ? String(visitData.order_quantity) : "");
+      setDoneOrderAmount(visitData?.order_amount != null ? String(visitData.order_amount) : "");
+      // stash the clientId for the edit event
+      setDoneClientId(visitData?.client_generated_id ?? null);
+      setEditingDone(true);
     } finally {
-      setActionInProgress(false);
-      if (newItem.status === "visited" || newItem.status === "skipped") {
-        clearPendingPhoto(item.id).catch(() => {});
-        // Only clear active_card_state when the visit is fully completed —
-        // never clear it on intermediate updates (arrival, notes, etc.)
-        // because markArrived saves state there after this finally runs.
-        getActiveCard().then((card) => {
-          if (card?.scheduleItemId === item.id) {
-            clearActiveCard().catch(() => {});
-          }
-        }).catch(() => {});
-      }
+      setLoadingDoneEdit(false);
     }
   };
 
-  const handleOfflineVisitSave = async (newItem: any, clientGeneratedId: string | null = null) => {
-    if (newItem.arrival_time && newItem.leaving_time && newItem.duration_minutes >= 0) {
-      try {
-        let photoB64: string | null = null;
-        if (photoBlob) photoB64 = await blobToBase64(photoBlob);
-        await saveVisitOffline(
-          repId, item.customer_id, scheduleDate,
-          newItem.arrival_time, newItem.leaving_time,
-          newItem.duration_minutes, newItem.notes || null,
-          item.customers?.customer_name, undefined, photoB64,
-          newItem.order_number ?? null, newItem.order_quantity ?? null, newItem.order_amount ?? null,
-          clientGeneratedId,
-        );
-        toast.success("Saved offline. Will sync when online.");
-      } catch (idbErr) {
-        console.error("[Schedule] IndexedDB save failed:", idbErr);
-        toast.error("Failed to save visit. Please try again.");
-      }
-    }
-  };
+  const [doneClientId, setDoneClientId] = useState<string | null>(null);
 
-  const saveDoneOrder = async () => {
-    if (actionInProgress) return;
+  const saveDoneEdit = async () => {
+    if (savingDone) return;
+    if (!doneClientId) { toast.error("Visit reference not found — cannot edit"); return; }
     if (doneArrival && doneLeaving) {
       const [ah, am] = doneArrival.split(":").map(Number);
       const [lh, lm] = doneLeaving.split(":").map(Number);
       const dur = (lh * 60 + lm) - (ah * 60 + am);
       if (dur <= 0) { toast.error("Leaving time must be after arrival time"); return; }
     }
-    setActionInProgress(true);
+    setSavingDone(true);
     try {
-      let visitId = item.visit_id;
-      if (!visitId) {
-        const { data } = await supabase
-          .from("visits")
-          .select("id")
-          .eq("rep_id", repId)
-          .eq("customer_id", item.customer_id)
-          .eq("visit_date", scheduleDate)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        visitId = data?.id;
-      }
-      if (!visitId) {
-        toast.error("Visit record not found");
-        setActionInProgress(false);
-        return;
-      }
-
-      const visitUpdates: any = {
-        order_number: doneOrderNumber || null,
-        order_quantity: doneOrderQty !== "" ? Number(doneOrderQty) : null,
-        order_amount: parseAmount(doneOrderAmount),
-      };
-      const scheduleItemUpdates: any = {};
-
-      if (doneArrival && doneLeaving) {
-        const [ah, am] = doneArrival.split(":").map(Number);
-        const [lh, lm] = doneLeaving.split(":").map(Number);
-        const dur = (lh * 60 + lm) - (ah * 60 + am);
-        visitUpdates.arrival_time = doneArrival;
-        visitUpdates.leaving_time = doneLeaving;
-        visitUpdates.duration_minutes = dur;
-        scheduleItemUpdates.arrival_time = doneArrival;
-        scheduleItemUpdates.leaving_time = doneLeaving;
-        scheduleItemUpdates.duration_minutes = dur;
-      }
-
-      const { error } = await supabase.from("visits").update(visitUpdates as any).eq("id", visitId);
-      if (error) {
-        toast.error(error.message);
-        return;
-      }
-
-      if (Object.keys(scheduleItemUpdates).length > 0) {
-        await supabase.from("schedule_items").update(scheduleItemUpdates).eq("id", item.id);
-      }
-
+      await onEditCompleted({
+        clientId: doneClientId,
+        arrivalTime: doneArrival || null,
+        leavingTime: doneLeaving || null,
+        orderNumber: doneOrderNumber,
+        orderQty: doneOrderQty,
+        orderAmount: doneOrderAmount,
+        notes: null,
+      });
       toast.success("Details updated");
       setEditingDone(false);
-      onRefresh();
-    } catch {
-      toast.error("Failed to update");
     } finally {
-      setActionInProgress(false);
+      setSavingDone(false);
     }
   };
-
-  const commitNotes   = () => { if (localNotes   !== (item.notes        || "")) updateItem({ notes:        localNotes   }); };
-  const commitArrival = () => { if (localArrival !== (item.arrival_time || "")) updateItem({ arrival_time: localArrival }); };
-  const commitLeaving = () => { if (localLeaving !== (item.leaving_time || "")) updateItem({ leaving_time: localLeaving }); };
-
-  const reportSyncError = async (
-    context: Record<string, any>,
-    errorType: string = "ghost_active_card",
-    message: string = "Active card state found in IDB for a visit not present in today's schedule. Cleared automatically."
-  ) => {
-    try {
-      await (supabase as any).from("sync_errors").insert({
-        rep_id: repId,
-        error_type: errorType,
-        message,
-        context,
-      });
-    } catch { /* non-critical — never block the rep */ }
-  };
-
-  const markArrived = async () => {
-    if (arrivingRef.current) return;
-    // Guard: already arrived — localArrival means the schedule_items update already succeeded
-    if (localArrival) return;
-    arrivingRef.current = true;
-    setArriving(true);
-    // Guard: block if another visit is already open
-    const alreadyOpen = allItems.find(
-      (i: any) => i.arrival_time && !i.leaving_time && i.id !== item.id
-    );
-    if (alreadyOpen) {
-      toast.error(`You have an open visit at ${alreadyOpen.customers?.customer_name ?? "another customer"}. Please check out first.`);
-      arrivingRef.current = false;
-      setArriving(false);
-      return;
-    }
-
-    // Guard: check IDB active card for a different item
-    try {
-      const card = await getActiveCard();
-      if (card?.scheduleItemId && card.scheduleItemId !== item.id) {
-        const openCardItem = allItems.find((i: any) => i.id === card.scheduleItemId);
-        const isStale = !openCardItem
-          || openCardItem.status === "visited"
-          || openCardItem.status === "skipped"
-          || !!openCardItem.leaving_time;
-
-        if (isStale) {
-          clearActiveCard().catch(() => {});
-          if (!openCardItem) {
-            // Ghost card — item no longer exists in today's schedule (multi-device drift)
-            reportSyncError({
-              stale_schedule_item_id: card.scheduleItemId,
-              current_item_id: item.id,
-              schedule_date: scheduleDate,
-              cleared_at: new Date().toISOString(),
-            });
-            toast.info("Cleared a stale visit from another device.");
-          }
-          // do NOT return — allow markArrived to proceed
-        } else {
-          const customerName = openCardItem?.customers?.customer_name ?? "another customer";
-          toast.error(`You have an open visit at ${customerName}. Please check out first.`);
-          arrivingRef.current = false;
-          setArriving(false);
-          return;
-        }
-      }
-    } catch { /* IDB unavailable — skip check */ }
-
-    const t = nowTime();
-    setLocalArrival(t);
-    // Always update schedule_items arrival_time (handles online/offline paths internally).
-    // This is the ONLY write that happens at arrival — no visits row is created here.
-    // Must be awaited so the finally block in updateItem completes before we
-    // call saveActiveCard below — prevents a race that was clearing active_card_state.
-    await updateItem({ arrival_time: t });
-
-    // Generate the idempotency key now so it's stable for this visit's entire duration —
-    // reused as-is for the single visits row created at checkout, online or offline.
-    if (!clientGenIdRef.current) clientGenIdRef.current = uuidv4();
-    saveActiveCard({
-      scheduleItemId: item.id,
-      arrivalTime: t,
-      notes: localNotes,
-      clientGeneratedId: clientGenIdRef.current,
-    }).catch(() => {});
-
-    arrivingRef.current = false;
-    setArriving(false);
-  };
-  const markLeft = () => {
-    if (leavingRef.current) return;
-    const t = nowTime();
-    const arr = localArrival || item.arrival_time || "";
-    // Backstop: never write a same-minute (0-min) checkout as a real visit.
-    // A genuine store visit is never zero minutes; a 0-min checkout is a stray
-    // tap, not an intentional check-out.
-    if (arr && calcDuration(arr, t) <= 0) {
-      toast.error("You just checked in. Add your photo and details, then check out.");
-      return;
-    }
-    leavingRef.current = true;
-    setLocalLeaving(t);
-    updateItem({
-      leaving_time: t,
-      status: "visited",
-      notes: localNotes,
-      order_number: localOrderNumber || null,
-      order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null,
-      order_amount: parseAmount(localOrderAmount),
-    }).finally(() => { leavingRef.current = false; });
-  };
-
-  const skipItem = async (note: string = skipNote) => {
-    if (actionInProgress) return;
-    if (!note.trim()) { toast.error("Please provide a reason before skipping"); return; }
-    setActionInProgress(true);
-    const skippedUpdates = { arrival_time: null, leaving_time: null, duration_minutes: 0, notes: note, status: "skipped" };
-    onLocalUpdate(item.id, skippedUpdates);
-    try {
-      if (!navigator.onLine) {
-        await queueScheduleItemUpdate(skippedUpdates);
-        await saveVisitOffline(repId, item.customer_id, scheduleDate, null as any, null as any, 0, note, item.customers?.customer_name, "skipped");
-        toast.success("Saved offline. Will sync when online.");
-        return;
-      }
-      const { error } = await supabase.from("schedule_items").update({ status: "skipped", notes: note }).eq("id", item.id);
-      if (error) {
-        if (isOfflineError(error)) {
-          await queueScheduleItemUpdate(skippedUpdates);
-          await saveVisitOffline(repId, item.customer_id, scheduleDate, null as any, null as any, 0, note, item.customers?.customer_name, "skipped");
-          toast.success("Saved offline. Will sync when online.");
-          return;
-        }
-        toast.error(error.message); return;
-      }
-      await supabase.from("visits").insert({ rep_id: repId, customer_id: item.customer_id, visit_date: scheduleDate, arrival_time: null, leaving_time: null, duration_minutes: 0, notes: note, status: "skipped" } as any);
-      onRefresh();
-    } catch (err: any) {
-      console.warn("[Schedule] Network error on skip:", err?.message);
-      try {
-        await queueScheduleItemUpdate(skippedUpdates);
-        await saveVisitOffline(repId, item.customer_id, scheduleDate, null as any, null as any, 0, note, item.customers?.customer_name, "skipped");
-        toast.success("Saved offline. Will sync when online.");
-      } catch (idbErr) {
-        console.error("[Schedule] IndexedDB save failed:", idbErr);
-        toast.error("Failed to save. Please try again.");
-      }
-    } finally {
-      setActionInProgress(false);
-      setSkipMode(false);
-      setSkipNote("");
-      // Clear active card state in case rep arrived then chose to skip
-      getActiveCard().then((card) => {
-        if (card?.scheduleItemId === item.id) {
-          clearActiveCard().catch(() => {});
-        }
-      }).catch(() => {});
-    }
-  };
-
-  const markVisited = () => updateItem({ status: "visited", arrival_time: localArrival, leaving_time: localLeaving, notes: localNotes, order_number: localOrderNumber || null, order_quantity: localOrderQty !== "" ? Number(localOrderQty) : null, order_amount: parseAmount(localOrderAmount) });
-
-  const isInProgress = item.status === "pending" && (item.arrival_time || localArrival) && !item.leaving_time;
-  const customerName = item.customers?.customer_name ?? "Unknown";
-  const accountNum   = item.customers?.account_number;
 
   // ── collapsed row ──
   const collapsedRow = (
@@ -687,7 +207,6 @@ export function ScheduleCard({
       className="w-full flex items-center gap-4 px-5 py-4 text-left"
       style={{ background: "transparent", position: "relative" }}
     >
-      {/* 42×42 avatar with number/icon */}
       <div
         className="shrink-0 rounded-[14px] flex items-center justify-center font-syne font-bold text-lg"
         style={{
@@ -707,7 +226,6 @@ export function ScheduleCard({
          index + 1}
       </div>
 
-      {/* name and details */}
       <div className="flex-1 min-w-0">
         <p className="font-syne font-600 text-base" style={{ color: C.ink, letterSpacing: "-0.2px", lineHeight: 1.1 }}>{customerName}</p>
         <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -748,7 +266,6 @@ export function ScheduleCard({
         </div>
       </div>
 
-      {/* expand chevron */}
       <span style={{ color: C.inkMute, transform: isExpanded ? "rotate(180deg)" : "rotate(0)", transition: "transform 320ms cubic-bezier(0.22,0.61,0.36,1)" }}>
         <ChevronDown size={18} />
       </span>
@@ -778,7 +295,6 @@ export function ScheduleCard({
         {/* visited state */}
         {item.status === "visited" && (
           <>
-            {/* 4-chip row: Arrived / Photo / Order / Left */}
             <div style={{ background: C.cream, borderRadius: 14, padding: "6px", display: "flex", gap: 4, marginBottom: 10 }}>
               {[
                 { label: "ARRIVED", value: item.arrival_time ? item.arrival_time.slice(0, 5) : null },
@@ -806,7 +322,6 @@ export function ScheduleCard({
               ))}
             </div>
 
-            {/* Time at stop & Order cards (2-col grid) */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
               <div
                 style={{
@@ -851,7 +366,6 @@ export function ScheduleCard({
               })()}
             </div>
 
-            {/* Edit Order button or form */}
             {!editingDone && (
               <ShimmerButton
                 loading={loadingDoneEdit}
@@ -872,32 +386,7 @@ export function ScheduleCard({
                   justifyContent: "center",
                   gap: 6,
                 }}
-                onClick={async () => {
-                  if (loadingDoneEdit) return;
-                  setLoadingDoneEdit(true);
-                  try {
-                    let visitId = item.visit_id;
-                    let visitData: any = null;
-                    if (visitId) {
-                      const res = await supabase.from("visits").select("order_number, order_quantity, order_amount").eq("id", visitId).maybeSingle();
-                      visitData = res.data;
-                    }
-                    if (!visitData) {
-                      const res = await (supabase.from("visits").select("order_number, order_quantity, order_amount")
-                        .eq("rep_id", repId).eq("customer_id", item.customer_id).eq("visit_date", scheduleDate)
-                        .order("created_at", { ascending: false }).limit(1).maybeSingle() as any);
-                      visitData = res.data;
-                    }
-                    setDoneArrival(item.arrival_time ? item.arrival_time.slice(0, 5) : "");
-                    setDoneLeaving(item.leaving_time ? item.leaving_time.slice(0, 5) : "");
-                    setDoneOrderNumber(visitData?.order_number || "");
-                    setDoneOrderQty(visitData?.order_quantity != null ? String(visitData.order_quantity) : "");
-                    setDoneOrderAmount(visitData?.order_amount != null ? String(visitData.order_amount) : "");
-                    setEditingDone(true);
-                  } finally {
-                    setLoadingDoneEdit(false);
-                  }
-                }}
+                onClick={openDoneEdit}
               >
                 <Pencil size={13} /> Edit details
               </ShimmerButton>
@@ -934,7 +423,6 @@ export function ScheduleCard({
                     </label>
                   </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.6fr 1fr", gap: 8, marginBottom: 10 }}>
-                  {/* PadInput-style inputs */}
                   <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
                     <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>№</div>
                     <input
@@ -996,8 +484,8 @@ export function ScheduleCard({
                   </button>
                   <button
                     type="button"
-                    onClick={saveDoneOrder}
-                    disabled={actionInProgress}
+                    onClick={saveDoneEdit}
+                    disabled={savingDone}
                     style={{
                       height: 40,
                       borderRadius: 12,
@@ -1040,18 +528,17 @@ export function ScheduleCard({
         {/* pending / active state */}
         {item.status === "pending" && !skipMode && (
           <>
-            {/* Stepper pills */}
             <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px", background: C.cream, borderRadius: 999, marginBottom: 14 }}>
-              <div style={{ flex: 1, textAlign: "center", padding: "7px 4px", borderRadius: 999, background: localArrival ? C.surface : "transparent", boxShadow: localArrival ? "0 2px 6px rgba(23,23,21,0.06)" : "none" }}>
+              <div style={{ flex: 1, textAlign: "center", padding: "7px 4px", borderRadius: 999, background: shownArrival ? C.surface : "transparent", boxShadow: shownArrival ? "0 2px 6px rgba(23,23,21,0.06)" : "none" }}>
                 <div style={{ fontSize: 9.5, color: C.inkMute, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", fontWeight: 700 }}>Arrived</div>
-                <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 12, color: localArrival ? C.greenInk : C.inkMute, marginTop: 1, fontWeight: 600 }}>
-                  {localArrival ? localArrival.slice(0, 5) : "—"}
+                <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 12, color: shownArrival ? C.greenInk : C.inkMute, marginTop: 1, fontWeight: 600 }}>
+                  {shownArrival ? shownArrival.slice(0, 5) : "—"}
                 </div>
               </div>
-              <div style={{ flex: 1, textAlign: "center", padding: "7px 4px", borderRadius: 999, background: photoBlob ? C.surface : "transparent", boxShadow: photoBlob ? "0 2px 6px rgba(23,23,21,0.06)" : "none" }}>
+              <div style={{ flex: 1, textAlign: "center", padding: "7px 4px", borderRadius: 999, background: hasPhoto ? C.surface : "transparent", boxShadow: hasPhoto ? "0 2px 6px rgba(23,23,21,0.06)" : "none" }}>
                 <div style={{ fontSize: 9.5, color: C.inkMute, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif", fontWeight: 700 }}>Photo</div>
-                <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 12, color: photoBlob ? C.greenInk : C.inkMute, marginTop: 1, fontWeight: 600 }}>
-                  {photoBlob ? "✓" : "—"}
+                <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 12, color: hasPhoto ? C.greenInk : C.inkMute, marginTop: 1, fontWeight: 600 }}>
+                  {hasPhoto ? "✓" : "—"}
                 </div>
               </div>
               <div style={{ flex: 1, textAlign: "center", padding: "7px 4px", borderRadius: 999, background: "transparent" }}>
@@ -1069,18 +556,17 @@ export function ScheduleCard({
             </div>
 
             {!isInProgress ? (
-              /* Pending state — show arrive button */
               <>
                 <RippleButton
-                  onClick={markArrived}
-                  disabled={arriving}
+                  onClick={onCheckIn}
+                  disabled={busy}
                   style={{
                     width: "100%",
                     height: 56,
                     borderRadius: 18,
                     border: "none",
-                    cursor: arriving ? "not-allowed" : "pointer",
-                    background: arriving
+                    cursor: busy ? "not-allowed" : "pointer",
+                    background: busy
                       ? `linear-gradient(180deg, ${C.inkSoft} 0%, ${C.inkSoft} 100%)`
                       : `linear-gradient(180deg, ${C.greenMid} 0%, ${C.green} 100%)`,
                     color: "#fff",
@@ -1092,13 +578,13 @@ export function ScheduleCard({
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 10,
-                    boxShadow: arriving ? "none" : `0 12px 24px -10px ${C.green}88`,
+                    boxShadow: busy ? "none" : `0 12px 24px -10px ${C.green}88`,
                     marginBottom: 6,
-                    opacity: arriving ? 0.7 : 1,
+                    opacity: busy ? 0.7 : 1,
                     transition: "background 200ms, opacity 200ms",
                   }}
                 >
-                  <MapPin size={18} /> {arriving ? "Checking in…" : "Tap to check in"}
+                  <MapPin size={18} /> {busy ? "Checking in…" : "Tap to check in"}
                 </RippleButton>
                 <button
                   type="button"
@@ -1124,11 +610,10 @@ export function ScheduleCard({
                 </button>
               </>
             ) : (
-              /* Active state — show order, photo, checkout */
               <Expand open={isInProgress}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
                   <CameraCapture
-                    onCapture={handleCameraCapture}
+                    onCapture={onCapturePhoto}
                     buttonStyle={{
                       display: "flex",
                       alignItems: "center",
@@ -1137,15 +622,15 @@ export function ScheduleCard({
                       height: 44,
                       borderRadius: 14,
                       cursor: "pointer",
-                      background: photoBlob ? C.greenInk : C.cream,
-                      color: photoBlob ? "#fff" : C.inkSoft,
+                      background: hasPhoto ? C.greenInk : C.cream,
+                      color: hasPhoto ? "#fff" : C.inkSoft,
                       border: "none",
                       fontFamily: "'DM Sans', sans-serif",
                       fontWeight: 600,
                       fontSize: 13,
                       width: "100%",
                     }}
-                    buttonLabel={<><Camera size={15} /> {photoBlob ? "Photo ready" : "Take photo"}</>}
+                    buttonLabel={<><Camera size={15} /> {hasPhoto ? "Photo ready" : "Take photo"}</>}
                   />
                   <button
                     type="button"
@@ -1173,8 +658,8 @@ export function ScheduleCard({
                 {showNotes && (
                   <div style={{ marginBottom: 12 }}>
                     <textarea
-                      value={localNotes}
-                      onChange={(e) => setLocalNotes(e.target.value)}
+                      value={draftNotes}
+                      onChange={(e) => pushNotes(e.target.value)}
                       onBlur={resetMobileZoom}
                       placeholder="Add a note…"
                       rows={3}
@@ -1203,29 +688,29 @@ export function ScheduleCard({
                   <div style={{ display: "grid", gridTemplateColumns: "1.3fr 0.6fr 1fr", gap: 8 }}>
                     <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
                       <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>№</div>
-                      <input type="text" value={localOrderNumber} onChange={(e) => setLocalOrderNumber(e.target.value)} onBlur={resetMobileZoom} placeholder="PO-0000" inputMode="numeric" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                      <input type="text" value={draftOrderNumber} onChange={(e) => pushOrderNumber(e.target.value)} onBlur={resetMobileZoom} placeholder="PO-0000" inputMode="numeric" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
                     </label>
                     <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
                       <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Qty</div>
-                      <input type="number" min="0" step="1" value={localOrderQty} onChange={(e) => setLocalOrderQty(e.target.value)} onBlur={resetMobileZoom} placeholder="0" inputMode="numeric" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                      <input type="number" min="0" step="1" value={draftOrderQty} onChange={(e) => pushOrderQty(e.target.value)} onBlur={resetMobileZoom} placeholder="0" inputMode="numeric" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
                     </label>
                     <label style={{ background: C.surface, borderRadius: 12, padding: "6px 10px", boxShadow: `inset 0 0 0 1px ${C.border}`, display: "block", cursor: "text" }}>
                       <div style={{ fontSize: 9.5, color: C.inkMute, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>Value</div>
-                      <input type="text" min="0" step="0.01" value={localOrderAmount} onChange={(e) => setLocalOrderAmount(e.target.value)} onBlur={resetMobileZoom} placeholder="R 0,00" inputMode="decimal" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
+                      <input type="text" min="0" step="0.01" value={draftOrderAmount} onChange={(e) => pushOrderAmount(e.target.value)} onBlur={resetMobileZoom} placeholder="R 0,00" inputMode="decimal" style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: C.ink, padding: 0, marginTop: 1 }} />
                     </label>
                   </div>
                 </div>
 
                 <RippleButton
-                  onClick={markLeft}
-                  disabled={actionInProgress}
+                  onClick={onCheckOut}
+                  disabled={busy}
                   style={{
                     width: "100%",
                     height: 60,
                     borderRadius: 18,
                     border: "none",
-                    cursor: actionInProgress ? "not-allowed" : "pointer",
-                    background: actionInProgress
+                    cursor: busy ? "not-allowed" : "pointer",
+                    background: busy
                       ? `linear-gradient(180deg, ${C.inkSoft} 0%, ${C.inkSoft} 100%)`
                       : `linear-gradient(180deg, ${C.greenMid} 0%, ${C.green} 100%)`,
                     color: "#fff",
@@ -1237,13 +722,13 @@ export function ScheduleCard({
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 10,
-                    boxShadow: actionInProgress ? "none" : `0 12px 28px -10px ${C.green}aa, 0 1px 0 rgba(255,255,255,0.2) inset, 0 -1px 0 ${C.greenDeep}88 inset`,
+                    boxShadow: busy ? "none" : `0 12px 28px -10px ${C.green}aa, 0 1px 0 rgba(255,255,255,0.2) inset, 0 -1px 0 ${C.greenDeep}88 inset`,
                     marginBottom: 6,
-                    opacity: actionInProgress ? 0.7 : 1,
+                    opacity: busy ? 0.7 : 1,
                     transition: "background 200ms, opacity 200ms",
                   }}
                 >
-                  <Check size={20} /> {actionInProgress ? "Checking out…" : "Tap to check out"}
+                  <Check size={20} /> {busy ? "Checking out…" : "Tap to check out"}
                 </RippleButton>
                 <button
                   type="button"
@@ -1272,7 +757,7 @@ export function ScheduleCard({
           </>
         )}
 
-        {/* Skip composer — shows when skipMode = true */}
+        {/* Skip composer */}
         {item.status === "pending" && skipMode && (
           <div style={{ background: `linear-gradient(180deg, ${C.dangerSoft} 0%, #FBEFE9 100%)`, borderRadius: 18, padding: 14, border: `1px solid ${C.danger}33` }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -1335,8 +820,8 @@ export function ScheduleCard({
 
             <button
               type="button"
-              onClick={() => skipItem(skipNote)}
-              disabled={skipNote.trim().length < 3 || actionInProgress}
+              onClick={() => doSkip(skipNote)}
+              disabled={skipNote.trim().length < 3 || busy}
               style={{
                 width: "100%",
                 height: 52,

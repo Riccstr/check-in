@@ -8,7 +8,6 @@ import { AuthProvider } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
 import Auth from "@/pages/Auth";
 const Index = lazy(() => import("@/pages/Index"));
-const LogVisit = lazy(() => import("@/pages/LogVisit"));
 const DailySchedule = lazy(() => import("@/pages/DailySchedule"));
 const AdminDashboard = lazy(() => import("@/pages/admin/AdminDashboard"));
 const AdminCustomers = lazy(() => import("@/pages/admin/AdminCustomers"));
@@ -92,7 +91,6 @@ const App = () => (
                 <Route path="/auth" element={<Auth />} />
                 <Route element={<AppLayout />}>
                   <Route path="/" element={<Index />} />
-                  <Route path="/log-visit" element={<LogVisit />} />
                   <Route path="/schedule" element={<DailySchedule />} />
 
                   <Route path="/admin/dashboard" element={<AdminDashboard />} />

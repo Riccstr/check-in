@@ -13,8 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Eye, Pencil, Trash2, RefreshCw, Camera } from "lucide-react";
-import { getAllOfflineVisits, type OfflineVisit } from "@/lib/offlineDb";
-import { syncPendingVisits } from "@/lib/syncEngine";
+import { getPendingVisitEvents } from "@/lib/offlineDb";
+import { syncVisitEvents } from "@/lib/syncEngine";
 
 interface Visit {
   id: string;
@@ -47,6 +47,7 @@ export default function MyVisits() {
   const [editNotes, setEditNotes] = useState("");
   const [editDate, setEditDate] = useState("");
   const [photoModal, setPhotoModal] = useState<Visit | null>(null);
+  const [hasPending, setHasPending] = useState(false);
 
   const fetchVisits = useCallback(async () => {
     if (!repId) return;
@@ -69,48 +70,8 @@ export default function MyVisits() {
       // Offline - no server data
     }
 
-    // Fetch offline visits
-    const offlineVisits = await getAllOfflineVisits();
-    const offlineAsVisits: Visit[] = offlineVisits
-      .filter((ov) => ov.sync_status !== "synced")
-      .filter((ov) => ov.payload.rep_id === repId)
-      .filter((ov) => {
-        if (customerFilter && customerFilter !== "all" && ov.payload.customer_id !== customerFilter) return false;
-        if (dateFrom && ov.payload.visit_date < dateFrom) return false;
-        if (dateTo && ov.payload.visit_date > dateTo) return false;
-        return true;
-      })
-      .map((ov) => ({
-        id: ov.client_generated_id,
-        visit_date: ov.payload.visit_date,
-        arrival_time: ov.payload.arrival_time,
-        leaving_time: ov.payload.leaving_time,
-        duration_minutes: ov.payload.duration_minutes,
-        notes: ov.payload.notes,
-        status: (ov.payload as any).status || "visited",
-        customer_id: ov.payload.customer_id,
-        customers: { customer_name: ov.customer_name || "Unknown" },
-        photo_url: null,
-        _offline: true,
-        _sync_status: ov.sync_status,
-        _error_message: ov.error_message,
-        _client_generated_id: ov.client_generated_id,
-      }));
-
-    // Merge: offline first, then server (deduplicate by client_generated_id)
-    const serverClientIds = new Set(
-      serverVisits
-        .filter((v: any) => v.client_generated_id)
-        .map((v: any) => v.client_generated_id)
-    );
-    const uniqueOffline = offlineAsVisits.filter(
-      (ov) => !serverClientIds.has(ov._client_generated_id)
-    );
-
-    const merged = [...uniqueOffline, ...serverVisits];
-    merged.sort((a, b) => b.visit_date.localeCompare(a.visit_date));
-
-    setVisits(merged);
+    serverVisits.sort((a, b) => b.visit_date.localeCompare(a.visit_date));
+    setVisits(serverVisits);
     setLoading(false);
   }, [repId, dateFrom, dateTo, customerFilter]);
 
@@ -123,6 +84,10 @@ export default function MyVisits() {
   }, [repId]);
 
   useEffect(() => { fetchVisits(); }, [fetchVisits]);
+
+  useEffect(() => {
+    getPendingVisitEvents().then((evts) => setHasPending(evts.length > 0)).catch(() => {});
+  }, [visits]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this visit?")) return;
@@ -158,13 +123,12 @@ export default function MyVisits() {
   };
 
   const handleRetrySync = async () => {
-    const result = await syncPendingVisits();
-    if (result.synced > 0) toast.success(`${result.synced} visit(s) synced`);
-    if (result.errors > 0) toast.error(`${result.errors} visit(s) failed`);
+    const result = await syncVisitEvents();
+    if (result.synced > 0) toast.success(`${result.synced} change(s) synced`);
+    if (result.errors > 0) toast.error(`${result.errors} change(s) failed`);
+    getPendingVisitEvents().then((evts) => setHasPending(evts.length > 0)).catch(() => {});
     fetchVisits();
   };
-
-  const hasPendingOffline = visits.some((v) => v._offline);
 
   const renderPhoto = (v: Visit) => {
     if (v.photo_url) {
@@ -192,7 +156,7 @@ export default function MyVisits() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2"><Eye className="h-5 w-5 text-accent" /> My Visits</CardTitle>
-            {hasPendingOffline && navigator.onLine && (
+            {hasPending && navigator.onLine && (
               <Button variant="outline" size="sm" onClick={handleRetrySync}>
                 <RefreshCw className="h-4 w-4 mr-1" /> Sync Now
               </Button>
