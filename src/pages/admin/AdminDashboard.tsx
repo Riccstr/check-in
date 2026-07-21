@@ -9,16 +9,15 @@ import { useAuth } from "@/hooks/useAuth";
 
 interface RepRow { id: string; rep_name: string; }
 
+// schedule_items now provides ONLY schedule structure: settled counts, areas,
+// and the scheduled customer set. arrival_time / leaving_time / duration are no
+// longer read here — in the event-outbox model they aren't written to
+// schedule_items at check-in, only at checkout. Live status comes from
+// visit_events instead (see below).
 interface ScheduleItem {
   id: string;
   status: string;
-  arrival_time: string | null;
-  leaving_time: string | null;
-  duration_minutes: number | null;
-  notes: string | null;
-  sort_order: number;
   customer_id: string;
-  visit_id: string | null;
   customers: { customer_name: string; area: string | null } | null;
 }
 
@@ -32,9 +31,25 @@ interface VisitRow {
   id: string;
   rep_id: string;
   customer_id: string;
+  client_generated_id: string | null;
   order_number: string | null;
   order_amount: number | null;
+  duration_minutes: number | null;
+  notes: string | null;
   status: string | null;
+  created_at: string;
+  customers: { customer_name: string } | null;
+}
+
+// The live-status / activity source of truth. One row per lifecycle event,
+// written by syncEngine.insertVisitEvent. off_route never produces a row here.
+interface VisitEventRow {
+  id: string;
+  client_id: string;
+  rep_id: string;
+  customer_id: string;
+  event_type: "arrived" | "completed" | "skipped";
+  event_time: string | null;   // plain time, SAST wall-clock ("HH:MM:SS")
   created_at: string;
   customers: { customer_name: string } | null;
 }
@@ -82,11 +97,14 @@ interface SyncError {
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-function deriveStatus(items: ScheduleItem[]): RepStatus {
+// Settled status from schedule_items only. "In progress" is NOT derived here
+// anymore — visit_events owns that (an open 'arrived' overrides this in the
+// card builder). schedule_items.status is written at checkout, so these
+// settled states remain reliable at rest.
+function deriveSettledStatus(items: ScheduleItem[]): RepStatus {
   if (!items.length) return "not_started";
-  if (items.find((i) => i.arrival_time && !i.leaving_time)) return "checked_in";
   if (items.every((i) => i.status === "visited" || i.status === "skipped")) return "day_complete";
-  if (items.some((i) => i.leaving_time) && items.some((i) => i.status === "pending")) return "travelling";
+  if (items.some((i) => i.status === "visited" || i.status === "skipped")) return "travelling";
   return "not_started";
 }
 
@@ -360,11 +378,12 @@ function SyncErrorPanel() {
 export default function AdminDashboard() {
   const todayStr = new Date().toISOString().split("T")[0];
 
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState<string | null>(null);
-  const [reps,      setReps]      = useState<RepRow[]>([]);
-  const [schedules, setSchedules] = useState<DailyScheduleRow[]>([]);
-  const [visits,    setVisits]    = useState<VisitRow[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState<string | null>(null);
+  const [reps,        setReps]        = useState<RepRow[]>([]);
+  const [schedules,   setSchedules]   = useState<DailyScheduleRow[]>([]);
+  const [visits,      setVisits]      = useState<VisitRow[]>([]);
+  const [visitEvents, setVisitEvents] = useState<VisitEventRow[]>([]);
   const [activityRepFilter, setActivityRepFilter] = useState<string>("all");
   const [activityDropdownOpen, setActivityDropdownOpen] = useState(false);
 
@@ -427,19 +446,34 @@ export default function AdminDashboard() {
                 .eq("schedule_date", todayStr)
                 .maybeSingle() as any) as { data: { id: string; weekly_template_id: string | null } | null };
 
-              // Self-heal: if the row uses the wrong template and no visits have started, delete it
+              // Self-heal: if the row uses the wrong template AND the rep has not
+              // started their day, delete it so it regenerates from the right week.
               if (
                 existing &&
                 correctWeeklyTemplateId &&
                 existing.weekly_template_id !== correctWeeklyTemplateId
               ) {
-                const { count } = await supabase
+                // Authoritative "has the rep started today?" signal in the
+                // event-outbox model. arrival_time is NO LONGER written to
+                // schedule_items at check-in, so schedule_items alone can't see
+                // an in-progress visit — a checked-in rep would look "unstarted"
+                // and get their schedule deleted out from under them. visit_events
+                // is the guard.
+                const { count: eventCount } = await (supabase as any)
+                  .from("visit_events")
+                  .select("id", { count: "exact", head: true })
+                  .eq("rep_id", rep.id)
+                  .eq("visit_date", todayStr);
+
+                // Belt-and-suspenders: schedule_items.status is still written at
+                // checkout, so a completed/skipped stop also blocks the delete.
+                const { count: startedCount } = await supabase
                   .from("schedule_items")
                   .select("id", { count: "exact", head: true })
                   .eq("schedule_id", existing.id)
                   .or("arrival_time.not.is.null,status.in.(visited,skipped)");
 
-                if ((count ?? 0) === 0) {
+                if ((eventCount ?? 0) === 0 && (startedCount ?? 0) === 0) {
                   await supabase
                     .from("daily_schedules")
                     .delete()
@@ -461,29 +495,38 @@ export default function AdminDashboard() {
         // Week-order or template lookup failed (e.g. offline) — skip pre-generation entirely
       }
 
-      // Step 3 — fetch schedules and visits now that rows are guaranteed to exist
-      const [schedulesRes, visitsRes] = await Promise.all([
+      // Step 3 — fetch schedules, visits, and events now that rows are guaranteed to exist
+      const [schedulesRes, visitsRes, eventsRes] = await Promise.all([
         supabase
           .from("daily_schedules")
           .select(
-            "id, rep_id, schedule_items(id, status, arrival_time, leaving_time, duration_minutes, notes, sort_order, customer_id, visit_id, customers(customer_name, area))"
+            "id, rep_id, schedule_items(id, status, customer_id, customers(customer_name, area))"
           )
           .eq("schedule_date", todayStr),
 
         (supabase
           .from("visits")
-          .select("id, rep_id, customer_id, order_number, order_amount, status, created_at, customers(customer_name)")
+          .select("id, rep_id, customer_id, client_generated_id, order_number, order_amount, duration_minutes, notes, status, created_at, customers(customer_name)")
           .eq("visit_date", todayStr) as any)
           .neq("status", "in_progress")
           .eq("is_deleted", false),
+
+        // visit_events: cast to any (not in the generated types snapshot yet).
+        // Live in-progress status + activity feed source of truth.
+        (supabase as any)
+          .from("visit_events")
+          .select("id, client_id, rep_id, customer_id, event_type, event_time, created_at, customers(customer_name)")
+          .eq("visit_date", todayStr),
       ]);
 
       if (schedulesRes.error) throw schedulesRes.error;
       if (visitsRes.error)    throw visitsRes.error;
+      if (eventsRes.error)    throw eventsRes.error;
 
       setReps(activeReps);
       setSchedules((schedulesRes.data ?? []) as unknown as DailyScheduleRow[]);
       setVisits((visitsRes.data ?? []) as unknown as VisitRow[]);
+      setVisitEvents((eventsRes.data ?? []) as unknown as VisitEventRow[]);
       setError(null);
     } catch (err: any) {
       setError(err?.message ?? "Failed to load dashboard data");
@@ -515,9 +558,26 @@ export default function AdminDashboard() {
       )
       .subscribe();
 
+    // Live status + activity feed depend on this. NOTE: requires realtime
+    // replication to be enabled on visit_events (Supabase → Database →
+    // Replication). Without it, a pure check-in ('arrived') — which writes
+    // ONLY a visit_events row and touches neither visits nor schedule_items —
+    // will not trigger a refetch, so live "checked in" won't appear until the
+    // next refetch. Checkout/skip still refetch via the visits/schedule_items
+    // channels regardless.
+    const eventsChannel = supabase
+      .channel("dashboard-visit-events")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "visit_events" },
+        () => { fetchRef.current(); }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(itemsChannel);
       supabase.removeChannel(visitsChannel);
+      supabase.removeChannel(eventsChannel);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -526,8 +586,8 @@ export default function AdminDashboard() {
   const allItems = schedules.flatMap((s) => s.schedule_items);
 
   const stats = {
-    // Visit counts from schedule_items — off_route visits never produce schedule_items
-    // so they are already excluded; guard explicitly for safety.
+    // Settled visit counts from schedule_items — off_route never produces a
+    // schedule_item so it's already excluded. Written at checkout, reliable.
     visited:    allItems.filter((i) => i.status === "visited").length,
     skipped:    allItems.filter((i) => i.status === "skipped").length,
     // Orders and order value: include off_route — those orders are real.
@@ -535,26 +595,44 @@ export default function AdminDashboard() {
     orderValue: visits.reduce((sum, v) => sum + (Number(v.order_amount) || 0), 0),
   };
 
-  // Build rep cards, one per active rep (no-schedule reps still get a card)
   const scheduleByRepId: Record<string, DailyScheduleRow> = {};
   for (const s of schedules) scheduleByRepId[s.rep_id] = s;
 
-  const repCards: RepCardData[] = reps.map((rep) => {
-    const sch = scheduleByRepId[rep.id];
-    if (!sch) {
-      return { rep, status: "no_schedule", hasSchedule: false, visited: 0, skipped: 0, total: 0, progress: 0, areas: [] };
-    }
+  const repById: Record<string, RepRow> = {};
+  for (const r of reps) repById[r.id] = r;
 
-    const items   = sch.schedule_items;
-    const status  = deriveStatus(items);
+  // Group events by rep for status derivation.
+  const eventsByRep: Record<string, VisitEventRow[]> = {};
+  for (const e of visitEvents) (eventsByRep[e.rep_id] ??= []).push(e);
+
+  // visits keyed by clientId — enriches activity feed (checkout duration, skip notes).
+  const visitByClientId: Record<string, VisitRow> = {};
+  for (const v of visits) if (v.client_generated_id) visitByClientId[v.client_generated_id] = v;
+
+  const repCards: RepCardData[] = reps.map((rep) => {
+    const sch   = scheduleByRepId[rep.id];
+    const items = sch?.schedule_items ?? [];
+    const evs   = eventsByRep[rep.id] ?? [];
+
+    // Open visit = an 'arrived' whose clientId has no terminal event yet.
+    const terminalClientIds = new Set(
+      evs.filter((e) => e.event_type === "completed" || e.event_type === "skipped").map((e) => e.client_id)
+    );
+    const openArrivals = evs
+      .filter((e) => e.event_type === "arrived" && !terminalClientIds.has(e.client_id))
+      .sort((a, b) => (b.event_time ?? "").localeCompare(a.event_time ?? ""));
+    const openEvent = openArrivals[0];
+
     const visited = items.filter((i) => i.status === "visited").length;
     const skipped = items.filter((i) => i.status === "skipped").length;
     const total   = items.length;
 
-    const inProgressItem =
-      status === "checked_in"
-        ? items.find((i) => i.arrival_time && !i.leaving_time)
-        : undefined;
+    // Precedence: an open visit_event always means "checked in" — even for an
+    // ad-hoc-only rep with no schedule today (new live-ad-hoc capability).
+    let status: RepStatus;
+    if (openEvent)       status = "checked_in";
+    else if (!sch)       status = "no_schedule";
+    else                 status = deriveSettledStatus(items);
 
     const areaSet = new Set<string>();
     items.forEach((item) => {
@@ -564,78 +642,74 @@ export default function AdminDashboard() {
     const areas = Array.from(areaSet);
 
     return {
-      rep, status, hasSchedule: true,
+      rep, status, hasSchedule: !!sch,
       visited, skipped, total,
       progress: total > 0 ? (visited + skipped) / total : 0,
-      currentCustomer:    inProgressItem?.customers?.customer_name,
-      currentArrivalTime: inProgressItem?.arrival_time ?? undefined,
+      currentCustomer:    openEvent?.customers?.customer_name ?? undefined,
+      currentArrivalTime: openEvent?.event_time ?? undefined,
       areas,
     };
   });
 
   const totalScheduled = repCards.reduce((sum, card) => sum + card.total, 0);
 
-  // Build activity feed events from schedule_items
-  const visitsById: Record<string, VisitRow> = {};
-  for (const v of visits) visitsById[v.id] = v;
-
-  const repById: Record<string, RepRow> = {};
-  for (const r of reps) repById[r.id] = r;
-
+  // ── Activity feed ──────────────────────────────────────────────────────────
+  // check-in / check-out / skip come from visit_events (live, distinct times).
+  // off-route comes from visits (never emits a visit_events row).
   const activityEvents: ActivityEvent[] = [];
 
-  for (const sch of schedules) {
-    const repName = repById[sch.rep_id]?.rep_name ?? "Unknown";
+  for (const ev of visitEvents) {
+    const repName      = repById[ev.rep_id]?.rep_name ?? "Unknown";
+    const customerName = ev.customers?.customer_name ?? "Unknown";
+    const t            = ev.event_time ?? "00:00:00";
 
-    for (const item of sch.schedule_items) {
-      const customerName = item.customers?.customer_name ?? "Unknown";
-
-      if (item.arrival_time) {
-        activityEvents.push({
-          type: "checkin", repName, customerName,
-          timeDisplay: fmtTime12h(item.arrival_time),
-          sortKey:     item.arrival_time,
-          duration: null, notes: null,
-        });
-      }
-
-      if (item.leaving_time) {
-        activityEvents.push({
-          type: "checkout", repName, customerName,
-          timeDisplay: fmtTime12h(item.leaving_time),
-          sortKey:     item.leaving_time,
-          duration:    item.duration_minutes,
-          notes: null,
-        });
-      }
-
-      if (item.status === "skipped") {
-        const linked = item.visit_id ? visitsById[item.visit_id] : null;
-        activityEvents.push({
-          type: "skip", repName, customerName,
-          timeDisplay: linked ? fmtFromIso(linked.created_at) : "—",
-          sortKey:     linked ? isoToLocalSortKey(linked.created_at) : "00:00:00",
-          duration: null,
-          notes: item.notes,
-        });
-      }
+    if (ev.event_type === "arrived") {
+      activityEvents.push({
+        type: "checkin", repName, customerName,
+        timeDisplay: fmtTime12h(t), sortKey: t,
+        duration: null, notes: null,
+      });
+    } else if (ev.event_type === "completed") {
+      const linked = visitByClientId[ev.client_id];
+      activityEvents.push({
+        type: "checkout", repName, customerName,
+        timeDisplay: fmtTime12h(t), sortKey: t,
+        duration: linked?.duration_minutes ?? null,
+        notes: null,
+      });
     }
+    // Skips are NOT rendered from visit_events — a skip has no wall-clock time.
+    // They come from the visits table below (using created_at) instead.
   }
 
-  // Off-route orders from the visits table — not tied to any schedule_item
+  // Skips and off-route orders both come from the visits table. Neither
+  // captures a wall-clock event time, so both use created_at (the record
+  // timestamp) for their position in the feed.
   for (const v of visits) {
-    if (v.status !== "off_route") continue;
     const repName = repById[v.rep_id]?.rep_name ?? "Unknown";
-    const customerName = (v as any).customers?.customer_name ?? "Unknown";
-    activityEvents.push({
-      type: "offroute",
-      repName,
-      customerName,
-      timeDisplay: fmtFromIso(v.created_at),
-      sortKey: isoToLocalSortKey(v.created_at),
-      duration: null,
-      notes: null,
-    });
+    const customerName = v.customers?.customer_name ?? "Unknown";
+
+    if (v.status === "skipped") {
+      activityEvents.push({
+        type: "skip",
+        repName,
+        customerName,
+        timeDisplay: fmtFromIso(v.created_at),
+        sortKey: isoToLocalSortKey(v.created_at),
+        duration: null,
+        notes: v.notes,
+      });
+    } else if (v.status === "off_route") {
+      activityEvents.push({
+        type: "offroute",
+        repName,
+        customerName,
+        timeDisplay: fmtFromIso(v.created_at),
+        sortKey: isoToLocalSortKey(v.created_at),
+        duration: null,
+        notes: null,
+      });
+    }
   }
 
   activityEvents.sort((a, b) => b.sortKey.localeCompare(a.sortKey));

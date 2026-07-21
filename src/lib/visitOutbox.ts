@@ -73,6 +73,10 @@ export interface VisitEvent {
   // synced until both the row and (if present) the photo have landed.
   photoBase64: string | null;
 
+  // Number of times a photo-only re-upload has been re-queued for this event.
+  // Capped in syncEngine so a permanently-broken blob can't retry forever.
+  photoRetries?: number;
+
   createdAtLocal: string;       // ISO, for stable ordering of the drain
   syncStatus: "pending" | "synced" | "error";
   lastSyncAttempt: string | null;
@@ -99,6 +103,7 @@ export function makeEvent(
     order: { order_number: null, order_quantity: null, order_amount: null },
     status: null,
     photoBase64: null,
+    photoRetries: 0,
     createdAtLocal: new Date().toISOString(),
     syncStatus: "pending",
     lastSyncAttempt: null,

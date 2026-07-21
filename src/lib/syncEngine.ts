@@ -171,16 +171,23 @@ async function applyEvent(ev: VisitEvent): Promise<void> {
         // the row exists; photo re-queues below.
         await insertVisitEvent(ev, "completed", ev.leavingTime);
         if (!photoOk && ev.photoBase64) {
-          // Re-queue a photo-only retry as a fresh 'completed' event carrying
-          // just the photo. Its visit upsert no-ops (same clientId), then the
-          // upload retries. Guard against infinite loops via lastSyncAttempt.
-          await enqueueVisitEvent({
-            ...ev,
-            eventId: `${ev.eventId}-photoretry`,
-            syncStatus: "pending",
-            lastSyncAttempt: null,
-            errorMessage: null,
-          });
+          const retries = ev.photoRetries ?? 0;
+          if (retries < 5) {
+            // Re-queue a photo-only retry as a fresh 'completed' event carrying
+            // the photo. Its visit upsert no-ops (same clientId), then the
+            // upload retries. Capped at 5 attempts so a permanently-broken
+            // blob can't retry forever.
+            await enqueueVisitEvent({
+              ...ev,
+              eventId: `${ev.clientId}-photoretry-${retries + 1}`,
+              photoRetries: retries + 1,
+              syncStatus: "pending",
+              lastSyncAttempt: null,
+              errorMessage: null,
+            });
+          } else {
+            console.warn(`[Sync] photo upload gave up after ${retries} attempts for visit clientId=${ev.clientId}`);
+          }
         }
       }
       return;

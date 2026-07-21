@@ -29,7 +29,10 @@ Language: TypeScript throughout.
 - src/pages/admin/AdminAccount.tsx — Admin profile, email/password change, 2FA placeholder, active sessions. Sign-out is now in the AdminSidebar user card, not here. Preferences block removed.
 - src/pages/admin/CustomerDashboard.tsx — Per-customer visit history
 - src/lib/adminUi.tsx — Admin design system: palette (A), status semantics, zar() formatter, AdminSidebar (now accepts onSignOut? prop with built-in confirm dialog), PageHeader, buttons, chips
-- src/lib/offlineDb.ts — IndexedDB helpers (DB_VERSION: 6)
+- src/lib/offlineDb.ts — IndexedDB helpers (DB_VERSION: 7) with event-outbox stores
+- src/lib/visitMachine.ts — Visit state machine: startVisit(), updateDraft(), checkOut(), skip(), logOffRoute(), editCompleted() — owns all visit invariants and orchestration
+- src/lib/visitOutbox.ts — VisitEvent type definitions, makeEvent() factory, newClientId() — event type system
+- src/lib/syncEngine.ts — syncVisitEvents() unified worker (events → visits + visit_events) and setupAutoSync()
 - src/lib/reportData.ts — buildReportData() with single-day and multi-day schedule metric aggregation
 - src/lib/timeUtils.ts — Shared time and currency formatting utilities
 - src/lib/imageCompressor.ts — Photo compression before upload
@@ -49,6 +52,7 @@ Language: TypeScript throughout.
 - customers — customer_name, account_number, area, is_active
 - reps — rep_name, user_id (links to profiles/auth), is_active
 - app_settings — current_week_order, week_cycle_start_date
+- visit_events — append-only event log: client_id, rep_id, customer_id, visit_date, event_type (arrived|completed|skipped), event_time, created_at. Source of truth for admin live status. UNIQUE(client_id, event_type).
 - sync_errors — rep_id (references reps.id), error_type, message, context (jsonb), created_at, cleared_at, cleared_by
 
 ## Database Functions
@@ -56,7 +60,7 @@ Language: TypeScript throughout.
 - auto_generate_daily_schedule(rep_id, date) → idempotent, never runs for future dates
 
 ## visits_status_check Constraint
-Valid values: visited, skipped, in_progress, off_route
+Valid values: visited, skipped, off_route. (in_progress remains permitted by the DB constraint for legacy rows but is never written by current code — in-progress state lives in the active_visit IDB record, not in visits.)
 Any new status must be added via SQL ALTER before frontend code can write it.
 
 ## Timestamps & Timezone (UTC vs SAST)
@@ -74,59 +78,69 @@ Supabase stores `timestamptz` columns (e.g. `created_at`) in UTC. South Africa i
 - **Never use `created_at` as a proxy for arrival_time** — always use `arrival_time`
 
 ## Critical Patterns
+
+### Event-Outbox Model (as of 2026-07-21)
+- Three planes, one owner each: Device truth (`active_visit` IDB), server truth (visits rows born-complete at checkout), live progress (visit_events append-only log)
+- Visit machine (visitMachine.ts) owns all invariants: exactly one open visit at a time, zero-duration checkout rejected, visits row never at arrival, client_generated_id generated once and reused
+- Every state transition appends ONE event to visit_outbox IDB store (arrived / completed / skipped / off_route / edit)
+- syncVisitEvents() drains visit_outbox in order, upserting on client_generated_id — retry-safe, same code path online or offline
+- Schedule cards are prop-driven (read active_visit prop, call machine callbacks) — no internal state for arrival/leaving/notes/orders
+- Scheduled visits: check-in → 'arrived' event (inserts a visit_events row ONLY — does NOT write schedule_items.arrival_time) → check-out → 'completed' event (upserts born-complete visits row AND writes arrival_time/leaving_time/status onto the linked schedule_items row via the sync worker)
+- Ad-hoc visits: check-in → 'arrived' event (NEW: shows live on admin dashboard) → check-out → 'completed' event
+- Off-route orders: single logOffRoute call → 'off_route' event (no 'arrived', never shows as in-progress)
+- client_generated_id is the idempotency key — generated once at check-in, lives in active_visit.clientId, reused for every event of that visit, has UNIQUE constraint on visits table
+- ⚠️ PENDING: AdminDashboard.tsx still reads schedule_items.arrival_time/leaving_time for live rep status and the activity feed. Because arrival_time is no longer written to schedule_items at check-in, live 'in progress / current customer' status and live check-in activity will NOT update until a visit is checked out. AdminDashboard needs a rewrite to read live status from visit_events, plus realtime replication enabled on visit_events. Until then, treat live dashboard progress as not-yet-functional.
+
+### Architecture & Layout
 - visits.rep_id references reps.id — never profiles.id or auth.users.id
 - adminUi.tsx exports admin-only design system (palette A, AdminSidebar, components); rep app uses inline C palette in schedule components
 - AppLayout.tsx branches on role: admin → AdminChrome (sidebar) + admin pages, rep → header + /schedule fullscreen
-- AdminChrome has no top utility strip; offline status shown via OfflineStatusBar on rep header; sign-out button only on AdminAccount page
-- AdminVisits uses soft-delete (is_deleted = true); realtime subscription is INSERT + UPDATE only (no DELETE trigger)
-- active_card_state in IndexedDB must be cleared on every checkout path (online PATCH, offline queue, and error/catch paths)
-- expandedActiveIdRef realtime guard must always be preserved — never remove it
+- AdminChrome has no top utility strip; offline status shown via OfflineStatusBar on rep header; sign-out button on AdminSidebar user card
+- AdminVisits uses hard delete (.delete()); realtime subscription is INSERT + UPDATE only
 - schedule_template_items GROUP BY queries must always include weekly_template_id to avoid cross-week deletions
-- Local-first checkout (as of 2026-07-13, commit e509a51): visits rows are only ever created at checkout, never at arrival. Arrival only writes schedule_items.arrival_time. Checkout does a single `supabase.from("visits").upsert(checkoutData, { onConflict: "client_generated_id" })` — no separate arrival INSERT, no PATCH, no visit-id resolution chain. client_generated_id is generated once at arrival, persisted to IDB, and reused unchanged through checkout (including any retry) as the sole idempotency key.
-- Do not reintroduce an eager arrival-time visits INSERT or an activeVisitId-style tracked-id-to-PATCH pattern — that was the root cause of the RHODES STAR/WEESGERUS/SILCOR FOODS ghost-visit bug family (see git history, commits c510ecf through e509a51). If a similar duplicate/ghost visit bug appears again, the fix belongs in the checkout upsert or client_generated_id handling, not a new client-side guard layered on top.
-- visits.client_generated_id has a live UNIQUE constraint in Supabase (added via SQL Editor 2026-07-14 — it was documented as UNIQUE before this but was never actually enforced on the table, which caused every checkout to fail with Postgres error 42P10 until fixed). Any future onConflict-based upsert against this column depends on that constraint existing — verify it directly in the DB, not just from documentation, if this class of error resurfaces.
+
+### Week Rotation & Self-Heal
 - Week self-heal runs on every fetchSchedule() call (isToday only) — compares get_week_order_for_date() to stored current_week_order and upserts correction silently
 - Never pre-generate future daily_schedules — breaks week rotation on anchor change
-- Off-route orders: excluded from strike rate and visit counts, included in order value totals
-- In-progress visits: excluded from all admin queries, reports, and Done tab
-- offlineDb.ts IDB operations re-throw as `IDB_ERROR: <message>` — call sites importing from offlineDb should catch this prefix to identify storage failures
-- `offline_schedule_item_updates` uses schedule_item_id as keyPath intentionally — state snapshot pattern, last write before sync is authoritative. Do not redesign
-- `adHocPhoto` in DailySchedule.tsx is `{ blob: Blob; preview: string } | null` — base64 conversion is lazy, only in offline/error fallback paths
-- AdminSchedules uses master-detail layout: rep rail (left) + week-cycle accordion (left-centre, expandable cards with day buttons) + day template editor (right)
+
+### Off-Route & In-Progress
+- In-progress state lives only in the device's active_visit IDB record — there is no in-progress visits row. A visits row appears only at checkout (born complete). Off-route orders: excluded from strike rate and visit counts, included in order value totals.
+
+### IndexedDB & Offline
+- offlineDb.ts IDB operations re-throw as `IDB_ERROR: <message>` — call sites should catch this prefix to identify storage failures
+- CameraCapture tap-shield: on overlay close, a transparent full-screen shield is raised for ~500ms to absorb the ghost/compatibility click and prevent fall-through to the check-out button. capture() now calls closeCamera() directly (not setTimeout).
+
+### UI & Mobile
+- AdminSchedules uses master-detail layout: rep rail (left) + week-cycle accordion (left-centre) + day template editor (right)
+- Order input fields use inputMode="numeric" for order_number and order_quantity; inputMode="decimal" for order_amount; amount uses type="text" not type="number"
+- parseAmount() handles South African locale — comma decimal, space/dot thousands separators. Input "1 234,56" or "1.234,56" both parse correctly.
+- calcDuration() wraps midnight crossing — arrival 23:50, checkout 00:05 = +15 minutes (not garbage negative)
+- AdminVisits pagination controls centered (justifyContent: center with gap: 24) instead of space-between
+- Admin edit save patches linked schedule_items row via visit_id to sync field changes to rep's daily schedule view
+- Rep app is constrained to max-width 480px centred column in AppLayout.tsx; body background is #F4ECDB (cream); admin layout is completely separate
+- CameraCapture video element is wrapped in div with minHeight:0 to prevent Safari/iPad flex overflow
+- sync_errors RLS policy uses EXISTS (SELECT 1 FROM user_roles ...) not has_role() cast — has_role() type resolution fails in Supabase SQL editor
+- AdminSidebar accepts onSignOut? prop and manages its own confirmingSignOut state internally
+- viewport-fit=cover in index.html and text-size-adjust:100% in index.css prevent iPad rotation zoom
+- SyncErrorPanel in AdminDashboard.tsx shows uncleared sync_errors as a fixed bottom-right badge; admins clear errors individually
+
+### Fetch & Debounce
 - reportData.ts handles both single-day and multi-day date ranges; multi-day aggregates travel time, schedule items, and calculates expectedProductiveMins as `(scheduleDaysCount * 540) - travelTimeMins`
 - DailySchedule.tsx uses lastFetchTimeRef to track last fetchSchedule() call time; fetchSchedule() has a 2-second debounce window to prevent duplicate fetches
 - fetchSchedule(force?: boolean) accepts force parameter to bypass debounce guard when explicitly requested (e.g., manual refresh)
-- onlineFetchDoneRef in DailySchedule.tsx gates the fetchUnscheduledVisits call to prevent double-counting when loading from IDB cache on app mount
-- AdHocVisitCard and OffRouteOrderCard persist state to active_adhoc_state and active_offroute_state IDB stores on mount restore and field change; cleared on submit or reset
-- ScheduleCard arrival now uses plain INSERT instead of upsert to ensure reliable arrival timestamps in schedule_items
-- ScheduleCard uploadPhotoOnline falls back to pending_photos IDB when photoBlob is null (recovery from backgrounding)
-- ScheduleCard restores clientGenIdRef unconditionally on mount (not gated on isExpanded) so a backgrounded/resumed app reuses the same checkout idempotency key. There is no activeVisitId anymore — removed in commit e509a51.
-- CameraCapture calls onCapture(blob) before closeCamera() to ensure blob is processed before modal closes and to prevent Android touch propagation issues
-- CameraCapture overlay has pointer-events: auto when open, pointer-events: none when closed to prevent touch interference with background elements
-- Order input fields use inputMode="numeric" for order_number and order_quantity; inputMode="decimal" for order_amount; amount uses type="text" not type="number"
-- AdminVisits pagination controls centered (justifyContent: center with gap: 24) instead of space-between
-- Admin edit save patches linked schedule_items row via visit_id to sync field changes to rep's daily schedule view
-- syncEngine.ts's syncPendingVisits() upserts on client_generated_id (onConflict) rather than inserting — never strip client_generated_id from the queued payload, and never revert this to a plain insert() or a select-then-insert check, both of which reintroduce a check-then-act race.
-- Rep app is constrained to max-width 480px centred column in AppLayout.tsx; body background is #F4ECDB (cream); admin layout is completely separate and untouched
-- CameraCapture calls onCapture(blob) then setTimeout(closeCamera, 0) — never closeCamera() synchronously
-- cameraCooldownRef in ScheduleCard blocks markLeft() for 300ms after handleCameraCapture fires
-- sync_errors RLS policy uses EXISTS (SELECT 1 FROM user_roles ...) not has_role() cast — has_role() type resolution fails in Supabase SQL editor for this table
-- AdminSidebar accepts onSignOut? prop and manages its own confirmingSignOut state internally
-- CameraCapture video element is wrapped in div with minHeight:0 to prevent Safari/iPad flex overflow
-- viewport-fit=cover in index.html and text-size-adjust:100% in index.css prevent iPad rotation zoom
-- Ghost IDB active_card_state (scheduleItemId not found in allItems) is auto-cleared in markArrived() and files a sync_errors row
-- SyncErrorPanel in AdminDashboard.tsx shows uncleared sync_errors as a fixed bottom-right badge; admins clear errors individually
 
-## IndexedDB Stores (DB_VERSION: 6)
-- offline_visits_queue — queued full visit records (key: client_generated_id), upserted on sync — this is the only mechanism that creates/updates visits rows, online or offline
-- offline_schedule_item_updates — queued schedule item updates. Its `visitId` field is no longer set by any current code path (was used for a PATCH-vs-INSERT distinction that no longer exists post-e509a51) — kept only so syncEngine.ts can safely drain any pre-existing queued entries from before that change
+## IndexedDB Stores (DB_VERSION: 7)
+
+**Operational stores** (event-outbox model):
+- active_visit — single open visit (key: "current", fields: clientId, kind, scheduleItemId, repId, customerId, customerName, visitDate, arrivalTime, notes, orderNumber, orderQty, orderAmount, photoBase64, updatedAt). Exactly one at a time (scheduled OR ad-hoc). Cleared on checkout, skip, or ad-hoc cancel (abandon).
+- visit_outbox — append-only event queue (keyPath: eventId, fields per VisitEvent type: type, clientId, repId, customerId, visitDate, arrivalTime, leavingTime, durationMinutes, notes, order, status, photoBase64, syncStatus, createdAtLocal). Drained by syncVisitEvents().
+- offroute_draft — off-route draft state (key: "current", fields: customer, notes, orderNumber, orderQty, orderAmount). Cleared on submit.
+
+**Preserved cache stores**:
 - cached_customers — bootstrapped customer list
 - cached_schedules — bootstrapped schedules (-2 to +7 days)
 - cached_user_auth — auth context for offline login
-- pending_photos — failed photo uploads (key: scheduleItemId, fields: base64, visitId, clientGeneratedId) — visitId here is still real and used, populated only when a visit row was successfully created but its storage upload specifically failed
-- active_card_state — active visit card state (key: "current", fields: scheduleItemId, arrivalTime, notes, clientGeneratedId, orderNumber, orderQty, orderAmount). The visitId field on this store's type is @deprecated and no longer written — left only for backward-compatible reads of pre-existing IDB entries.
-- active_adhoc_state — active unscheduled visit card state (key: "adhoc", fields: customer, arrivalTime, notes, photo, orderNumber, orderQty, orderAmount)
-- active_offroute_state — active off-route order card state (key: "offroute", fields: customer, notes, orderNumber, orderQty, orderAmount)
+
 Increment DB_VERSION whenever adding or renaming a store.
 
 ## Excel / PDF Exports
