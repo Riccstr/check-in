@@ -32,7 +32,6 @@ export interface SyntheticVisit {
   order_quantity: number | null;
   order_amount: number | null;
   photo_url: string | null;
-  _offline: true;
 }
 
 export function AdHocVisitCard({
@@ -166,7 +165,6 @@ export function AdHocVisitCard({
         order_quantity: draftOrderQty !== "" ? Number(draftOrderQty) : null,
         order_amount: null,
         photo_url: null,
-        _offline: true,
       });
       setActiveVisit(null);
       resetLocal();

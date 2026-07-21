@@ -23,7 +23,6 @@ export interface SyntheticOffRouteVisit {
   order_quantity: number | null;
   order_amount: number | null;
   photo_url: null;
-  _offline: true;
 }
 
 export function OffRouteOrderCard({
@@ -116,7 +115,6 @@ export function OffRouteOrderCard({
         order_quantity: offRouteOrderQty !== "" ? Number(offRouteOrderQty) : null,
         order_amount: parseAmount(offRouteOrderAmount),
         photo_url: null,
-        _offline: true,
       });
 
       if (navigator.onLine) {
