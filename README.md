@@ -684,7 +684,7 @@ Both functions are configured with `verify_jwt = false` in `supabase/config.toml
 
 ### `manage-rep-user` — [supabase/functions/manage-rep-user/index.ts](supabase/functions/manage-rep-user/index.ts)
 
-**Called by:** [AdminReps.tsx](src/pages/admin/AdminReps.tsx)
+**Called by:** (none currently — orphaned). AdminReps.tsx no longer exists; rep account creation/editing now goes through the manage-users function via AdminUsers.tsx. This edge function still exists on Supabase but has no frontend caller.
 
 **Security:** Verifies caller has `'admin'` role in `user_roles` table using the service role key.
 
