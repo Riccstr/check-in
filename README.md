@@ -234,7 +234,7 @@ Unique: `(rep_id, customer_id)`. Upsert on conflict is used. RLS: Admins manage 
 | `client_generated_id` | uuid UNIQUE | Client-generated UUID for offline deduplication. **Verify this constraint actually exists on the live table before relying on it for an `upsert(...).onConflict(...)` call** — it was documented here before it was actually enforced in the database, which caused every checkout to fail with Postgres 42P10 until the constraint was added via SQL Editor on 2026-07-14. |
 | `created_at` | timestamptz | |
 
-RLS: Admins manage all; reps can INSERT/SELECT/UPDATE/DELETE own visits (verified via `reps.user_id = auth.uid()`).
+RLS: Admins manage all (including delete); reps can INSERT/SELECT/UPDATE own visits (verified via `reps.user_id = auth.uid()`) — reps have NO delete policy.
 
 ---
 
@@ -251,7 +251,7 @@ RLS: Admins manage all; reps can INSERT/SELECT/UPDATE/DELETE own visits (verifie
 | `event_time` | time | Wall-clock SAST time when event occurred |
 | `created_at` | timestamptz | Server UTC timestamp |
 
-Unique: `(client_id, event_type)`. Append-only — no UPDATE/DELETE. RLS: Reps INSERT+SELECT own; admins SELECT all. **Source of truth for admin live rep status** (check-in/check-out activity). Off-route orders never write to visit_events; skips also originate from visit_events but skips do not carry wall-clock times. Realtime replication on visit_events is required for live check-in updates on AdminDashboard (confirm current status in Supabase → Database → Replication).
+Unique: `(client_id, event_type)`. Append-only — no UPDATE/DELETE. RLS: Reps INSERT+SELECT own; admins SELECT all. **Source of truth for admin live rep status** (check-in/check-out activity). Off-route orders never write to visit_events. A skip emits a visit_events 'skipped' row but carries no wall-clock event_time; the AdminDashboard activity feed sources skips from the visits table via created_at. Realtime replication on visit_events is required for live check-in updates on AdminDashboard (confirm current status in Supabase → Database → Replication).
 
 ---
 
@@ -401,7 +401,7 @@ All tables have RLS enabled. The general pattern:
 | `reps` | Manage all | View own |
 | `customers` | Manage all | View assigned (via `customer_assignments`) |
 | `customer_assignments` | Manage all | View own (read-only) |
-| `visits` | Manage all | INSERT / SELECT / UPDATE / DELETE own |
+| `visits` | Manage all | INSERT / SELECT / UPDATE own (no delete) |
 | `weekly_templates` | Manage all | View all |
 | `schedule_templates` | Manage all | View own |
 | `schedule_template_items` | Manage all | View own (via `schedule_templates`) |
@@ -482,15 +482,15 @@ Real-time dashboard showing live rep status and activity feed.
 - Returns null if no uncleared errors exist
 
 #### `/admin/visits` — [AdminVisits.tsx](src/pages/admin/AdminVisits.tsx)
-All visits across all reps with edit/delete. Uses soft-delete (is_deleted flag) to preserve data integrity.
+All visits across all reps with edit/delete. Delete is a permanent HARD delete (supabase `.delete()`) — the row is physically removed.
 
-**Tables read:** `visits` (filtered `is_deleted = false`), `reps`, `customers`
+**Tables read:** `visits`, `reps`, `customers`
 
-**Tables written:** `visits` (UPDATE, DELETE via `is_deleted = true`)
+**Tables written:** `visits` (UPDATE; DELETE — permanent hard delete via `.delete()`)
 
 **Notable logic:**
-- Real-time subscription via `supabase.channel('admin-visits-realtime')` listening for **INSERT + UPDATE only** (no DELETE) — updates local state on soft-delete
-- Delete action sets `is_deleted = true` (never physically removes rows)
+- Real-time subscription via `supabase.channel('admin-visits-realtime')` listening for **INSERT + UPDATE only** (no DELETE) — after a hard delete the handler calls `fetchVisits()` to refresh the list
+- Delete action calls `.delete()` and permanently removes the row (hard delete); confirm dialog says "Permanently delete this visit? This cannot be undone."
 - Columns: Date, Rep, Customer, Account #, Arrival, Leaving, Duration, Photo, Order No., Qty, Amount, Notes
 - Edit modal includes all visit fields including order fields with time validation; saving patches linked schedule_items row via visit_id to sync field changes to rep's daily schedule view
 - Pagination controls centered (justifyContent: center) with gap: 24 spacing
@@ -671,7 +671,7 @@ Reusable searchable combobox used for all customer and rep dropdowns across admi
 - **Props:** `options`, `value`, `onValueChange`, `placeholder`, `searchPlaceholder`, `emptyMessage`, `className`, `includeAll` (prepends an "All" option), `allLabel`
 - Trigger button stays compact (caller-specified width); popover expands to `min-w-[400px]`, capped at `100vw - 2rem` on mobile
 - Search input has `font-size: 16px` to prevent iOS auto-zoom
-- **Used on:** All Visits, Export Data, My Visits, Log Visit, Assignments (rep + customer selectors), Schedules (rep selector)
+- **Used on:** All Visits, Export Data, Assignments (rep + customer selectors), Schedules (rep selector)
 
 ### `src/components/ui/` — shadcn/ui Component Library
 50+ components built on Radix primitives: `Button`, `Input`, `Select`, `Dialog`, `AlertDialog`, `Sheet`, `Popover`, `Table`, `Tabs`, `Badge`, `Checkbox`, `Label`, `Textarea`, `Toast` (Radix + Sonner implementations), `Card`, etc. Used throughout all pages.
@@ -776,7 +776,7 @@ Database name: `checkin-tracker-offline`, version **7** (increment version if ad
 
 | Store | Key | Stored Data |
 |-------|-----|-------------|
-| `active_visit` | `key` (`"current"`) | `{clientId, kind, scheduleItemId, repId, customerId, customerName, visitDate, arrivalTime, notes, orderNumber, orderQty, orderAmount, photoBase64, updatedAt}` — single open visit on device. Exactly one at a time (scheduled OR ad-hoc). Cleared on checkout/skip. |
+| `active_visit` | `key` (`"current"`) | `{clientId, kind, scheduleItemId, repId, customerId, customerName, visitDate, arrivalTime, notes, orderNumber, orderQty, orderAmount, photoBase64, updatedAt}` — single open visit on device. Exactly one at a time (scheduled OR ad-hoc). Cleared on checkout, skip, or cancel (ad-hoc abandon). |
 | `visit_outbox` | `eventId` | Append-only queue of VisitEvent records (type, clientId, repId, customerId, visitDate, arrivalTime, leavingTime, durationMinutes, notes, order, status, photoBase64, syncStatus). Drained by `syncVisitEvents()`. Same code path online or offline. |
 | `offroute_draft` | `key` (`"current"`) | `{customer, notes, orderNumber, orderQty, orderAmount}` — off-route draft state, persisted on field change, cleared on submit. |
 
@@ -801,7 +801,7 @@ Triggered by:
 1. Get all `pending` / `error` events from `visit_outbox` IDB store, sorted by `createdAtLocal`
 2. Per event: apply side effects based on event type:
    - **'arrived':** Inserts a `visit_events` row (event_type 'arrived'); no updates to schedule_items (arrival_time written at checkout)
-   - **'completed':** Upserts a born-complete `visits` row via `upsert(checkoutData, { onConflict: "client_generated_id" })`; writes `arrival_time`, `leaving_time`, `status` to the linked `schedule_items` row; uploads photo if present; inserts `visit_events` row (event_type 'completed')
+   - **'completed':** Upserts a born-complete `visits` row via `upsert(checkoutData, { onConflict: "client_generated_id" })`; writes `arrival_time`, `leaving_time`, `status` to the linked `schedule_items` row; uploads photo if present (retries up to 5 times; gives up with console warning after 5 failed attempts); inserts `visit_events` row (event_type 'completed')
    - **'skipped':** Upserts `visits` row with status='skipped'; writes status to `schedule_items`; inserts `visit_events` row (event_type 'skipped')
    - **'off_route':** Upserts `visits` row with status='off_route'; no schedule link, no visit_events row
 3. On success: mark event as `synced` in IndexedDB; remove synced records after pass completes
@@ -1053,18 +1053,16 @@ VITE_SUPABASE_ANON_KEY=<your-anon-key>
 
 18. **fetchSchedule() debounced with 2-second window via lastFetchTimeRef** — prevents duplicate network calls when app load, visibility change, and online event fire in quick succession. force parameter bypasses debounce for manual refresh.
 
-19. **onlineFetchDoneRef gates fetchUnscheduledVisits on app mount** — prevents double-counting visits when loading from IDB cache. The flag is set after the first successful online fetch and gates subsequent fetches until the next day.
+19. **sync_errors RLS uses EXISTS subquery, not has_role() cast** — the RLS policy for sync_errors was created with a raw `EXISTS (SELECT 1 FROM user_roles ...)` subquery instead of the `has_role()` function because the app_role cast fails in the Supabase SQL editor. Never replace this with `has_role()` without testing in production; the type resolution issue is environment-specific.
 
-20. **sync_errors RLS uses EXISTS subquery, not has_role() cast** — the RLS policy for sync_errors was created with a raw `EXISTS (SELECT 1 FROM user_roles ...)` subquery instead of the `has_role()` function because the app_role cast fails in the Supabase SQL editor. Never replace this with `has_role()` without testing in production; the type resolution issue is environment-specific.
+20. **The rep app max-width constraint lives in AppLayout.tsx rep branch only** — the width constraint (`maxWidth: 480px`) and cream background (`#F4ECDB`) are applied only when `role !== 'admin'`. The AdminChrome branch is completely unaffected and uses full viewport width. Never apply width constraints to the AdminChrome branch or admin pages.
 
-21. **The rep app max-width constraint lives in AppLayout.tsx rep branch only** — the width constraint (`maxWidth: 480px`) and cream background (`#F4ECDB`) are applied only when `role !== 'admin'`. The AdminChrome branch is completely unaffected and uses full viewport width. Never apply width constraints to the AdminChrome branch or admin pages.
+21. **CameraCapture video must always be inside a div with minHeight:0** — removing this wrapper causes Safari/iPad to overflow the video element over the capture button. The wrapper allows the video to shrink below its content size within the flex layout; without it, the video stretches and breaks the layout on iPad.
 
-22. **CameraCapture video must always be inside a div with minHeight:0** — removing this wrapper causes Safari/iPad to overflow the video element over the capture button. The wrapper allows the video to shrink below its content size within the flex layout; without it, the video stretches and breaks the layout on iPad.
+22. **viewport-fit=cover in index.html is required for safe-area-inset CSS** — the CSS environment variables (`env(safe-area-inset-top)`, `env(safe-area-inset-bottom)`, etc.) only work when `viewport-fit=cover` is set in the viewport meta tag. Without this, safe-area insets are always zero and notched devices (iPhone X+, iPad Pro with notch) will have content hidden under hardware features.
 
-23. **viewport-fit=cover in index.html is required for safe-area-inset CSS** — the CSS environment variables (`env(safe-area-inset-top)`, `env(safe-area-inset-bottom)`, etc.) only work when `viewport-fit=cover` is set in the viewport meta tag. Without this, safe-area insets are always zero and notched devices (iPhone X+, iPad Pro with notch) will have content hidden under hardware features.
+23. **text-size-adjust:100% prevents unwanted iOS Safari zoom-on-orientation-change** — Safari on iOS/iPad auto-magnifies text when rotating from portrait to landscape. Setting `-webkit-text-size-adjust: 100%` and `text-size-adjust: 100%` on all elements via the universal selector in index.css prevents this unwanted reflow. This rule is applied globally to the entire document.
 
-24. **text-size-adjust:100% prevents unwanted iOS Safari zoom-on-orientation-change** — Safari on iOS/iPad auto-magnifies text when rotating from portrait to landscape. Setting `-webkit-text-size-adjust: 100%` and `text-size-adjust: 100%` on all elements via the universal selector in index.css prevents this unwanted reflow. This rule is applied globally to the entire document.
+24. **parseAmount() handles South African locale** — comma is decimal separator, space or dot are thousands separators. Input "1 234,56" or "1.234,56" both parse correctly. Amount input fields use `inputMode="decimal"` and `type="text"` (not type="number").
 
-25. **parseAmount() handles South African locale** — comma is decimal separator, space or dot are thousands separators. Input "1 234,56" or "1.234,56" both parse correctly. Amount input fields use `inputMode="decimal"` and `type="text"` (not type="number").
-
-26. **calcDuration() wraps midnight crossing** — a visit with arrival 23:50 and checkout 00:05 returns +15 minutes, not garbage negative. Wrapped by +24h when negative.
+25. **calcDuration() wraps midnight crossing** — a visit with arrival 23:50 and checkout 00:05 returns +15 minutes, not garbage negative. Wrapped by +24h when negative.
