@@ -223,7 +223,7 @@ Unique: `(rep_id, customer_id)`. Upsert on conflict is used. RLS: Admins manage 
 | `leaving_time` | time | |
 | `duration_minutes` | integer | Calculated: `(leaving - arrival)` in minutes |
 | `notes` | text | |
-| `status` | text | `'visited'`, `'skipped'`, `'in_progress'`, `'off_route'` |
+| `status` | text | `'visited'`, `'skipped'`, `'off_route'` (in_progress is legacy; current code uses active_visit IDB record instead) |
 | `order_number` | text | Nullable — sales order reference |
 | `order_quantity` | integer | Nullable — units ordered |
 | `order_amount` | numeric | Nullable — currency amount |
@@ -251,7 +251,7 @@ RLS: Admins manage all; reps can INSERT/SELECT/UPDATE/DELETE own visits (verifie
 | `event_time` | time | Wall-clock SAST time when event occurred |
 | `created_at` | timestamptz | Server UTC timestamp |
 
-Unique: `(client_id, event_type)`. Append-only — no UPDATE/DELETE. RLS: Reps INSERT+SELECT own; admins SELECT all. **Source of truth for admin live rep status and activity feed** (pending rewrite of AdminDashboard to read from this table instead of schedule_items).
+Unique: `(client_id, event_type)`. Append-only — no UPDATE/DELETE. RLS: Reps INSERT+SELECT own; admins SELECT all. **Source of truth for admin live rep status** (check-in/check-out activity). Off-route orders never write to visit_events; skips also originate from visit_events but skips do not carry wall-clock times. Realtime replication on visit_events is required for live check-in updates on AdminDashboard (confirm current status in Supabase → Database → Replication).
 
 ---
 
@@ -444,34 +444,33 @@ Main rep interface. Shows the day's customer visit schedule as expandable cards.
 
 **Notable logic:**
 - Real-time subscription on `schedule_items` (filter: `schedule_id=eq.{id}`) and `daily_schedules` (filter: `rep_id=eq.{repId}`) via Supabase Realtime
-- **Event-outbox architecture** (as of 2026-07-21): In-progress visit truth lives only on the device in a single `active_visit` IDB record. Every state transition (check-in, update draft, checkout, skip) appends ONE event to the `visit_outbox` IDB store (append-only log). A single idempotent worker drains it online or offline, upserting on `client_generated_id` to prevent duplicates. Same code path regardless of connectivity.
-- Visit is always born complete at checkout — visits rows never created at arrival. Arrival only writes `schedule_items.arrival_time`. This eliminates the ghost/duplicate-visit bug family from the pre-2026-07-13 models.
-- Rep schedule page owns `active_visit` state and provides machine callbacks to card components. Cards no longer hold in-progress state (no localArrival/localLeaving refs/guards). Cards are **prop-driven** and read from the active_visit record.
-- fetchSchedule() call has 2-second debounce via lastFetchTimeRef to prevent duplicate network calls; force parameter bypasses debounce when needed
-- fetchUnscheduledVisits gated by onlineFetchDoneRef to prevent double-counting when loading from IDB cache on app mount
+- **Event-outbox architecture** (as of 2026-07-21): In-progress visit state lives only on the device in a single `active_visit` IDB record (exactly one open visit at a time). Every state transition (check-in, update draft, checkout, skip) appends ONE event to the `visit_outbox` IDB store. The sync worker drains it online or offline, idempotent on `client_generated_id`. Same code path regardless of connectivity.
+- **Born-complete visits:** A `visits` row appears only at checkout/skip/off-route via upsert on `client_generated_id` — NEVER at arrival. Scheduled check-in emits 'arrived' event that writes ONLY to `visit_events` table and does NOT update `schedule_items.arrival_time`. At checkout, the completed event writes arrival/leaving/status to both `visits` and `schedule_items` rows.
+- Rep schedule page owns `active_visit` state via visit machine (visitMachine.ts) and provides callbacks to card components. Cards are **prop-driven** — no internal state for arrival/leaving/notes/orders. All state read from `active_visit` prop.
+- fetchSchedule() has 2-second debounce via lastFetchTimeRef to prevent duplicate network calls; force parameter bypasses debounce for manual refresh
 - Future dates show "Schedule not yet available" empty state and do not trigger auto-generation
 - Order fields: `order_number` (string), `order_quantity` (integer), `order_amount` (numeric); amount uses inputMode="decimal" and type="text" not type="number"; parseAmount() handles South African locale (comma decimal, space/dot thousands separators)
-- Open visit reconciled by (customerId, visitDate) — not by scheduleItemId — so a schedule regeneration cannot orphan it
-- Unscheduled visit card: rep selects customer, taps to check in (starts visit, emits 'arrived' event so it shows live on admin dashboard), captures photo/notes/order, checks out (emits 'completed' event, born-complete visit row, no schedule_item created). Both unscheduled and off-route cards switch to the Done tab on successful submission.
-- Off-route order card: customer search, order fields, notes — logs single 'off_route' event (no 'arrived' — never shows as in-progress). Born-complete visit with status 'off_route'.
+- Open visit reconciled by (customerId, visitDate) — not by stored scheduleItemId — so schedule regeneration cannot orphan it
+- Unscheduled visit card: rep selects customer, taps to check in (starts visit, emits 'arrived' event; shows live on admin dashboard), captures photo/notes/order, checks out (emits 'completed' event, creates born-complete visit row, no schedule_item). Cards switch to Done tab on successful submission.
+- Off-route order card: customer search, order fields, notes — single 'off_route' event (no 'arrived', never shows as in-progress). Born-complete visit with status 'off_route', no visit_events row written.
 - Sign-out requires confirmation dialog to prevent accidental logout.
 - Completed visit cards use `VisitDetails` component with lookup by `visit_id`
-- Times displayed as HH:MM (seconds stripped via `.slice(0, 5)`) — applies to arrival, leaving, and all chip row displays
-- calcDuration() wraps midnight crossing: a visit with arrival 23:50 and checkout 00:05 calculates as +15 minutes (wraps by +24h), not garbage negative
+- Times displayed as HH:MM (seconds stripped via `.slice(0, 5)`)
+- calcDuration() wraps midnight crossing: arrival 23:50, checkout 00:05 = +15 minutes (not garbage negative)
 
 ### Admin Pages
 
 #### `/admin/dashboard` — [AdminDashboard.tsx](src/pages/admin/AdminDashboard.tsx)
 Real-time dashboard showing live rep status and activity feed.
 
-**Tables read:** `daily_schedules`, `schedule_items`, `visits`, `reps`, `customers`, `app_settings`, `sync_errors`
-
-**⚠️ KNOWN LIMITATION:** AdminDashboard currently reads `schedule_items.arrival_time/leaving_time` for live rep status (checked_in, travelling, etc.). It is **PENDING a rewrite** to read from the new `visit_events` table instead. Until this rewrite is complete and realtime replication is enabled on `visit_events`, live "in progress / current customer" status will not update until a visit is checked out. This is a known issue, not the intended final behavior.
+**Tables read:** `visit_events`, `visits`, `daily_schedules`, `schedule_items`, `reps`, `customers`, `app_settings`, `sync_errors`
 
 **Notable logic:**
-- Live rep cards showing: status pill (checked_in / travelling / day_complete / not_started / no_schedule), progress meter (X/Y visits), current customer, areas served
-- Status detection: checked_in if arrival_time but no leaving_time; travelling if some items left but some pending; day_complete if all visited/skipped
-- Activity feed: real-time checkin, checkout, skip, and off-route events sorted by timestamp
+- **Live rep status:** Reads from `visit_events` — a rep is "checked_in" if they have an open 'arrived' event with no matching 'completed' or 'skipped' for that visit. Ad-hoc check-ins also show live.
+- **Settled counts:** Order totals and visit counts (visited/skipped) come from `schedule_items` + `visits` rows (written at checkout).
+- **Activity feed:** Check-in/check-out from `visit_events` (records with wall-clock times); skip and off-route orders from `visits` table via `created_at` (skips and off-route do not carry event_time values).
+- **Live updates:** Depend on realtime replication being enabled on `visit_events`. Confirm current status in Supabase → Database → Replication.
+- Rep cards show: status pill (checked_in / travelling / day_complete / not_started / no_schedule), progress meter (X/Y visits), current customer, areas served
 - Uses status pills from `adminUi.tsx` with live pulse animation
 
 **SyncErrorPanel component:**
@@ -797,14 +796,14 @@ Triggered by:
 - `online` DOM event (1.5s delay)
 - `visibilitychange` → visible, when online (1s delay)
 - App load when online (2s delay)
-- Manual "Sync Now" button in [MyVisits.tsx](src/pages/MyVisits.tsx) and [OfflineStatusBar.tsx](src/components/OfflineStatusBar.tsx)
 
 **Event sync flow (idempotent):**
 1. Get all `pending` / `error` events from `visit_outbox` IDB store, sorted by `createdAtLocal`
-2. Per event: insert into server-side `visit_events` table, then apply the event side effects:
-   - **'arrived':** Updates `schedule_items.arrival_time` if scheduled visit; no visits row yet
-   - **'completed':** Upserts a born-complete visits row via `upsert(checkoutData, { onConflict: "client_generated_id" })`; uploads photo if present; links to schedule_items via `linkVisitToScheduleItem()`
-   - **'skipped':** Inserts visits row with status='skipped'; updates schedule_items.status
+2. Per event: apply side effects based on event type:
+   - **'arrived':** Inserts a `visit_events` row (event_type 'arrived'); no updates to schedule_items (arrival_time written at checkout)
+   - **'completed':** Upserts a born-complete `visits` row via `upsert(checkoutData, { onConflict: "client_generated_id" })`; writes `arrival_time`, `leaving_time`, `status` to the linked `schedule_items` row; uploads photo if present; inserts `visit_events` row (event_type 'completed')
+   - **'skipped':** Upserts `visits` row with status='skipped'; writes status to `schedule_items`; inserts `visit_events` row (event_type 'skipped')
+   - **'off_route':** Upserts `visits` row with status='off_route'; no schedule link, no visit_events row
 3. On success: mark event as `synced` in IndexedDB; remove synced records after pass completes
 4. Same code path online or offline — all state transitions go through the machine, all persist to visit_outbox, all drain via syncVisitEvents
 
@@ -919,8 +918,6 @@ src/
 │   ├── Auth.tsx               # /auth — login form
 │   ├── DailySchedule.tsx      # /schedule — rep daily schedule (page shell)
 │   ├── Index.tsx              # / — role-based redirect
-│   ├── MyVisits.tsx           # /my-visits — completed visits list
-│   ├── Averages.tsx           # /averages — rep performance metrics
 │   ├── NotFound.tsx           # * — 404
 │   └── admin/
 │       ├── AdminAccount.tsx   # /admin/account — admin profile & settings (with sign-out)
@@ -1012,23 +1009,23 @@ VITE_SUPABASE_ANON_KEY=<your-anon-key>
 ### Visit Lifecycle (Event-Outbox Model, as of 2026-07-21)
 
 1. **Three planes, one owner each:**
-   - **Device truth:** Single `active_visit` IDB record (exactly one open visit at a time — scheduled OR ad-hoc). Managed by visit machine.
+   - **Device truth:** Single `active_visit` IDB record (exactly one open visit at a time — scheduled OR ad-hoc). Managed by visit machine. Cleared on checkout, skip, or cancel.
    - **Server truth:** `visits` rows, born complete at checkout/skip/off-route — NEVER at arrival. Upserted on `client_generated_id` (idempotent).
-   - **Live progress:** `visit_events` append-only table (arrived / completed / skipped events). Source of truth for admin live status (pending rewrite of AdminDashboard to read from this table).
+   - **Live progress:** `visit_events` append-only table (arrived / completed / skipped events). Source of truth for admin live rep status (check-in/check-out). Off-route never written to visit_events.
 
 2. **Visit machine owns orchestration:** [src/lib/visitMachine.ts](src/lib/visitMachine.ts) enforces all invariants:
    - At most one open visit at a time (raises "already_open" error if user tries to check in elsewhere)
-   - Never allow zero-duration checkout
+   - Zero-duration checkout rejected
    - visits row born complete at checkout, never at arrival
-   - client_generated_id generated once at check-in, reused unchanged for every event of that visit
+   - client_generated_id generated once at check-in, reused unchanged for every event of that visit (including edits)
 
 3. **Event outbox + idempotent sync:** Every state transition appends ONE event to `visit_outbox` IDB store. `syncVisitEvents()` drains it in order, upserting on `client_generated_id`. Same code path online or offline. Retry-safe: a re-run of the same event never duplicates.
 
-4. **Scheduled visits:** Check-in (startVisit) → emits 'arrived' event → only updates schedule_items.arrival_time. Check-out (checkOut) → emits 'completed' event → upserts born-complete visits row; links to schedule_items. No visits row at arrival.
+4. **Scheduled visits:** Check-in (startVisit) → emits 'arrived' event → writes ONLY to `visit_events` table; does NOT update `schedule_items.arrival_time`. Check-out (checkOut) → emits 'completed' event → upserts born-complete visits row AND writes arrival/leaving/status to `schedule_items`. No visits row at arrival.
 
-5. **Ad-hoc visits:** Check-in → emits 'arrived' event (NEW: now shows live on admin dashboard). Check-out → emits 'completed' event (born-complete, no schedule_item). NEW capability: ad-hoc check-ins are now visible to admins in real-time.
+5. **Ad-hoc visits:** Check-in → emits 'arrived' event (shows live on admin dashboard via visit_events). Check-out → emits 'completed' event → creates born-complete visits row, no schedule_item. Both scheduled and ad-hoc check-ins show live on admin dashboard.
 
-6. **Off-route orders:** Single logOffRoute call → emits 'off_route' event (no 'arrived' — never shows as in-progress). Born-complete visit with status='off_route'.
+6. **Off-route orders:** Single logOffRoute call → emits 'off_route' event (no 'arrived' — never shows as in-progress). Born-complete visit with status='off_route', no visit_events row written.
 
 7. **Schedule cards are prop-driven:** No internal state for arrival/leaving/notes/orders. All read from `active_visit` prop. Callbacks (onArrived, onUpdateDraft, onCheckOut, onSkip) call machine functions.
 
