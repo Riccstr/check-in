@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { getPendingVisits } from "@/lib/offlineDb";
-import { syncPendingVisits } from "@/lib/syncEngine";
+import { getPendingVisitEvents } from "@/lib/offlineDb";
+import { syncVisitEvents } from "@/lib/syncEngine";
 import { Wifi, WifiOff, RefreshCw, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -15,9 +15,9 @@ export default function OfflineStatusBar() {
   const [syncing, setSyncing] = useState(false);
 
   const refreshCounts = useCallback(async () => {
-    const pending = await getPendingVisits();
-    setPendingCount(pending.filter((v) => v.sync_status === "pending").length);
-    setErrorCount(pending.filter((v) => v.sync_status === "error").length);
+    const pending = await getPendingVisitEvents();
+    setPendingCount(pending.filter((v) => v.syncStatus === "pending").length);
+    setErrorCount(pending.filter((v) => v.syncStatus === "error").length);
   }, []);
 
   useEffect(() => {
@@ -29,7 +29,7 @@ export default function OfflineStatusBar() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const result = await syncPendingVisits();
+      const result = await syncVisitEvents();
       if (result.synced > 0) toast.success(`${result.synced} visit(s) synced`);
       if (result.errors > 0) toast.error(`${result.errors} visit(s) failed to sync`);
       await refreshCounts();
