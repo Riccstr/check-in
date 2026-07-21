@@ -16,6 +16,7 @@ import {
   getCachedSchedule,
   updateCachedScheduleItem,
   getActiveVisit,
+  saveActiveVisit,
   clearActiveVisit,
   type ActiveVisit,
 } from "@/lib/offlineDb";
@@ -104,7 +105,6 @@ export default function DailySchedule() {
             const relinked = { ...av, scheduleItemId: match.id };
             setActiveVisit(relinked);
             // persist the corrected link
-            const { saveActiveVisit } = await import("@/lib/offlineDb");
             await saveActiveVisit(relinked).catch(() => {});
           } else {
             setActiveVisit(av);

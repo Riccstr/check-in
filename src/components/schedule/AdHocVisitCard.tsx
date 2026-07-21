@@ -9,7 +9,7 @@ import {
   startVisit, checkOut, updateDraft,
 } from "@/lib/visitMachine";
 import { syncVisitEvents } from "@/lib/syncEngine";
-import type { ActiveVisit } from "@/lib/offlineDb";
+import { clearActiveVisit, type ActiveVisit } from "@/lib/offlineDb";
 
 export interface Customer {
   id: string;
@@ -188,7 +188,6 @@ export function AdHocVisitCard({
     if (checkedIn) {
       if (!confirm("Cancel this visit? Your check-in and any entered details will be lost.")) return;
       // Abandon the active visit without emitting completion.
-      const { clearActiveVisit } = await import("@/lib/offlineDb");
       await clearActiveVisit().catch(() => {});
       setActiveVisit(null);
     }
