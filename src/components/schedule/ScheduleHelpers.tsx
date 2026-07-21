@@ -1,7 +1,5 @@
 import { useState, useLayoutEffect, useRef } from "react";
 import { Check, SkipForward, WifiOff } from "lucide-react";
-import { v4 as uuidv4 } from "uuid";
-import { addOfflineVisit } from "@/lib/offlineDb";
 
 // ─── mobile zoom reset ────────────────────────────────────────────────────────
 // Safety net: resets any residual viewport zoom after an input loses focus.
@@ -47,48 +45,6 @@ export function isOfflineError(err: any): boolean {
     msg.includes("networkerror") ||
     msg.includes("network request failed")
   );
-}
-
-export async function saveVisitOffline(
-  repId: string,
-  customerId: string,
-  scheduleDate: string,
-  arrivalTime: string | null,
-  leavingTime: string | null,
-  durationMinutes: number,
-  notes: string | null,
-  customerName?: string,
-  status?: string,
-  photoBase64?: string | null,
-  orderNumber?: string | null,
-  orderQuantity?: number | null,
-  orderAmount?: number | null,
-  clientGeneratedId?: string | null,
-) {
-  const clientId = clientGeneratedId || uuidv4();
-  await addOfflineVisit({
-    client_generated_id: clientId,
-    payload: {
-      rep_id: repId,
-      customer_id: customerId,
-      visit_date: scheduleDate,
-      arrival_time: arrivalTime,
-      leaving_time: leavingTime,
-      duration_minutes: durationMinutes,
-      notes,
-      client_generated_id: clientId,
-      ...(status ? { status } : {}),
-      ...(orderNumber !== undefined ? { order_number: orderNumber } : {}),
-      ...(orderQuantity !== undefined ? { order_quantity: orderQuantity } : {}),
-      ...(orderAmount !== undefined ? { order_amount: orderAmount } : {}),
-    } as any,
-    created_at_local: new Date().toISOString(),
-    sync_status: "pending",
-    last_sync_attempt: null,
-    error_message: null,
-    customer_name: customerName,
-    photo_base64: photoBase64 ?? null,
-  });
 }
 
 export function nowTime(): string {
