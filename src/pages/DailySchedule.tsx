@@ -25,6 +25,7 @@ import {
   editCompleted,
 } from "@/lib/visitMachine";
 import { syncVisitEvents } from "@/lib/syncEngine";
+import { onResume } from "@/lib/resumeCoordinator";
 import { C, OfflineBanner } from "@/components/schedule/ScheduleHelpers";
 import { EodSummaryModal, SummaryStats } from "@/components/schedule/EodSummaryModal";
 import { ScheduleCard } from "@/components/schedule/ScheduleCard";
@@ -32,6 +33,30 @@ import { UnscheduledVisitRow } from "@/components/schedule/UnscheduledVisitRow";
 import { AdHocVisitCard } from "@/components/schedule/AdHocVisitCard";
 import { OffRouteOrderCard } from "@/components/schedule/OffRouteOrderCard";
 import { toast } from "sonner";
+
+// ─── quiet-merge helper ─────────────────────────────────────────────────────
+// Used by fetchScheduleQuiet to avoid replacing `items` (and therefore
+// re-rendering every card) unless something actually changed. If the set or
+// order of item ids differs, that's a structural change and the new list is
+// used outright. Otherwise each item is compared individually; unchanged
+// items keep their exact previous object reference so React can bail out of
+// re-rendering that row entirely.
+function mergeItemsQuiet(prevItems: any[], nextItems: any[]): any[] {
+  const sameLength = prevItems.length === nextItems.length;
+  const sameOrder = sameLength && prevItems.every((p, i) => p.id === nextItems[i].id);
+
+  if (!sameOrder) return nextItems;
+
+  let changed = false;
+  const merged = nextItems.map((next, i) => {
+    const prev = prevItems[i];
+    if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
+    changed = true;
+    return next;
+  });
+
+  return changed ? merged : prevItems;
+}
 
 // ─── DailySchedule ────────────────────────────────────────────────────────────
 
@@ -71,7 +96,6 @@ export default function DailySchedule() {
   const [recoveryItemId,       setRecoveryItemId]       = useState<string | null>(null);
 
   const scheduleDateRef    = useRef(scheduleDate);
-  const fetchScheduleRef   = useRef<(force?: boolean) => Promise<void>>(async () => {});
   const lastFetchTimeRef   = useRef<number>(0);
 
   const [expandedBottomCard, setExpandedBottomCard] = useState<"unscheduled" | "offroute" | null>(null);
@@ -187,41 +211,6 @@ export default function DailySchedule() {
     } catch { /* offline */ }
   };
 
-  useEffect(() => {
-    if (repId) { fetchSchedule(); fetchAdHocCustomers(); fetchWeekName(); }
-  }, [repId, scheduleDate]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // realtime: schedule_items
-  useEffect(() => {
-    if (!schedule?.id) return;
-    const channel = supabase
-      .channel(`schedule-items-${schedule.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "schedule_items", filter: `schedule_id=eq.${schedule.id}` }, () => {
-        // Never clobber an expanded in-progress card. expandedActiveIdRef guard preserved.
-        const expandedItem = expandedActiveIdRef.current
-          ? itemsRef.current.find((i: any) => i.id === expandedActiveIdRef.current)
-          : null;
-        const isInProgress = expandedItem
-          ? !!expandedItem.arrival_time && !expandedItem.leaving_time
-          : false;
-        if (!isInProgress) fetchSchedule(true);
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [schedule?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // realtime: daily_schedules
-  useEffect(() => {
-    if (!repId) return;
-    const channel = supabase
-      .channel(`daily-schedules-${repId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "daily_schedules", filter: `rep_id=eq.${repId}` }, () => {
-        if (!expandedActiveIdRef.current) fetchSchedule();
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [repId, scheduleDate]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const resolveUnknownCustomers = async (loadedItems: any[]) => {
     const unresolved = loadedItems.filter((i) => !i.customers?.customer_name);
     if (!unresolved.length) return;
@@ -327,7 +316,69 @@ export default function DailySchedule() {
     }
   };
 
-  fetchScheduleRef.current = fetchSchedule;
+  // ── Quiet fetch — never touches `loading`, never blanks the list. Used by
+  // the resume coordinator (and, in a later phase, realtime listeners) so
+  // background reconciliation is invisible to the rep. Assumes a schedule
+  // already exists (the loud fetchSchedule above owns first-load and
+  // auto-generation) — if none exists yet, this is a no-op.
+  const fetchScheduleQuiet = useCallback(async () => {
+    if (!repId || !navigator.onLine) return;
+    try {
+      const { data } = await supabase
+        .from("daily_schedules")
+        .select("*, schedule_items(*, customers(customer_name, account_number), visits(photo_url, order_number, order_quantity, order_amount, client_generated_id))")
+        .eq("rep_id", repId)
+        .eq("schedule_date", scheduleDate)
+        .maybeSingle();
+
+      if (!data) return;
+
+      setSchedule((prev: any) => (JSON.stringify(prev) === JSON.stringify(data) ? prev : data));
+      const sortedItems = (data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
+      setItems((prev) => mergeItemsQuiet(prev, sortedItems));
+      fetchUnscheduledVisits();
+      resolveUnknownCustomers(sortedItems);
+      await setCachedSchedule(repId, scheduleDate, data);
+      reconcileActiveVisit(sortedItems);
+    } catch {
+      // network error — keep existing state, no visible change
+    }
+  }, [repId, scheduleDate, reconcileActiveVisit]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (repId) { fetchSchedule(); fetchAdHocCustomers(); fetchWeekName(); }
+  }, [repId, scheduleDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // realtime: schedule_items
+  useEffect(() => {
+    if (!schedule?.id) return;
+    const channel = supabase
+      .channel(`schedule-items-${schedule.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "schedule_items", filter: `schedule_id=eq.${schedule.id}` }, () => {
+        // Never clobber an expanded in-progress card. expandedActiveIdRef guard preserved.
+        const expandedItem = expandedActiveIdRef.current
+          ? itemsRef.current.find((i: any) => i.id === expandedActiveIdRef.current)
+          : null;
+        const isInProgress = expandedItem
+          ? !!expandedItem.arrival_time && !expandedItem.leaving_time
+          : false;
+        if (!isInProgress) fetchScheduleQuiet();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [schedule?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // realtime: daily_schedules
+  useEffect(() => {
+    if (!repId) return;
+    const channel = supabase
+      .channel(`daily-schedules-${repId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "daily_schedules", filter: `rep_id=eq.${repId}` }, () => {
+        if (!expandedActiveIdRef.current) fetchScheduleQuiet();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [repId, scheduleDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchUnscheduledVisits(); }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -337,17 +388,13 @@ export default function DailySchedule() {
     scheduleDateRef.current = scheduleDate;
   }, [scheduleDate]);
 
-  // Resume handler — re-fetch + trigger a sync drain when the app comes back.
+  // Resume handler — subscribes to the single app-wide resume coordinator
+  // instead of running its own visibilitychange listener. The coordinator
+  // has already checked the session and drained the sync queue by the time
+  // this fires; this only needs to quietly reconcile the schedule.
   useEffect(() => {
-    const handler = () => {
-      if (document.visibilityState === "visible") {
-        fetchScheduleRef.current(true);
-        if (navigator.onLine) syncVisitEvents().then((r) => { if (r.synced > 0) fetchScheduleRef.current(true); }).catch(() => {});
-      }
-    };
-    document.addEventListener("visibilitychange", handler);
-    return () => document.removeEventListener("visibilitychange", handler);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return onResume(() => { fetchScheduleQuiet(); });
+  }, [fetchScheduleQuiet]);
 
   const fetchAdHocCustomers = async () => {
     if (!repId) return;
@@ -418,10 +465,10 @@ export default function DailySchedule() {
       handleLocalUpdate(item.id, { status: "visited", leaving_time: "pending" });
       if (navigator.onLine) {
         const r = await syncVisitEvents();
-        if (r.synced > 0) fetchSchedule(true);
+        if (r.synced > 0) fetchScheduleQuiet();
       } else {
         toast.success("Saved offline. Will sync when online.");
-        fetchSchedule(true);
+        fetchScheduleQuiet();
       }
     } finally {
       setBusyCustomerId(null);
@@ -459,10 +506,10 @@ export default function DailySchedule() {
       handleLocalUpdate(item.id, { status: "skipped", notes: reason });
       if (navigator.onLine) {
         const r = await syncVisitEvents();
-        if (r.synced > 0) fetchSchedule(true);
+        if (r.synced > 0) fetchScheduleQuiet();
       } else {
         toast.success("Saved offline. Will sync when online.");
-        fetchSchedule(true);
+        fetchScheduleQuiet();
       }
     } finally {
       setBusyCustomerId(null);
@@ -488,9 +535,9 @@ export default function DailySchedule() {
     });
     if (navigator.onLine) {
       const r = await syncVisitEvents();
-      if (r.synced > 0) fetchSchedule(true);
+      if (r.synced > 0) fetchScheduleQuiet();
     } else {
-      fetchSchedule(true);
+      fetchScheduleQuiet();
     }
   }, [repId, scheduleDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -581,7 +628,15 @@ export default function DailySchedule() {
   // helper: is this card the active stop?
   const activeStopCustomerId = activeVisit?.customerId ?? null;
 
-  // Guard: do not render until repId is available (hooks have all run)
+  // ─── render guard ───────────────────────────────────────────────────────────
+  // Moved here, AFTER every hook above, so the same hooks run in the same
+  // order on every render regardless of whether repId has resolved yet. The
+  // previous placement of this guard at the top of the function (before any
+  // hooks) violated the Rules of Hooks: when repId transitioned from null to
+  // a real value, React saw a different number of hooks between renders and
+  // threw, forcing an unmount/remount that wiped in-memory state (this was
+  // the confirmed cause of check-in state appearing lost after a fast
+  // check-in immediately following login).
   if (!repId) return null;
 
   // ─── render ─────────────────────────────────────────────────────────────────
@@ -852,7 +907,7 @@ export default function DailySchedule() {
                   if (syntheticVisit) setUnscheduledVisits((prev) => [syntheticVisit, ...prev]);
                   setActiveTab("done");
                   setExpandedBottomCard(null);
-                  fetchSchedule(true);
+                  fetchScheduleQuiet();
                 }}
                 onCancel={() => setExpandedBottomCard(null)}
               />
