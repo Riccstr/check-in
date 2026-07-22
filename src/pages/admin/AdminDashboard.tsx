@@ -590,9 +590,10 @@ export default function AdminDashboard() {
     // schedule_item so it's already excluded. Written at checkout, reliable.
     visited:    allItems.filter((i) => i.status === "visited").length,
     skipped:    allItems.filter((i) => i.status === "skipped").length,
-    // Orders and order value: include off_route — those orders are real.
-    orders:     visits.filter((v) => v.order_number != null && v.order_number !== "").length,
-    orderValue: visits.reduce((sum, v) => sum + (Number(v.order_amount) || 0), 0),
+    // Orders and order value: include off_route (those orders are real) but
+    // exclude superseded (an error record, never a genuine completed order).
+    orders:     visits.filter((v) => v.status !== "superseded" && v.order_number != null && v.order_number !== "").length,
+    orderValue: visits.filter((v) => v.status !== "superseded").reduce((sum, v) => sum + (Number(v.order_amount) || 0), 0),
   };
 
   const scheduleByRepId: Record<string, DailyScheduleRow> = {};
@@ -615,9 +616,19 @@ export default function AdminDashboard() {
     const evs   = eventsByRep[rep.id] ?? [];
 
     // Open visit = an 'arrived' whose clientId has no terminal event yet.
+    // Open visit = an 'arrived' whose clientId has no terminal event yet.
+    // A superseded ghost visit has no visit_events row of its own (mirrors
+    // off_route) — it's recognized here via the visits table directly
+    // instead, using the same client_generated_id the original 'arrived'
+    // event carried.
     const terminalClientIds = new Set(
       evs.filter((e) => e.event_type === "completed" || e.event_type === "skipped").map((e) => e.client_id)
     );
+    for (const v of visits) {
+      if (v.status === "superseded" && v.client_generated_id) {
+        terminalClientIds.add(v.client_generated_id);
+      }
+    }
     const openArrivals = evs
       .filter((e) => e.event_type === "arrived" && !terminalClientIds.has(e.client_id))
       .sort((a, b) => (b.event_time ?? "").localeCompare(a.event_time ?? ""));
