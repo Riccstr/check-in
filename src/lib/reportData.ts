@@ -34,7 +34,7 @@ export async function buildReportData(
     .from("visits")
     .select("*, reps(rep_name), customers(customer_name, area, account_number)")
     .eq("rep_id", repId)
-    .neq("status", "in_progress")
+    .not("status", "in", "(in_progress,superseded)")
     .eq("is_deleted", false)
     .order("visit_date", { ascending: true })
     .order("arrival_time", { ascending: true });
