@@ -25,8 +25,8 @@ import { base64ToBlob } from "./imageCompressor";
 //                no visit_events (off-route never shows as live progress).
 //   edit       → UPDATE existing visits row matched by client_generated_id.
 //
-// A single navigator.locks guard serialises the whole drain so two triggers
-// (online + visibilitychange) can't interleave.
+// A single navigator.locks guard serialises the whole drain so concurrent
+// triggers (online event, resumeCoordinator, etc.) can't interleave.
 
 // ── visit_events (live status log) ──
 
@@ -312,18 +312,11 @@ export function setupAutoSync(onSyncComplete?: () => void) {
   };
 
   const handleOnline = () => { setTimeout(doSync, 1500); };
-  const handleVisibility = () => {
-    if (document.visibilityState === "visible" && navigator.onLine) {
-      setTimeout(doSync, 1000);
-    }
-  };
 
   window.addEventListener("online", handleOnline);
-  document.addEventListener("visibilitychange", handleVisibility);
   if (navigator.onLine) setTimeout(doSync, 2000);
 
   return () => {
     window.removeEventListener("online", handleOnline);
-    document.removeEventListener("visibilitychange", handleVisibility);
   };
 }
