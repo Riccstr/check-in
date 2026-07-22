@@ -206,6 +206,29 @@ async function applyEvent(ev: VisitEvent): Promise<void> {
       return;
     }
 
+    case "superseded": {
+      // Admin-facing error record only — mirrors off_route: a status-only
+      // visits row, no visit_events row (this was never a real completed
+      // visit). AdminDashboard cross-references visits.status === 'superseded'
+      // directly to close out the original 'arrived' event's live-status
+      // effect, so no new visit_events row or event type is needed there.
+      const visitId = await upsertVisit(ev);
+      if (visitId) {
+        const { error } = await (supabase as any).from("sync_errors").insert({
+          rep_id: ev.repId,
+          error_type: "visit_superseded",
+          message: "Visit superseded due to error",
+          context: {
+            customer_id: ev.customerId,
+            visit_date: ev.visitDate,
+            client_id: ev.clientId,
+          },
+        });
+        if (error) console.warn("[Sync] sync_errors insert failed for superseded visit:", error.message);
+      }
+      return;
+    }
+
     case "edit": {
       // Correct an existing row matched by clientId. Only send fields present.
       const patch: any = {
