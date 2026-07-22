@@ -144,7 +144,7 @@ export default function AdminExports() {
     let q = (supabase as any)
       .from("visits")
       .select("*, reps(rep_name), customers(customer_name, account_number, area)")
-      .neq("status", "in_progress")
+      .not("status", "in", "(in_progress,superseded)")
       .eq("is_deleted", false)
       .order("visit_date", { ascending: false })
       .order("arrival_time", { ascending: true });
