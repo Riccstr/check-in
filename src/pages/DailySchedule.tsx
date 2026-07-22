@@ -22,7 +22,7 @@ import {
 } from "@/lib/offlineDb";
 import {
   startVisit, checkOut, updateDraft, skip as machineSkip,
-  editCompleted,
+  editCompleted, supersedeGhostVisit,
 } from "@/lib/visitMachine";
 import { syncVisitEvents } from "@/lib/syncEngine";
 import { onResume } from "@/lib/resumeCoordinator";
@@ -91,10 +91,6 @@ export default function DailySchedule() {
 
   const { unscheduledVisits, setUnscheduledVisits, fetchUnscheduledVisits } = useUnscheduledVisits(repId, scheduleDate, itemsRef, expandedActiveIdRef);
 
-  // in-progress visit recovery banner
-  const [recoveryCustomerName, setRecoveryCustomerName] = useState<string | null>(null);
-  const [recoveryItemId,       setRecoveryItemId]       = useState<string | null>(null);
-
   const scheduleDateRef    = useRef(scheduleDate);
   const lastFetchTimeRef   = useRef<number>(0);
 
@@ -108,7 +104,7 @@ export default function DailySchedule() {
   // belongs to by (customerId, visitDate) — NOT by stored scheduleItemId. This
   // makes an open visit survive a schedule regeneration (new item ids) and is
   // the core "never lose an in-progress visit" guarantee.
-  const reconcileActiveVisit = useCallback(async (currentItems: any[]) => {
+  const reconcileActiveVisit = useCallback(async (currentItems: any[], authoritative: boolean = false) => {
     try {
       const av = await getActiveVisit();
       if (!av) { setActiveVisit(null); return; }
@@ -133,13 +129,28 @@ export default function DailySchedule() {
             setActiveVisit(av);
           }
           setExpandedActiveId(match.id);
+        } else if (authoritative) {
+          // Genuine ghost: no matching item on a CONFIRMED live fetch (never
+          // acted on for a cache-only read, which could simply be stale).
+          // Silently retire it — the rep is never shown anything is wrong;
+          // an admin is notified via sync_errors instead.
+          try {
+            await supersedeGhostVisit(av);
+            setActiveVisit(null);
+            if (navigator.onLine) syncVisitEvents().catch(() => {});
+          } catch {
+            // Local IDB failure to even queue the supersede — keep the
+            // visit as-is; it will be retried on the next authoritative
+            // reconcile rather than silently losing track of it.
+            setActiveVisit(av);
+          }
         } else {
-          // Customer no longer on today's board — keep the visit, surface as
-          // recoverable rather than dropping it.
+          // Cache-only read found no match — inconclusive, don't act yet.
           setActiveVisit(av);
         }
       } else {
-        // Ad-hoc visit: not tied to a schedule item; just hold it.
+        // Ad-hoc visit: not tied to a schedule item; ghost detection does
+        // not apply (no "board" to fall off). Just hold it.
         setActiveVisit(av);
       }
     } catch {
@@ -264,7 +275,7 @@ export default function DailySchedule() {
         fetchUnscheduledVisits();
         resolveUnknownCustomers(sortedItems);
         await setCachedSchedule(repId, scheduleDate, data);
-        reconcileActiveVisit(sortedItems);
+        reconcileActiveVisit(sortedItems, true);
       } else {
         const todayStr = new Date().toISOString().split("T")[0];
         if (scheduleDate <= todayStr) {
@@ -283,7 +294,7 @@ export default function DailySchedule() {
             fetchUnscheduledVisits();
             resolveUnknownCustomers(sortedNewItems);
             if (newData) await setCachedSchedule(repId, scheduleDate, newData);
-            reconcileActiveVisit(sortedNewItems);
+            reconcileActiveVisit(sortedNewItems, true);
           } else {
             setSchedule(null); setItems([]);
           }
@@ -339,7 +350,7 @@ export default function DailySchedule() {
       fetchUnscheduledVisits();
       resolveUnknownCustomers(sortedItems);
       await setCachedSchedule(repId, scheduleDate, data);
-      reconcileActiveVisit(sortedItems);
+      reconcileActiveVisit(sortedItems, true);
     } catch {
       // network error — keep existing state, no visible change
     }
@@ -541,19 +552,6 @@ export default function DailySchedule() {
     }
   }, [repId, scheduleDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── recovery banner: open visit whose stop is on today's board ──
-  useEffect(() => {
-    if (!isToday || !activeVisit) { setRecoveryCustomerName(null); setRecoveryItemId(null); return; }
-    const stop = items.find((i) => i.customer_id === activeVisit.customerId && i.status !== "visited" && i.status !== "skipped");
-    if (stop) {
-      setRecoveryCustomerName(activeVisit.customerName);
-      setRecoveryItemId(stop.id);
-    } else {
-      setRecoveryCustomerName(null);
-      setRecoveryItemId(null);
-    }
-  }, [items, isToday, activeVisit]);
-
   // ─── end-of-day summary ─────────────────────────────────────────────────────
   const allDone = items.length > 0 && items.every((i) => i.status === "visited" || i.status === "skipped");
   const dismissedKey = repId && scheduleDate ? `summary_dismissed_${repId}_${scheduleDate}` : null;
@@ -740,23 +738,6 @@ export default function DailySchedule() {
             </button>
           ))}
         </div>
-      )}
-
-      {/* recovery banner */}
-      {recoveryItemId && !loading && activeTab === "active" && (
-        <button
-          type="button"
-          onClick={() => {
-            setExpandedActiveId(recoveryItemId);
-            setActiveTab("active");
-            setTimeout(() => { document.getElementById(`card-${recoveryItemId}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100);
-          }}
-          className="mx-4 mt-2 w-[calc(100%-2rem)] flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium font-syne text-left"
-          style={{ background: "#FFF8E1", border: "1px solid #F59E0B", color: "#78350F" }}
-        >
-          <ChevronRight size={16} className="shrink-0" style={{ color: "#F59E0B" }} />
-          <span>You have an active visit at <strong>{recoveryCustomerName}</strong> — tap to resume</span>
-        </button>
       )}
 
       {/* main scrollable area */}
