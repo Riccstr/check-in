@@ -30,7 +30,8 @@ Language: TypeScript throughout.
 - src/pages/admin/CustomerDashboard.tsx — Per-customer visit history
 - src/lib/adminUi.tsx — Admin design system: palette (A), status semantics, zar() formatter, AdminSidebar (now accepts onSignOut? prop with built-in confirm dialog), PageHeader, buttons, chips
 - src/lib/offlineDb.ts — IndexedDB helpers (DB_VERSION: 7) with event-outbox stores
-- src/lib/visitMachine.ts — Visit state machine: startVisit(), updateDraft(), checkOut(), skip(), logOffRoute(), editCompleted() — owns all visit invariants and orchestration
+- src/lib/resumeCoordinator.ts — Single source of truth for app resume: session check → sync drain → subscriber notify
+- src/lib/visitMachine.ts — Visit state machine: startVisit(), updateDraft(), checkOut(), skip(), logOffRoute(), editCompleted(), supersedeGhostVisit() — owns all visit invariants and orchestration
 - src/lib/visitOutbox.ts — VisitEvent type definitions, makeEvent() factory, newClientId() — event type system
 - src/lib/syncEngine.ts — syncVisitEvents() unified worker (events → visits + visit_events) and setupAutoSync()
 - src/lib/reportData.ts — buildReportData() with single-day and multi-day schedule metric aggregation
@@ -42,7 +43,7 @@ Language: TypeScript throughout.
 - src/App.tsx — Routes and providers
 
 ## Key Database Tables
-- visits — rep_id (references reps.id NOT profiles.id), customer_id, visit_date, arrival_time, leaving_time, status, order_number, order_quantity, order_amount, photo_url, client_generated_id
+- visits — rep_id (references reps.id NOT profiles.id), customer_id, visit_date, arrival_time, leaving_time, status (visited|skipped|off_route|superseded), order_number, order_quantity, order_amount, photo_url, client_generated_id
 - schedule_items — schedule_id, customer_id, sort_order, status, arrival_time, leaving_time, visit_id
 - schedule_template_items — template_id, customer_id, sort_order. UNIQUE(template_id, sort_order)
 - schedule_templates — rep_id, day_of_week, weekly_template_id, is_active
@@ -60,8 +61,9 @@ Language: TypeScript throughout.
 - auto_generate_daily_schedule(rep_id, date) → idempotent, never runs for future dates
 
 ## visits_status_check Constraint
-Valid values: visited, skipped, off_route. (in_progress remains permitted by the DB constraint for legacy rows but is never written by current code — in-progress state lives in the active_visit IDB record, not in visits.)
+Valid values: visited, skipped, off_route, superseded. (in_progress remains permitted by the DB constraint for legacy rows but is never written by current code — in-progress state lives in the active_visit IDB record, not in visits.)
 Any new status must be added via SQL ALTER before frontend code can write it.
+- superseded: ghost visit whose customer no longer appears on today's schedule. Born-complete record created at reconciliation time with silent 'superseded' event; paired with sync_errors row for admin review.
 
 ## Timestamps & Timezone (UTC vs SAST)
 Supabase stores `timestamptz` columns (e.g. `created_at`) in UTC. South Africa is UTC+2 (SAST).
@@ -82,14 +84,27 @@ Supabase stores `timestamptz` columns (e.g. `created_at`) in UTC. South Africa i
 ### Event-Outbox Model (as of 2026-07-21)
 - Three planes, one owner each: Device truth (`active_visit` IDB), server truth (visits rows born-complete at checkout), live progress (visit_events append-only log)
 - Visit machine (visitMachine.ts) owns all invariants: exactly one open visit at a time, zero-duration checkout rejected, visits row never at arrival, client_generated_id generated once and reused
-- Every state transition appends ONE event to visit_outbox IDB store (arrived / completed / skipped / off_route / edit)
+- Every state transition appends ONE event to visit_outbox IDB store (arrived / completed / skipped / off_route / superseded / edit)
 - syncVisitEvents() drains visit_outbox in order, upserting on client_generated_id — retry-safe, same code path online or offline
 - Schedule cards are prop-driven (read active_visit prop, call machine callbacks) — no internal state for arrival/leaving/notes/orders
 - Scheduled visits: check-in → 'arrived' event (inserts a visit_events row ONLY — does NOT write schedule_items.arrival_time) → check-out → 'completed' event (upserts born-complete visits row AND writes arrival_time/leaving_time/status onto the linked schedule_items row via the sync worker)
-- Ad-hoc visits: check-in → 'arrived' event (NEW: shows live on admin dashboard) → check-out → 'completed' event
-- Off-route orders: single logOffRoute call → 'off_route' event (no 'arrived', never shows as in-progress)
-- client_generated_id is the idempotency key — generated once at check-in, lives in active_visit.clientId, reused for every event of that visit, has UNIQUE constraint on visits table
-- ⚠️ PENDING: AdminDashboard.tsx still reads schedule_items.arrival_time/leaving_time for live rep status and the activity feed. Because arrival_time is no longer written to schedule_items at check-in, live 'in progress / current customer' status and live check-in activity will NOT update until a visit is checked out. AdminDashboard needs a rewrite to read live status from visit_events, plus realtime replication enabled on visit_events. Until then, treat live dashboard progress as not-yet-functional.
+- Ad-hoc visits: check-in → 'arrived' event (shows live on admin dashboard) → check-out → 'completed' event
+- Off-route orders: single logOffRoute call → 'off_route' event (no 'arrived', never shows as in-progress, no visit_events row written)
+- Ghost visits (superseded): `reconcileActiveVisit(items, authoritative=true)` detects a visit whose customer is no longer on the schedule, calls `supersedeGhostVisit()` to enqueue a 'superseded' event. Results in a born-complete visits row (status='superseded') + sync_errors row for admin review; no visit_events row written (mirrors off_route, never "in progress").
+- client_generated_id is the idempotency key — generated once at check-in, lives in active_visit.clientId, reused for every event of that visit (including edits), has UNIQUE constraint on visits table
+- AdminDashboard.tsx reads live rep status from visit_events (open 'arrived' with no matching completed/skipped in terminalClientIds = checked in). Activity feed: check-in/check-out from visit_events; skip + off-route from visits table via created_at. Realtime replication on visit_events must be enabled in Supabase → Database → Replication for live check-in updates.
+- Photo uploads on a 'completed' event retry up to 5 times (photoRetries field on VisitEvent); after 5 attempts the worker gives up with a console warning.
+
+### Loud vs. Quiet Fetch Strategy
+- **Loud Fetch** (initial load, date navigation): includes pre-generation of daily schedules, visible spinner, expensive. Used by `fetchSchedule()` in DailySchedule.tsx and `fetchData()` in AdminDashboard.tsx — only on mount.
+- **Quiet Fetch** (realtime subscriptions, post-action): fetch-only, no pre-generation, item-level diffing via `mergeItemsQuiet()` / `mergeByIdQuiet()` to preserve unchanged array entry references (avoids React re-renders). Used by `fetchScheduleQuiet()` in DailySchedule.tsx and `fetchDataQuiet()` in AdminDashboard.tsx — triggered by realtime channels and action callbacks.
+- Rationale: Realtime updates can arrive multiple times per second. Blocking on pre-generation for each update would thrash the UI. Quiet fetches diff at the item level and only re-render changed cards.
+
+### Reconcile Active Visit with Authoritative Flag
+- `reconcileActiveVisit(items: ScheduleItem[], authoritative: boolean = false)`: Reconciles the device's open `active_visit` with the current schedule.
+  - When `authoritative=true` (result of a fresh live fetch): If the open visit's customer is not in `items` by (customerId, visitDate), calls `supersedeGhostVisit()` to silently retire it with a 'superseded' event, then syncs.
+  - When `authoritative=false` (result of a cache read): Keeps the open visit unconditionally — cache may be stale.
+- Used after `fetchSchedule()` (authoritative) and on mount from cache (non-authoritative).
 
 ### Architecture & Layout
 - visits.rep_id references reps.id — never profiles.id or auth.users.id
@@ -105,6 +120,7 @@ Supabase stores `timestamptz` columns (e.g. `created_at`) in UTC. South Africa i
 
 ### Off-Route & In-Progress
 - In-progress state lives only in the device's active_visit IDB record — there is no in-progress visits row. A visits row appears only at checkout (born complete). Off-route orders: excluded from strike rate and visit counts, included in order value totals.
+- Superseded ghost visits are intentionally still shown on AdminVisits.tsx (with a "Superseded" stat and "Ghost" tag) so admins can review them, but excluded from every other visit-facing count and export (reportData.ts and AdminExports.tsx's CSV export both exclude superseded at the query level — never counted in any report or export).
 
 ### IndexedDB & Offline
 - offlineDb.ts IDB operations re-throw as `IDB_ERROR: <message>` — call sites should catch this prefix to identify storage failures
@@ -129,6 +145,14 @@ Supabase stores `timestamptz` columns (e.g. `created_at`) in UTC. South Africa i
 - DailySchedule.tsx uses lastFetchTimeRef to track last fetchSchedule() call time; fetchSchedule() has a 2-second debounce window to prevent duplicate fetches
 - fetchSchedule(force?: boolean) accepts force parameter to bypass debounce guard when explicitly requested (e.g., manual refresh)
 
+### Resume Coordinator
+- Single source of truth for "the app just came back into view" (visibilitychange → visible). Replaces three independent listeners with one coordinated sequence in resumeCoordinator.ts.
+- Sequence: session check (refresh JWT if needed) → sync drain (if online) → subscriber notifications
+- Non-fatal: session failures and sync failures silently keep existing state; auth listeners and sync error tracking handle actual failures
+- Guards against overlapping runs on rapid visibility flips with `running` flag
+- Exported: `onResume(listener: ResumeListener)` returns unsubscribe function; `initResumeCoordinator()` wired once in AppLayout.tsx, returns cleanup
+- **Background Sync API not used:** iOS Safari has no support; foreground + resume triggers sufficient for ensuring sync before rep closes browser or switches app
+
 ## IndexedDB Stores (DB_VERSION: 7)
 
 **Operational stores** (event-outbox model):
@@ -152,7 +176,7 @@ Increment DB_VERSION whenever adding or renaming a store.
 - No new npm packages without explicit instruction
 - Create new files when it is the right structural choice (e.g. a self-contained reusable component); avoid creating new files for trivial one-off additions that belong in an existing file
 - All refactoring stays in-file
-- Never physically delete visits or customers — use is_deleted or is_active flags
+- Reps can never delete visits (no rep DELETE RLS policy). The admin AdminVisits screen performs an intentional permanent HARD delete (.delete()). Customers use is_active for soft-delete. Do not silently convert the AdminVisits hard delete to a soft delete — it is deliberate.
 - Camera must be triggered by user gesture only (iOS Safari requirement)
 - All fixes must work on both iOS Safari and Android Chrome
 - Prefer root-cause fixes — no symptom patches or workarounds

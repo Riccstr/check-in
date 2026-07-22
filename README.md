@@ -223,7 +223,7 @@ Unique: `(rep_id, customer_id)`. Upsert on conflict is used. RLS: Admins manage 
 | `leaving_time` | time | |
 | `duration_minutes` | integer | Calculated: `(leaving - arrival)` in minutes |
 | `notes` | text | |
-| `status` | text | `'visited'`, `'skipped'`, `'off_route'` (in_progress is legacy; current code uses active_visit IDB record instead) |
+| `status` | text | `'visited'`, `'skipped'`, `'off_route'`, `'superseded'` (in_progress is legacy; current code uses active_visit IDB record instead; superseded indicates a ghost visit — born-complete but the customer fell off the schedule) |
 | `order_number` | text | Nullable — sales order reference |
 | `order_quantity` | integer | Nullable — units ordered |
 | `order_amount` | numeric | Nullable — currency amount |
@@ -447,7 +447,9 @@ Main rep interface. Shows the day's customer visit schedule as expandable cards.
 - **Event-outbox architecture** (as of 2026-07-21): In-progress visit state lives only on the device in a single `active_visit` IDB record (exactly one open visit at a time). Every state transition (check-in, update draft, checkout, skip) appends ONE event to the `visit_outbox` IDB store. The sync worker drains it online or offline, idempotent on `client_generated_id`. Same code path regardless of connectivity.
 - **Born-complete visits:** A `visits` row appears only at checkout/skip/off-route via upsert on `client_generated_id` — NEVER at arrival. Scheduled check-in emits 'arrived' event that writes ONLY to `visit_events` table and does NOT update `schedule_items.arrival_time`. At checkout, the completed event writes arrival/leaving/status to both `visits` and `schedule_items` rows.
 - Rep schedule page owns `active_visit` state via visit machine (visitMachine.ts) and provides callbacks to card components. Cards are **prop-driven** — no internal state for arrival/leaving/notes/orders. All state read from `active_visit` prop.
+- **Loud vs. Quiet Fetch Split:** Two fetch strategies — `fetchSchedule()` (loud, includes pre-generation of daily schedule and spinner) used only on page load and date navigation; `fetchScheduleQuiet()` (silent, fetch-only, item-level diffing via mergeItemsQuiet()) used by realtime subscriptions and post-action callbacks. Prevents UI thrashing on every realtime update.
 - fetchSchedule() has 2-second debounce via lastFetchTimeRef to prevent duplicate network calls; force parameter bypasses debounce for manual refresh
+- `reconcileActiveVisit(items, authoritative=false)`: Reconciles active_visit with current schedule. When `authoritative=true` (from a fresh live fetch), silently calls `supersedeGhostVisit()` if no matching item exists, then syncs. When `authoritative=false` (from cache), keeps the visit unconditionally (cache may be stale).
 - Future dates show "Schedule not yet available" empty state and do not trigger auto-generation
 - Order fields: `order_number` (string), `order_quantity` (integer), `order_amount` (numeric); amount uses inputMode="decimal" and type="text" not type="number"; parseAmount() handles South African locale (comma decimal, space/dot thousands separators)
 - Open visit reconciled by (customerId, visitDate) — not by stored scheduleItemId — so schedule regeneration cannot orphan it
@@ -457,6 +459,7 @@ Main rep interface. Shows the day's customer visit schedule as expandable cards.
 - Completed visit cards use `VisitDetails` component with lookup by `visit_id`
 - Times displayed as HH:MM (seconds stripped via `.slice(0, 5)`)
 - calcDuration() wraps midnight crossing: arrival 23:50, checkout 00:05 = +15 minutes (not garbage negative)
+- **Ghost-visit supersede mechanism:** If a rep has an open visit but the customer is no longer on today's schedule, `reconcileActiveVisit()` silently retires it with a 'superseded' event, creating a `sync_errors` row for admin review. Rep sees no error — the visit is quietly removed from active state and marked in the database for auditing.
 
 ### Admin Pages
 
@@ -466,12 +469,14 @@ Real-time dashboard showing live rep status and activity feed.
 **Tables read:** `visit_events`, `visits`, `daily_schedules`, `schedule_items`, `reps`, `customers`, `app_settings`, `sync_errors`
 
 **Notable logic:**
-- **Live rep status:** Reads from `visit_events` — a rep is "checked_in" if they have an open 'arrived' event with no matching 'completed' or 'skipped' for that visit. Ad-hoc check-ins also show live.
-- **Settled counts:** Order totals and visit counts (visited/skipped) come from `schedule_items` + `visits` rows (written at checkout).
+- **Live rep status:** Reads from `visit_events` — a rep is "checked_in" if they have an open 'arrived' event with no matching 'completed' or 'skipped' for that visit (and not in `terminalClientIds` supersede set). Ad-hoc check-ins also show live.
+- **Settled counts:** Order totals and visit counts (visited/skipped) come from `schedule_items` + `visits` rows (written at checkout). Superseded visits excluded from order totals (unreliable draft data).
 - **Activity feed:** Check-in/check-out from `visit_events` (records with wall-clock times); skip and off-route orders from `visits` table via `created_at` (skips and off-route do not carry event_time values).
 - **Live updates:** Depend on realtime replication being enabled on `visit_events`. Confirm current status in Supabase → Database → Replication.
+- **Loud vs. Quiet Fetch Split:** `fetchData()` (loud, includes pre-generation of daily schedules) runs only on initial mount. Realtime subscriptions use `fetchDataQuiet()` (fetch-only, item-level diffing via `mergeByIdQuiet()` to preserve React refs), preventing UI thrashing.
 - Rep cards show: status pill (checked_in / travelling / day_complete / not_started / no_schedule), progress meter (X/Y visits), current customer, areas served
 - Uses status pills from `adminUi.tsx` with live pulse animation
+- Summary stats strip includes "Superseded" count (ghost visits for admin review)
 
 **SyncErrorPanel component:**
 - Fixed bottom-right component that fetches uncleared `sync_errors` (cleared_at IS NULL) on mount
@@ -495,6 +500,7 @@ All visits across all reps with edit/delete. Delete is a permanent HARD delete (
 - Edit modal includes all visit fields including order fields with time validation; saving patches linked schedule_items row via visit_id to sync field changes to rep's daily schedule view
 - Pagination controls centered (justifyContent: center) with gap: 24 spacing
 - Skipped visits highlighted with red background
+- Superseded ghost-visit records are intentionally NOT filtered out of this view (admins must be able to review them) — shown with a distinct "Superseded" summary stat and a "Ghost" tag in the photo column, and excluded from the total order value calculation (a ghost visit's stored order amount is unreliable draft data, not a genuine order)
 
 #### `/admin/customers` — [AdminCustomers.tsx](src/pages/admin/AdminCustomers.tsx)
 Full CRUD for customer records and rep assignments.
@@ -550,9 +556,10 @@ Export visit data as CSV, formatted Excel, or PDF. Two-pane layout: **configurat
 - Single-day: fetches one `daily_schedule` row and its `schedule_template` to get travel time
 - Multi-day: accumulates across all days in range with fetchable templates, summing travel time, schedule item count, and calculating expected productive minutes as `(scheduleDaysCount * 540) - totalTravelMins`
 - Returns: total productive minutes, order totals, skip count, calculated metrics (time-per-customer, expected productive time)
+- Superseded ghost-visit records are excluded from the underlying query entirely (alongside the existing in_progress exclusion) — they never appear in or count toward Excel/PDF report totals
 
 **Export formats:**
-- **Visits CSV:** Raw visit data with all fields including order fields (rep_id, customer_id, visit_date, arrival_time, leaving_time, notes, status, order_number, order_quantity, order_amount)
+- **Visits CSV:** Raw visit data with all fields including order fields (rep_id, customer_id, visit_date, arrival_time, leaving_time, notes, status, order_number, order_quantity, order_amount). Superseded ghost-visit records are excluded (via independent query in AdminExports.tsx's `exportVisits()` function, not routed through reportData.ts).
 - **Averages CSV:** Aggregated per rep-customer pair (avg duration, total qty/amount)
 - **Excel XLSX:** Per-rep daily report — styled headers (dark blue/white), alternating row colors, skipped visits in red, totals row (productive time, qty, amount). Times formatted as 12-hour AM/PM. Duration as `Xh Ym`. Uses `xlsx-js-style` for styling.
 - **PDF (A4 landscape):** Per-rep daily visit report with branded banner (company logo top-left, rep name bold, areas + schedule day subtitle). Three equal info blocks: visit summary (left), travel metrics (centre — travel time, expected productive time, customers, time/customer), order summary (right). Visit table rows with skipped items highlighted red. Generated via `jsPDF` + `jspdf-autotable`; logo embedded as base64.
@@ -622,7 +629,8 @@ Main layout wrapper used on every authenticated page. Branches on user role:
 - **Chrome hiding logic:** When `role === 'rep' && pathname === '/schedule'`, chrome is hidden for fullscreen UX
 - **Common responsibilities:**
   - Auth guard — redirects unauthenticated users to `/auth`
-  - Calls `setupAutoSync()` for reps on mount to start background sync loop (checks every 5s if online)
+  - Calls `setupAutoSync()` for reps on mount, which attaches an `online` event listener and performs one initial sync attempt if already online — no polling interval
+  - Calls `initResumeCoordinator()` unconditionally (all roles) to wire up the single app-wide resume sequence (see "Resume Coordinator")
   - Handles `offline_bootstrap_required` state (shows guidance screen)
   - Route persistence: saves current path to `localStorage` for mobile background/restore
 - **AdminChrome:** Container for admin pages with `AdminSidebar` (left) and flexible main area (right). No top utility strip. Sign-out button now in AdminSidebar user card (passed via `onSignOut` prop).
@@ -764,6 +772,37 @@ Without this rule, refreshing any non-root route in production returns a 404 fro
 
 The rep-facing PWA is constrained to max-width 480px centred in [AppLayout.tsx](src/components/AppLayout.tsx) with cream (#F4ECDB) flanking background. This applies to both the header and main content area. The constraint is enforced via inline styles on the rep branch (not the admin branch). The `<style>` tag in the component sets `body { background-color: #F4ECDB; }`. The admin layout (`AdminChrome`) is a completely separate branch and is unaffected by any width constraints — it uses full viewport width.
 
+### 8. Resume Coordinator — Unified App Foreground Handler
+
+When the app comes back into the foreground (tab visibility changes to visible), a **single coordinated sequence** runs instead of multiple independent listeners:
+
+1. **Session check:** Confirm JWT is still valid; refresh if needed (non-fatal, auth listeners handle sign-outs)
+2. **Sync drain:** If online, drain `visit_outbox` via `syncVisitEvents()` (idempotent + lock-guarded)
+3. **Subscriber notify:** Registered listeners decide independently whether to quietly reconcile their own data
+
+Implemented in [`src/lib/resumeCoordinator.ts`](src/lib/resumeCoordinator.ts), wired up once in [`AppLayout.tsx`](src/components/AppLayout.tsx).
+
+**Why not Background Sync API?** iOS Safari lacks support; Background Sync only works on Android Chrome. Foreground + resume triggers are sufficient to ensure visits sync before the rep closes their browser or moves to another task.
+
+**Why not `useEffect` on visibility?** Prevents multiple independent listeners from overlapping and re-fetching the same data. The coordinator guards against rapid visibility flips (`running` flag) and enforces a consistent order: session → sync → notify.
+
+### 9. Loud vs. Quiet Fetch Strategy
+
+Two distinct fetch patterns prevent UI thrashing from realtime updates:
+
+**Loud Fetch** (`fetchSchedule()` in DailySchedule.tsx; `fetchData()` in AdminDashboard.tsx):
+- Expensive operations: includes pre-generation of daily schedules, visible spinner
+- Used **only once** on initial mount and during user navigation (date change)
+- Shows loading state to the user
+
+**Quiet Fetch** (`fetchScheduleQuiet()` in DailySchedule.tsx; `fetchDataQuiet()` in AdminDashboard.tsx):
+- Lightweight: fetch only, no pre-generation
+- Deep-equality item-level diffing via `mergeItemsQuiet()` / `mergeByIdQuiet()` preserves unchanged array entries
+- No UI loading state
+- Used by realtime subscriptions and post-action callbacks (check-in, check-out, skip, off-route, edit)
+
+**Why split?** Realtime updates can arrive multiple times per second. Blocking on pre-generation or pre-rendering for each update would thrash the UI. Quiet fetches diff at the item level so only changed cards re-render.
+
 ---
 
 ## Offline-First Architecture
@@ -793,9 +832,9 @@ Database name: `checkin-tracker-offline`, version **7** (increment version if ad
 Exports `syncVisitEvents()` (the single unified worker) and `setupAutoSync()` to trigger it.
 
 Triggered by:
-- `online` DOM event (1.5s delay)
-- `visibilitychange` → visible, when online (1s delay)
-- App load when online (2s delay)
+- `online` DOM event (1.5s delay) — handled directly in `setupAutoSync()`
+- App load when online (2s delay) — handled directly in `setupAutoSync()`
+- App resume (visibilitychange → visible) — no longer an independent listener in this file; `syncVisitEvents()` is now invoked as step 2 of the single resume sequence in `src/lib/resumeCoordinator.ts` (see "Resume Coordinator" above). This avoids the overlapping/duplicate-trigger problem of multiple independent visibilitychange listeners.
 
 **Event sync flow (idempotent):**
 1. Get all `pending` / `error` events from `visit_outbox` IDB store, sorted by `createdAtLocal`
@@ -804,6 +843,7 @@ Triggered by:
    - **'completed':** Upserts a born-complete `visits` row via `upsert(checkoutData, { onConflict: "client_generated_id" })`; writes `arrival_time`, `leaving_time`, `status` to the linked `schedule_items` row; uploads photo if present (retries up to 5 times; gives up with console warning after 5 failed attempts); inserts `visit_events` row (event_type 'completed')
    - **'skipped':** Upserts `visits` row with status='skipped'; writes status to `schedule_items`; inserts `visit_events` row (event_type 'skipped')
    - **'off_route':** Upserts `visits` row with status='off_route'; no schedule link, no visit_events row
+   - **'superseded':** Upserts `visits` row with status='superseded' (ghost visit whose customer is no longer reachable on today's schedule); inserts `sync_errors` row (error_type 'visit_superseded', message "Visit superseded due to error"); no visit_events row written (mirrors off_route, never "in progress")
 3. On success: mark event as `synced` in IndexedDB; remove synced records after pass completes
 4. Same code path online or offline — all state transitions go through the machine, all persist to visit_outbox, all drain via syncVisitEvents
 
@@ -909,9 +949,10 @@ src/
 │   ├── offlineBootstrap.ts    # Pre-cache customers/schedules/auth on first online login
 │   ├── offlineDb.ts           # All IndexedDB read/write operations (DB_VERSION: 7)
 │   ├── reportData.ts          # buildReportData() with single/multi-day schedule metrics
+│   ├── resumeCoordinator.ts   # Single source for "app came back into view" — session check → sync → notify
 │   ├── syncEngine.ts          # syncVisitEvents(), setupAutoSync() — unified event-outbox worker
 │   ├── timeUtils.ts           # Shared time and currency formatting utilities
-│   ├── visitMachine.ts        # Visit state machine: startVisit, updateDraft, checkOut, skip, logOffRoute, editCompleted
+│   ├── visitMachine.ts        # Visit state machine: startVisit, updateDraft, checkOut, skip, logOffRoute, editCompleted, supersedeGhostVisit
 │   ├── visitOutbox.ts         # VisitEvent type, makeEvent(), newClientId() — event type definitions
 │   └── utils.ts               # cn() Tailwind merge utility
 ├── pages/
