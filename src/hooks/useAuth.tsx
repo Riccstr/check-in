@@ -252,22 +252,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resolveLoading();
       });
 
-    // Proactively refresh the JWT when the app returns to the foreground
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState === "visible") {
-        const { data } = await supabase.auth.getSession();
-        if (!data.session) {
-          await supabase.auth.refreshSession();
-        }
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
     return () => {
       disposed = true;
       clearTimeout(safetyTimer);
       subscription.unsubscribe();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
