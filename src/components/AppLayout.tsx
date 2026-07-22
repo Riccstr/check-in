@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import OfflineStatusBar from "@/components/OfflineStatusBar";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { setupAutoSync } from "@/lib/syncEngine";
+import { initResumeCoordinator } from "@/lib/resumeCoordinator";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { toast } from "sonner";
 import { useRegisterSW } from "virtual:pwa-register/react";
@@ -79,6 +80,12 @@ export default function AppLayout() {
     const cleanup = setupAutoSync();
     return cleanup;
   }, [role]);
+
+  // Initialize resume coordinator for coordinated app resume
+  useEffect(() => {
+    const cleanup = initResumeCoordinator();
+    return cleanup;
+  }, []);
 
   useEffect(() => {
     if (roleState !== "offline_bootstrap_required" || !user) return;
