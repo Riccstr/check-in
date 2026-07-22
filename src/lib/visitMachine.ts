@@ -297,3 +297,31 @@ export async function editCompleted(params: {
     })
   );
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUPERSEDE — silently retire a ghost visit (device found no matching item
+// on today's board during an authoritative reconcile). Never shown to the
+// rep; the visits row + sync_errors row are the only trace, both surfaced to
+// admins only.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function supersedeGhostVisit(active: ActiveVisit): Promise<void> {
+  const order = orderFromStrings(active.orderNumber, active.orderQty, active.orderAmount);
+
+  await enqueueVisitEvent(
+    makeEvent({
+      clientId: active.clientId,
+      type: "superseded",
+      repId: active.repId,
+      customerId: active.customerId,
+      visitDate: active.visitDate,
+      scheduleItemId: null, // no valid target to link — that's the whole point
+      arrivalTime: active.arrivalTime,
+      notes: active.notes || null,
+      order,
+      status: "superseded",
+    })
+  );
+
+  await clearActiveVisit();
+}
