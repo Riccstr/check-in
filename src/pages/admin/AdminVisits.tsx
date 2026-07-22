@@ -78,7 +78,7 @@ export default function AdminVisits() {
   const [photoModal, setPhotoModal] = useState<Visit | null>(null);
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
-  const [summaryStats, setSummaryStats] = useState({ totalVisits: 0, completedCount: 0, skippedCount: 0, offRouteCount: 0, totalAmount: 0 });
+  const [summaryStats, setSummaryStats] = useState({ totalVisits: 0, completedCount: 0, skippedCount: 0, offRouteCount: 0, supersededCount: 0, totalAmount: 0 });
 
   const fetchVisits = async () => {
     setLoading(true);
@@ -124,7 +124,12 @@ export default function AdminVisits() {
       completedCount: allVisits.filter((v) => v.status === "visited").length,
       skippedCount: allVisits.filter((v) => v.status === "skipped").length,
       offRouteCount: allVisits.filter((v) => v.status === "off_route").length,
-      totalAmount: allVisits.reduce((s: number, v: any) => s + (Number(v.order_amount) || 0), 0),
+      supersededCount: allVisits.filter((v) => v.status === "superseded").length,
+      // Excludes superseded — a ghost visit's stored order_amount is unreliable
+      // draft data, never a genuine order, and must not inflate this total.
+      totalAmount: allVisits
+        .filter((v) => v.status !== "superseded")
+        .reduce((s: number, v: any) => s + (Number(v.order_amount) || 0), 0),
     });
 
     setLoading(false);
@@ -221,6 +226,9 @@ export default function AdminVisits() {
   };
 
   const renderTime = (v: Visit) => {
+    if (v.status === "superseded") {
+      return <span style={{ color: A.danger, fontSize: 11.5, fontWeight: 500 }}>Superseded</span>;
+    }
     if (v.status === "skipped" || v.status === "off_route") {
       return <span style={{ color: A.inkMute }}>—</span>;
     }
@@ -253,6 +261,7 @@ export default function AdminVisits() {
     }
     if (v.status === "off_route") return <Tag tone="sun">Off-route</Tag>;
     if (v.status === "skipped") return <Tag tone="danger">Skipped</Tag>;
+    if (v.status === "superseded") return <Tag tone="danger">Ghost</Tag>;
     return <span style={{ color: A.inkMute }}>—</span>;
   };
 
@@ -319,12 +328,13 @@ export default function AdminVisits() {
       </div>
 
       {/* Summary strip */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 0, background: A.panel, borderBottom: `1px solid ${A.border}`, padding: "14px 24px", flexShrink: 0 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 0, background: A.panel, borderBottom: `1px solid ${A.border}`, padding: "14px 24px", flexShrink: 0 }}>
         {[
           { l: "Total visits",   v: summaryStats.totalVisits,  sub: undefined as string | undefined, accent: undefined as string | undefined },
           { l: "Completed",      v: summaryStats.completedCount, sub: `${(summaryStats.totalVisits > 0 ? Math.round((summaryStats.completedCount / summaryStats.totalVisits) * 100) : 0)}%`, accent: A.green },
           { l: "Skipped",        v: summaryStats.skippedCount,   sub: undefined, accent: A.danger },
           { l: "Off-route",      v: summaryStats.offRouteCount,  sub: undefined, accent: A.sun },
+          { l: "Superseded",     v: summaryStats.supersededCount, sub: undefined, accent: A.danger },
           { l: "Order value",    v: `R\u00A0${summaryStats.totalAmount.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: undefined, accent: A.green },
         ].map((s, i) => (
           <div key={s.l} style={{ paddingLeft: i > 0 ? 18 : 0, borderLeft: i > 0 ? `1px solid ${A.borderSoft}` : "none" }}>
