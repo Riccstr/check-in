@@ -26,7 +26,7 @@ export function useUnscheduledVisits(
         .select("*, customers(customer_name)")
         .eq("rep_id", repId)
         .eq("visit_date", scheduleDate)
-        .neq("status", "in_progress");
+        .not("status", "in", "(in_progress,superseded)");
 
       if (linkedVisitIds.length > 0) {
         query = (query as any).not("id", "in", `(${linkedVisitIds.join(",")})`);
