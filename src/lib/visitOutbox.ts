@@ -17,7 +17,10 @@ export type VisitEventType =
   | "completed"    // check-out: the single born-complete visits row (status 'visited')
   | "skipped"      // stop marked skipped
   | "off_route"    // off-route order: born-complete visits row (status 'off_route')
-  | "edit";        // post-checkout correction to an already-completed visit
+  | "edit"         // post-checkout correction to an already-completed visit
+  | "superseded";  // ghost visit silently retired: born-complete visits row
+                    // (status 'superseded') + a sync_errors row for admin review.
+                    // No visits_events row — mirrors off_route (never "in progress").
 
 export interface VisitEventOrder {
   order_number: string | null;
@@ -66,7 +69,7 @@ export interface VisitEvent {
   //   off_route → 'off_route'
   //   arrived   → null (no visits row written yet)
   //   edit      → null (status unchanged by an edit)
-  status: "visited" | "skipped" | "off_route" | null;
+  status: "visited" | "skipped" | "off_route" | "superseded" | null;
 
   // Photo captured for this visit, base64 (data URL or raw). Only ever set on
   // a `completed` event. The worker uploads it and does not mark the event
