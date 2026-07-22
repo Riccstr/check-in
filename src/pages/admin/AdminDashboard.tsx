@@ -125,6 +125,29 @@ function isoToLocalSortKey(iso: string): string {
   );
 }
 
+/**
+ * Generic id-keyed quiet merge. If the set/order of ids differs between
+ * prev and next, that's a structural change and next is used outright.
+ * Otherwise each entry is deep-compared; unchanged entries keep their exact
+ * previous object reference. Used by fetchDataQuiet so realtime-triggered
+ * refreshes only touch the specific reps/schedules/visits/events that
+ * actually changed, rather than replacing every array wholesale.
+ */
+function mergeByIdQuiet<T extends { id: string }>(prevArr: T[], nextArr: T[]): T[] {
+  const sameLength = prevArr.length === nextArr.length;
+  const sameOrder = sameLength && prevArr.every((p, i) => p.id === nextArr[i].id);
+  if (!sameOrder) return nextArr;
+
+  let changed = false;
+  const merged = nextArr.map((next, i) => {
+    const prev = prevArr[i];
+    if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
+    changed = true;
+    return next;
+  });
+  return changed ? merged : prevArr;
+}
+
 // ─── StatStrip ───────────────────────────────────────────────────────────────
 // 4-card strip across the top of the dashboard. The top-level <StatCard> from
 // adminUi is reused — this just lays them out.
@@ -537,6 +560,54 @@ export default function AdminDashboard() {
 
   fetchRef.current = fetchData;
 
+  // ── Quiet refresh — no pre-generation, no setLoading, no setError. Used by
+  // the three realtime channels below so a change anywhere doesn't re-run the
+  // expensive per-rep pre-generation routine or disturb rows that didn't
+  // change. A failed quiet fetch silently keeps existing state; the next
+  // successful loud or quiet fetch will catch up.
+  const fetchDataQuiet = async () => {
+    try {
+      const [repsRes, schedulesRes, visitsRes, eventsRes] = await Promise.all([
+        supabase
+          .from("reps")
+          .select("id, rep_name")
+          .eq("is_active", true)
+          .order("rep_name"),
+
+        supabase
+          .from("daily_schedules")
+          .select(
+            "id, rep_id, schedule_items(id, status, customer_id, customers(customer_name, area))"
+          )
+          .eq("schedule_date", todayStr),
+
+        (supabase
+          .from("visits")
+          .select("id, rep_id, customer_id, client_generated_id, order_number, order_amount, duration_minutes, notes, status, created_at, customers(customer_name)")
+          .eq("visit_date", todayStr) as any)
+          .neq("status", "in_progress")
+          .eq("is_deleted", false),
+
+        (supabase as any)
+          .from("visit_events")
+          .select("id, client_id, rep_id, customer_id, event_type, event_time, created_at, customers(customer_name)")
+          .eq("visit_date", todayStr),
+      ]);
+
+      if (repsRes.error || schedulesRes.error || visitsRes.error || eventsRes.error) return;
+
+      setReps((prev) => mergeByIdQuiet(prev, repsRes.data ?? []));
+      setSchedules((prev) => mergeByIdQuiet(prev, (schedulesRes.data ?? []) as unknown as DailyScheduleRow[]));
+      setVisits((prev) => mergeByIdQuiet(prev, (visitsRes.data ?? []) as unknown as VisitRow[]));
+      setVisitEvents((prev) => mergeByIdQuiet(prev, (eventsRes.data ?? []) as unknown as VisitEventRow[]));
+    } catch {
+      // network error — keep existing state, no visible change
+    }
+  };
+
+  const fetchQuietRef = useRef<() => Promise<void>>(async () => {});
+  fetchQuietRef.current = fetchDataQuiet;
+
   useEffect(() => {
     fetchData();
 
@@ -545,7 +616,7 @@ export default function AdminDashboard() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "schedule_items" },
-        () => { fetchRef.current(); }
+        () => { fetchQuietRef.current(); }
       )
       .subscribe();
 
@@ -554,7 +625,7 @@ export default function AdminDashboard() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "visits" },
-        () => { fetchRef.current(); }
+        () => { fetchQuietRef.current(); }
       )
       .subscribe();
 
@@ -570,7 +641,7 @@ export default function AdminDashboard() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "visit_events" },
-        () => { fetchRef.current(); }
+        () => { fetchQuietRef.current(); }
       )
       .subscribe();
 
