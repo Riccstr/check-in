@@ -37,7 +37,6 @@ import { toast } from "sonner";
 
 export default function DailySchedule() {
   const { repId, signOut } = useAuth();
-  if (!repId) return null;
 
   const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().split("T")[0]);
   const [schedule,     setSchedule]     = useState<any>(null);
@@ -581,6 +580,9 @@ export default function DailySchedule() {
 
   // helper: is this card the active stop?
   const activeStopCustomerId = activeVisit?.customerId ?? null;
+
+  // Guard: do not render until repId is available (hooks have all run)
+  if (!repId) return null;
 
   // ─── render ─────────────────────────────────────────────────────────────────
   return (
