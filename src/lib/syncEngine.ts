@@ -153,6 +153,34 @@ async function upsertVisit(ev: VisitEvent): Promise<string | null> {
   return data?.id ?? null;
 }
 
+// Atomic replacement for the previous upsertVisit() + linkScheduleItem()
+// two-step sequence used by "completed" and "skipped". Those were two
+// separate awaited network calls with no shared transaction — there was a
+// real window where the visits row existed but schedule_items.visit_id
+// hadn't been set yet, during which any fetch (rep's own unscheduled-visits
+// query, admin dashboard, etc.) would correctly see the visit as unlinked
+// and briefly show it as an unscheduled duplicate. This single RPC performs
+// both writes in one Postgres transaction, closing that window entirely.
+async function completeVisitAndLinkScheduleItem(ev: VisitEvent): Promise<string | null> {
+  const { data, error } = await (supabase.rpc as any)("complete_visit_and_link_schedule_item", {
+    p_client_id: ev.clientId,
+    p_rep_id: ev.repId,
+    p_customer_id: ev.customerId,
+    p_visit_date: ev.visitDate,
+    p_arrival_time: ev.arrivalTime,
+    p_leaving_time: ev.leavingTime,
+    p_duration_minutes: ev.durationMinutes,
+    p_notes: ev.notes,
+    p_status: ev.status,
+    p_order_number: ev.order.order_number,
+    p_order_quantity: ev.order.order_quantity,
+    p_order_amount: ev.order.order_amount,
+    p_schedule_item_id: ev.scheduleItemId ?? null,
+  });
+  if (error) throw error;
+  return (data as string | null) ?? null;
+}
+
 // ── apply a single event; throws on hard failure so the caller marks it error ──
 
 async function applyEvent(ev: VisitEvent): Promise<void> {
@@ -163,9 +191,8 @@ async function applyEvent(ev: VisitEvent): Promise<void> {
     }
 
     case "completed": {
-      const visitId = await upsertVisit(ev);
+      const visitId = await completeVisitAndLinkScheduleItem(ev);
       if (visitId) {
-        await linkScheduleItem(ev, visitId);
         const photoOk = await uploadPhoto(ev, visitId);
         // Live-status event. If the photo failed, we still record completion —
         // the row exists; photo re-queues below.
@@ -194,8 +221,7 @@ async function applyEvent(ev: VisitEvent): Promise<void> {
     }
 
     case "skipped": {
-      const visitId = await upsertVisit(ev);
-      if (visitId) await linkScheduleItem(ev, visitId);
+      const visitId = await completeVisitAndLinkScheduleItem(ev);
       await insertVisitEvent(ev, "skipped", ev.leavingTime);
       return;
     }
