@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect, type MutableRefObject } from "react";
+import { useState, useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { debounce } from "@/lib/debounce";
 
 // ─── unscheduled visits ───────────────────────────────────────────────────
 // Fetches visits for this rep/date that are NOT linked to any schedule_item.
@@ -12,6 +13,7 @@ export function useUnscheduledVisits(
   expandedActiveIdRef: MutableRefObject<string | null>,
 ) {
   const [unscheduledVisits, setUnscheduledVisits] = useState<any[]>([]);
+  const debouncedFetchRef = useRef<() => void>(() => {});
 
   const fetchUnscheduledVisits = useCallback(async () => {
     if (!repId) return;
@@ -40,15 +42,21 @@ export function useUnscheduledVisits(
   }, [repId, scheduleDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Realtime subscription for visits table — refreshes unscheduled visits on INSERT/UPDATE.
+  useEffect(() => {
+    debouncedFetchRef.current = debounce(() => { fetchUnscheduledVisits(); }, 300);
+  }, [fetchUnscheduledVisits]);
+
   // Uses the same expandedActiveIdRef guard as the other subscriptions.
   useEffect(() => {
     if (!repId) return;
     const channel = supabase
       .channel(`visits-unscheduled-${repId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "visits", filter: `rep_id=eq.${repId}` }, () => {
-        if (!expandedActiveIdRef.current) {
-          fetchUnscheduledVisits();
-        }
+        // Unscheduled visits are a separate list from the scheduled cards — whether a
+        // scheduled card happens to be expanded has no bearing on this table. Always
+        // refresh (debounced so a burst of near-simultaneous row changes collapses
+        // into a single refresh); fetchUnscheduledVisits() is a lightweight read-only query.
+        debouncedFetchRef.current();
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };

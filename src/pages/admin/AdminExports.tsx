@@ -6,6 +6,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { FileSpreadsheet } from "lucide-react";
+import type { WorkSheet } from "xlsx-js-style";
 import { fmtDuration, fmtTime12h, fmtCurrency } from "@/lib/timeUtils";
 import { buildReportData, type ReportData } from "@/lib/reportData";
 import { A, PageHeader } from "@/lib/adminUi";
@@ -52,7 +53,7 @@ const cRight = { horizontal: "right", vertical: "center" };
 const cWrap = { horizontal: "left", vertical: "center", wrapText: true };
 
 // Helper: set a cell with value + style
-function sc(ws: XLSX.WorkSheet, r: number, c: number, v: any, s: any) {
+function sc(XLSX: typeof import("xlsx-js-style"), ws: WorkSheet, r: number, c: number, v: any, s: any) {
   const ref = XLSX.utils.encode_cell({ r, c });
   if (!ws[ref]) ws[ref] = {};
   ws[ref].v = v ?? "";
@@ -61,7 +62,7 @@ function sc(ws: XLSX.WorkSheet, r: number, c: number, v: any, s: any) {
 }
 
 // Helper: apply style to empty/merged cells
-function ss(ws: XLSX.WorkSheet, r: number, c: number, s: any) {
+function ss(XLSX: typeof import("xlsx-js-style"), ws: WorkSheet, r: number, c: number, s: any) {
   const ref = XLSX.utils.encode_cell({ r, c });
   if (!ws[ref]) ws[ref] = { v: "", t: "s" };
   ws[ref].s = s;
@@ -248,7 +249,7 @@ export default function AdminExports() {
     const COL_COUNT = 12;
 
     const wb = XLSX.utils.book_new();
-    const ws: XLSX.WorkSheet = {};
+    const ws: WorkSheet = {};
     ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: 100, c: COL_COUNT - 1 } });
 
     ws["!cols"] = [
@@ -271,13 +272,13 @@ export default function AdminExports() {
     // ── ROW 0: Title banner ──────────────────────────────────────────────────
     ws["!rows"][0] = { hpt: 40 };
     const titleStyle = { font: titleFont, fill: navyFill, alignment: { ...cLeft, indent: 1 }, border: thinBorder };
-    sc(ws, 0, 0, "Daily Visit Report", titleStyle);
-    for (let c = 1; c < COL_COUNT; c++) ss(ws, 0, c, { fill: navyFill, border: thinBorder });
+    sc(XLSX, ws, 0, 0, "Daily Visit Report", titleStyle);
+    for (let c = 1; c < COL_COUNT; c++) ss(XLSX, ws, 0, c, { fill: navyFill, border: thinBorder });
     ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: COL_COUNT - 1 } }];
 
     // ── ROW 1: Accent bar ────────────────────────────────────────────────────
     ws["!rows"][1] = { hpt: 6 };
-    for (let c = 0; c < COL_COUNT; c++) ss(ws, 1, c, { fill: accentFill });
+    for (let c = 0; c < COL_COUNT; c++) ss(XLSX, ws, 1, c, { fill: accentFill });
     ws["!merges"].push({ s: { r: 1, c: 0 }, e: { r: 1, c: COL_COUNT - 1 } });
 
     // ── ROWS 2–5: Three-block info summary (mirrors PDF layout) ─────────────
@@ -308,27 +309,27 @@ export default function AdminExports() {
       ws["!rows"][row] = { hpt: 22 };
 
       // Left block: label cols 0-1, value cols 2-3
-      sc(ws, row, 0, leftLabels[i], lblStyle);
-      ss(ws, row, 1, lblStyle);
+      sc(XLSX, ws, row, 0, leftLabels[i], lblStyle);
+      ss(XLSX, ws, row, 1, lblStyle);
       ws["!merges"].push({ s: { r: row, c: 0 }, e: { r: row, c: 1 } });
-      sc(ws, row, 2, leftValues[i], valStyle);
-      ss(ws, row, 3, valStyle);
+      sc(XLSX, ws, row, 2, leftValues[i], valStyle);
+      ss(XLSX, ws, row, 3, valStyle);
       ws["!merges"].push({ s: { r: row, c: 2 }, e: { r: row, c: 3 } });
 
       // Centre block: label cols 4-5, value cols 6-7
-      sc(ws, row, 4, centreLabels[i], lblStyle);
-      ss(ws, row, 5, lblStyle);
+      sc(XLSX, ws, row, 4, centreLabels[i], lblStyle);
+      ss(XLSX, ws, row, 5, lblStyle);
       ws["!merges"].push({ s: { r: row, c: 4 }, e: { r: row, c: 5 } });
-      sc(ws, row, 6, centreValues[i], valStyle);
-      ss(ws, row, 7, valStyle);
+      sc(XLSX, ws, row, 6, centreValues[i], valStyle);
+      ss(XLSX, ws, row, 7, valStyle);
       ws["!merges"].push({ s: { r: row, c: 6 }, e: { r: row, c: 7 } });
 
       // Right block: label cols 8-9, value cols 10-11
-      sc(ws, row, 8, rightLabels[i], lblStyle);
-      ss(ws, row, 9, lblStyle);
+      sc(XLSX, ws, row, 8, rightLabels[i], lblStyle);
+      ss(XLSX, ws, row, 9, lblStyle);
       ws["!merges"].push({ s: { r: row, c: 8 }, e: { r: row, c: 9 } });
-      sc(ws, row, 10, rightValues[i], valStyle);
-      ss(ws, row, 11, valStyle);
+      sc(XLSX, ws, row, 10, rightValues[i], valStyle);
+      ss(XLSX, ws, row, 11, valStyle);
       ws["!merges"].push({ s: { r: row, c: 10 }, e: { r: row, c: 11 } });
     }
 
@@ -339,7 +340,7 @@ export default function AdminExports() {
     const headers = ["#", "Account #", "Customer", "Area", "Arrival", "Departure", "Duration", "Order No.", "Qty", "Amount (R)", "Notes", "Status"];
     ws["!rows"][7] = { hpt: 28 };
     const hdrStyle = { font: colHdrFont, fill: navyFill, alignment: cCenter, border: thinBorder };
-    for (let c = 0; c < headers.length; c++) sc(ws, 7, c, headers[c], hdrStyle);
+    for (let c = 0; c < headers.length; c++) sc(XLSX, ws, 7, c, headers[c], hdrStyle);
 
     // ── ROWS 8+: Data rows ───────────────────────────────────────────────────
     const colAligns = [cCenter, cLeft, cLeft, cLeft, cCenter, cCenter, cCenter, cLeft, cCenter, cRight, cWrap, cCenter];
@@ -376,7 +377,7 @@ export default function AdminExports() {
       for (let c = 0; c < rowValues.length; c++) {
         const cellStyle = { font: fnt, fill: bgFill, alignment: colAligns[c], border: thinBorder };
         const val = rowValues[c];
-        sc(ws, row, c, val, cellStyle);
+        sc(XLSX, ws, row, c, val, cellStyle);
         if (c === 9 && typeof val === "number") {
           const ref = XLSX.utils.encode_cell({ r: row, c });
           ws[ref].z = "#,##0.00";
@@ -391,18 +392,18 @@ export default function AdminExports() {
     const tStyle = { font: totalsFont, fill: navyFill, alignment: cCenter, border: thinBorder };
     const tRightStyle = { font: totalsFont, fill: navyFill, alignment: cRight, border: thinBorder };
 
-    sc(ws, totalsRow, 0, "Totals", tStyle);
-    for (let c = 1; c < 6; c++) ss(ws, totalsRow, c, tStyle);
+    sc(XLSX, ws, totalsRow, 0, "Totals", tStyle);
+    for (let c = 1; c < 6; c++) ss(XLSX, ws, totalsRow, c, tStyle);
     ws["!merges"].push({ s: { r: totalsRow, c: 0 }, e: { r: totalsRow, c: 5 } });
 
-    sc(ws, totalsRow, 6, fmtDuration(totalProductiveMins), tStyle);
-    ss(ws, totalsRow, 7, tStyle);
-    sc(ws, totalsRow, 8, totalOrderQty, tStyle);
-    sc(ws, totalsRow, 9, totalOrderAmount, tRightStyle);
+    sc(XLSX, ws, totalsRow, 6, fmtDuration(totalProductiveMins), tStyle);
+    ss(XLSX, ws, totalsRow, 7, tStyle);
+    sc(XLSX, ws, totalsRow, 8, totalOrderQty, tStyle);
+    sc(XLSX, ws, totalsRow, 9, totalOrderAmount, tRightStyle);
     const amtRef = XLSX.utils.encode_cell({ r: totalsRow, c: 9 });
     ws[amtRef].z = "#,##0.00";
-    ss(ws, totalsRow, 10, tStyle);
-    ss(ws, totalsRow, 11, tStyle);
+    ss(XLSX, ws, totalsRow, 10, tStyle);
+    ss(XLSX, ws, totalsRow, 11, tStyle);
 
     ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: totalsRow, c: COL_COUNT - 1 } });
 

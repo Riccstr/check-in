@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { fmtTime12h } from "@/lib/timeUtils";
 import { A, PageHeader, StatCard, Pill, Tag, PulseKeyframes } from "@/lib/adminUi";
 import { useAuth } from "@/hooks/useAuth";
+import { debounce } from "@/lib/debounce";
 
 // ─── local types ──────────────────────────────────────────────────────────────
 
@@ -460,54 +461,17 @@ export default function AdminDashboard() {
         await Promise.all(
           activeReps.map(async (rep) => {
             try {
-              // Check for an existing schedule row for this rep today.
-              // Cast to any: weekly_template_id is not yet in the generated types.ts snapshot.
-              const { data: existing } = await (supabase
-                .from("daily_schedules")
-                .select("id, weekly_template_id")
-                .eq("rep_id", rep.id)
-                .eq("schedule_date", todayStr)
-                .maybeSingle() as any) as { data: { id: string; weekly_template_id: string | null } | null };
-
-              // Self-heal: if the row uses the wrong template AND the rep has not
-              // started their day, delete it so it regenerates from the right week.
-              if (
-                existing &&
-                correctWeeklyTemplateId &&
-                existing.weekly_template_id !== correctWeeklyTemplateId
-              ) {
-                // Authoritative "has the rep started today?" signal in the
-                // event-outbox model. arrival_time is NO LONGER written to
-                // schedule_items at check-in, so schedule_items alone can't see
-                // an in-progress visit — a checked-in rep would look "unstarted"
-                // and get their schedule deleted out from under them. visit_events
-                // is the guard.
-                const { count: eventCount } = await (supabase as any)
-                  .from("visit_events")
-                  .select("id", { count: "exact", head: true })
-                  .eq("rep_id", rep.id)
-                  .eq("visit_date", todayStr);
-
-                // Belt-and-suspenders: schedule_items.status is still written at
-                // checkout, so a completed/skipped stop also blocks the delete.
-                const { count: startedCount } = await supabase
-                  .from("schedule_items")
-                  .select("id", { count: "exact", head: true })
-                  .eq("schedule_id", existing.id)
-                  .or("arrival_time.not.is.null,status.in.(visited,skipped)");
-
-                if ((eventCount ?? 0) === 0 && (startedCount ?? 0) === 0) {
-                  await supabase
-                    .from("daily_schedules")
-                    .delete()
-                    .eq("id", existing.id);
-                }
-              }
-
-              // Idempotent — creates the row if absent, no-ops if it already exists
-              await supabase.rpc("auto_generate_daily_schedule", {
-                p_rep_id:        rep.id,
+              // Atomic self-heal + generate. Replaces the previous three-step
+              // client-side check-then-act sequence (a confirmed, if rare, race
+              // window between "check if the rep has started" and "delete the
+              // stale schedule row") with a single Postgres function call that
+              // performs the check and the delete inside one transaction, guarded
+              // by a row lock on the daily_schedules row. See
+              // self_heal_and_generate_daily_schedule in Supabase SQL Editor.
+              await (supabase.rpc as any)("self_heal_and_generate_daily_schedule", {
+                p_rep_id: rep.id,
                 p_schedule_date: todayStr,
+                p_correct_weekly_template_id: correctWeeklyTemplateId,
               });
             } catch {
               // Per-rep failure is non-fatal — card will show "No Schedule"
@@ -608,6 +572,11 @@ export default function AdminDashboard() {
   const fetchQuietRef = useRef<() => Promise<void>>(async () => {});
   fetchQuietRef.current = fetchDataQuiet;
 
+  const debouncedFetchQuietRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    debouncedFetchQuietRef.current = debounce(() => { fetchQuietRef.current(); }, 300);
+  }, []);
+
   useEffect(() => {
     fetchData();
 
@@ -616,7 +585,7 @@ export default function AdminDashboard() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "schedule_items" },
-        () => { fetchQuietRef.current(); }
+        () => { debouncedFetchQuietRef.current(); }
       )
       .subscribe();
 
@@ -625,7 +594,7 @@ export default function AdminDashboard() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "visits" },
-        () => { fetchQuietRef.current(); }
+        () => { debouncedFetchQuietRef.current(); }
       )
       .subscribe();
 
@@ -641,7 +610,7 @@ export default function AdminDashboard() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "visit_events" },
-        () => { fetchQuietRef.current(); }
+        () => { debouncedFetchQuietRef.current(); }
       )
       .subscribe();
 

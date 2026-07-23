@@ -25,6 +25,7 @@ import {
   editCompleted, supersedeGhostVisit,
 } from "@/lib/visitMachine";
 import { syncVisitEvents } from "@/lib/syncEngine";
+import { debounce } from "@/lib/debounce";
 import { onResume } from "@/lib/resumeCoordinator";
 import { C, OfflineBanner } from "@/components/schedule/ScheduleHelpers";
 import { EodSummaryModal, SummaryStats } from "@/components/schedule/EodSummaryModal";
@@ -93,6 +94,8 @@ export default function DailySchedule() {
 
   const scheduleDateRef    = useRef(scheduleDate);
   const lastFetchTimeRef   = useRef<number>(0);
+  const loudFetchInProgressRef = useRef(false);
+  const debouncedFetchScheduleQuietRef = useRef<() => void>(() => {});
 
   const [expandedBottomCard, setExpandedBottomCard] = useState<"unscheduled" | "offroute" | null>(null);
   const [adHocCustomers,   setAdHocCustomers]   = useState<any[]>([]);
@@ -240,6 +243,7 @@ export default function DailySchedule() {
     const now = Date.now();
     if (!force && now - lastFetchTimeRef.current < 2000) return;
     lastFetchTimeRef.current = now;
+    loudFetchInProgressRef.current = true;
     setLoading(true);
     let hasCachedSchedule = false;
 
@@ -324,6 +328,7 @@ export default function DailySchedule() {
       if (!hasCachedSchedule) { setSchedule(null); setItems([]); }
     } finally {
       setLoading(false);
+      loudFetchInProgressRef.current = false;
     }
   };
 
@@ -334,6 +339,10 @@ export default function DailySchedule() {
   // auto-generation) — if none exists yet, this is a no-op.
   const fetchScheduleQuiet = useCallback(async () => {
     if (!repId || !navigator.onLine) return;
+    // Skip entirely if a loud fetch (initial load or date navigation) is already running —
+    // it will refresh everything itself once it completes, so a concurrent quiet fetch here
+    // would only risk a brief flash of half-updated data racing against the loud reload.
+    if (loudFetchInProgressRef.current) return;
     try {
       const { data } = await supabase
         .from("daily_schedules")
@@ -365,15 +374,20 @@ export default function DailySchedule() {
     if (!schedule?.id) return;
     const channel = supabase
       .channel(`schedule-items-${schedule.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "schedule_items", filter: `schedule_id=eq.${schedule.id}` }, () => {
-        // Never clobber an expanded in-progress card. expandedActiveIdRef guard preserved.
+      .on("postgres_changes", { event: "*", schema: "public", table: "schedule_items", filter: `schedule_id=eq.${schedule.id}` }, (payload) => {
+        // Never clobber the specific expanded in-progress card. expandedActiveIdRef guard
+        // preserved, but narrowed to only suppress refresh when the incoming change is to
+        // THAT row — not to any other row on the schedule. A change to a different item
+        // (or to the same item when it's not in progress) still triggers a refresh.
+        const changedId = (payload.new as any)?.id ?? (payload.old as any)?.id;
         const expandedItem = expandedActiveIdRef.current
           ? itemsRef.current.find((i: any) => i.id === expandedActiveIdRef.current)
           : null;
-        const isInProgress = expandedItem
+        const isExpandedInProgress = expandedItem
           ? !!expandedItem.arrival_time && !expandedItem.leaving_time
           : false;
-        if (!isInProgress) fetchScheduleQuiet();
+        const changeIsToExpandedCard = isExpandedInProgress && changedId === expandedActiveIdRef.current;
+        if (!changeIsToExpandedCard) debouncedFetchScheduleQuietRef.current();
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -385,7 +399,7 @@ export default function DailySchedule() {
     const channel = supabase
       .channel(`daily-schedules-${repId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "daily_schedules", filter: `rep_id=eq.${repId}` }, () => {
-        if (!expandedActiveIdRef.current) fetchScheduleQuiet();
+        if (!expandedActiveIdRef.current) debouncedFetchScheduleQuietRef.current();
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -403,6 +417,10 @@ export default function DailySchedule() {
   // instead of running its own visibilitychange listener. The coordinator
   // has already checked the session and drained the sync queue by the time
   // this fires; this only needs to quietly reconcile the schedule.
+  useEffect(() => {
+    debouncedFetchScheduleQuietRef.current = debounce(() => { fetchScheduleQuiet(); }, 300);
+  }, [fetchScheduleQuiet]);
+
   useEffect(() => {
     return onResume(() => { fetchScheduleQuiet(); });
   }, [fetchScheduleQuiet]);
