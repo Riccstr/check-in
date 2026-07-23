@@ -276,7 +276,6 @@ export default function DailySchedule() {
         setSchedule(data);
         const sortedItems = (data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
         setItems(sortedItems);
-        fetchUnscheduledVisits();
         resolveUnknownCustomers(sortedItems);
         await setCachedSchedule(repId, scheduleDate, data);
         reconcileActiveVisit(sortedItems, true);
@@ -295,7 +294,6 @@ export default function DailySchedule() {
             setSchedule(newData);
             const sortedNewItems = (newData?.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
             setItems(sortedNewItems);
-            fetchUnscheduledVisits();
             resolveUnknownCustomers(sortedNewItems);
             if (newData) await setCachedSchedule(repId, scheduleDate, newData);
             reconcileActiveVisit(sortedNewItems, true);
@@ -356,7 +354,6 @@ export default function DailySchedule() {
       setSchedule((prev: any) => (JSON.stringify(prev) === JSON.stringify(data) ? prev : data));
       const sortedItems = (data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
       setItems((prev) => mergeItemsQuiet(prev, sortedItems));
-      fetchUnscheduledVisits();
       resolveUnknownCustomers(sortedItems);
       await setCachedSchedule(repId, scheduleDate, data);
       reconcileActiveVisit(sortedItems, true);
