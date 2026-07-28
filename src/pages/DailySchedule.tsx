@@ -95,6 +95,9 @@ export default function DailySchedule() {
   const scheduleDateRef    = useRef(scheduleDate);
   const lastFetchTimeRef   = useRef<number>(0);
   const loudFetchInProgressRef = useRef(false);
+  const syncInProgressRef = useRef(false);
+  const scheduleFetchSeqRef = useRef(0);
+  const pendingOptimisticIdsRef = useRef<Set<string>>(new Set());
   const debouncedFetchScheduleQuietRef = useRef<() => void>(() => {});
 
   const [expandedBottomCard, setExpandedBottomCard] = useState<"unscheduled" | "offroute" | null>(null);
@@ -341,6 +344,17 @@ export default function DailySchedule() {
     // it will refresh everything itself once it completes, so a concurrent quiet fetch here
     // would only risk a brief flash of half-updated data racing against the loud reload.
     if (loudFetchInProgressRef.current) return;
+    // Stamp this call with the next sequence number. Multiple quiet fetches
+    // can genuinely overlap (e.g. several resume cycles firing in quick
+    // succession while backgrounding/foregrounding). Network responses are
+    // not guaranteed to resolve in the order they were sent — an older
+    // request (issued before an in-flight checkout/skip had committed
+    // server-side) could resolve AFTER a newer one and silently overwrite
+    // correct, freshly-committed state with stale data. This was the actual
+    // cause of a completed visit briefly (or, on a run of unlucky timing,
+    // not-so-briefly) reverting to looking un-visited after backgrounding.
+    // Only the response from the MOST RECENTLY issued call is ever applied.
+    const mySeq = ++scheduleFetchSeqRef.current;
     try {
       const { data } = await supabase
         .from("daily_schedules")
@@ -349,11 +363,33 @@ export default function DailySchedule() {
         .eq("schedule_date", scheduleDate)
         .maybeSingle();
 
+      // A newer fetchScheduleQuiet call has started since this one was
+      // issued — this response is stale, discard it entirely.
+      if (mySeq !== scheduleFetchSeqRef.current) return;
+
       if (!data) return;
 
       setSchedule((prev: any) => (JSON.stringify(prev) === JSON.stringify(data) ? prev : data));
       const sortedItems = (data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
-      setItems((prev) => mergeItemsQuiet(prev, sortedItems));
+      setItems((prev) => {
+        const merged = mergeItemsQuiet(prev, sortedItems);
+        // Any item with an unsynced optimistic update currently in flight (e.g. a
+        // checkout whose own database write hasn't committed yet) keeps its local
+        // version untouched, no matter what this fetch returned. This fetch may
+        // have been issued (or may simply have resolved) at a moment before that
+        // write landed server-side, in which case the server's answer at that
+        // instant is real but stale relative to the action the rep just took —
+        // previously this could briefly revert a just-completed visit back to
+        // looking un-visited. The flag is cleared the moment that action's own
+        // sync call resolves, at which point the server is guaranteed correct
+        // and normal live updates resume for that item.
+        if (pendingOptimisticIdsRef.current.size === 0) return merged;
+        return merged.map((it) => {
+          if (!pendingOptimisticIdsRef.current.has(it.id)) return it;
+          const prevItem = prev.find((p) => p.id === it.id);
+          return prevItem ?? it;
+        });
+      });
       resolveUnknownCustomers(sortedItems);
       await setCachedSchedule(repId, scheduleDate, data);
       reconcileActiveVisit(sortedItems, true);
@@ -489,12 +525,22 @@ export default function DailySchedule() {
       }
       setActiveVisit(null);
       handleLocalUpdate(item.id, { status: "visited", leaving_time: "pending" });
-      if (navigator.onLine) {
-        const r = await syncVisitEvents();
-        if (r.synced > 0) fetchScheduleQuiet();
-      } else {
-        toast.success("Saved offline. Will sync when online.");
-        fetchScheduleQuiet();
+      pendingOptimisticIdsRef.current.add(item.id);
+      try {
+        if (navigator.onLine) {
+          syncInProgressRef.current = true;
+          try {
+            const r = await syncVisitEvents();
+            if (r.synced > 0) fetchScheduleQuiet();
+          } finally {
+            syncInProgressRef.current = false;
+          }
+        } else {
+          toast.success("Saved offline. Will sync when online.");
+          fetchScheduleQuiet();
+        }
+      } finally {
+        pendingOptimisticIdsRef.current.delete(item.id);
       }
     } finally {
       setBusyCustomerId(null);
@@ -530,12 +576,17 @@ export default function DailySchedule() {
       // If the skipped stop was the active one, clear it.
       if (activeVisit?.customerId === item.customer_id) setActiveVisit(null);
       handleLocalUpdate(item.id, { status: "skipped", notes: reason });
-      if (navigator.onLine) {
-        const r = await syncVisitEvents();
-        if (r.synced > 0) fetchScheduleQuiet();
-      } else {
-        toast.success("Saved offline. Will sync when online.");
-        fetchScheduleQuiet();
+      pendingOptimisticIdsRef.current.add(item.id);
+      try {
+        if (navigator.onLine) {
+          const r = await syncVisitEvents();
+          if (r.synced > 0) fetchScheduleQuiet();
+        } else {
+          toast.success("Saved offline. Will sync when online.");
+          fetchScheduleQuiet();
+        }
+      } finally {
+        pendingOptimisticIdsRef.current.delete(item.id);
       }
     } finally {
       setBusyCustomerId(null);
