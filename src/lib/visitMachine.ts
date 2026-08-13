@@ -29,7 +29,7 @@ export type StartResult =
   | { ok: false; reason: "already_open"; openCustomerName: string | null };
 
 export type CheckoutResult =
-  | { ok: true }
+  | { ok: true; leavingTime: string; durationMinutes: number }
   | { ok: false; reason: "zero_duration" }
   | { ok: false; reason: "no_active" };
 
@@ -174,6 +174,7 @@ export async function checkOut(): Promise<CheckoutResult> {
       type: "completed",
       repId: active.repId,
       customerId: active.customerId,
+      customerName: active.customerName,
       visitDate: active.visitDate,
       scheduleItemId: active.scheduleItemId,
       arrivalTime: active.arrivalTime,
@@ -187,7 +188,7 @@ export async function checkOut(): Promise<CheckoutResult> {
   );
 
   await clearActiveVisit();
-  return { ok: true };
+  return { ok: true, leavingTime, durationMinutes: duration };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -200,6 +201,7 @@ export async function skip(params: {
   visitDate: string;
   scheduleItemId: string | null;
   reason: string;
+  customerName?: string | null;
 }): Promise<void> {
   // If the skip is for the currently-open visit, retire it. clientId reuse
   // keeps the arrived+skipped pair on the same idempotency key.
@@ -217,6 +219,7 @@ export async function skip(params: {
       type: "skipped",
       repId: params.repId,
       customerId: params.customerId,
+      customerName: params.customerName ?? (isActiveStop ? active!.customerName : null),
       visitDate: params.visitDate,
       scheduleItemId: params.scheduleItemId,
       notes: params.reason,
@@ -239,6 +242,7 @@ export async function logOffRoute(params: {
   orderQty: string;
   orderAmount: string;
   notes: string;
+  customerName?: string | null;
 }): Promise<void> {
   const order = orderFromStrings(params.orderNumber, params.orderQty, params.orderAmount);
 
@@ -248,6 +252,7 @@ export async function logOffRoute(params: {
       type: "off_route",
       repId: params.repId,
       customerId: params.customerId,
+      customerName: params.customerName ?? null,
       visitDate: params.visitDate,
       scheduleItemId: null,
       notes: params.notes || null,
@@ -314,6 +319,7 @@ export async function supersedeGhostVisit(active: ActiveVisit): Promise<void> {
       type: "superseded",
       repId: active.repId,
       customerId: active.customerId,
+      customerName: active.customerName,
       visitDate: active.visitDate,
       scheduleItemId: null, // no valid target to link — that's the whole point
       arrivalTime: active.arrivalTime,

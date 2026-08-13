@@ -18,6 +18,7 @@ import {
   getActiveVisit,
   saveActiveVisit,
   clearActiveVisit,
+  getPendingVisitEvents,
   type ActiveVisit,
 } from "@/lib/offlineDb";
 import {
@@ -57,6 +58,41 @@ function mergeItemsQuiet(prevItems: any[], nextItems: any[]): any[] {
   });
 
   return changed ? merged : prevItems;
+}
+
+// ─── outbox overlay ─────────────────────────────────────────────────────────
+// Server fetches only know what has synced. Any visit completed/skipped
+// OFFLINE still lives solely in the visit_outbox until the drain runs — a
+// fetch landing before then would truthfully (from the server's view) report
+// those stops as pending, and previously the app trusted that and visibly
+// resurrected already-done visits as "next up". A rep then tapping the top
+// card could check into a customer they had already completed — this is the
+// confirmed cause of a real visit being recorded against the wrong customer.
+// This overlay re-applies pending terminal outbox events on top of every
+// fetched/cached item list. Once the outbox drains, the events disappear and
+// the server is correct on its own — the overlay self-retires.
+async function overlayPendingOutboxEvents(items: any[], visitDate: string): Promise<any[]> {
+  try {
+    const pending = await getPendingVisitEvents();
+    const terminal = pending.filter(
+      (e) => (e.type === "completed" || e.type === "skipped") && e.visitDate === visitDate
+    );
+    if (terminal.length === 0) return items;
+    return items.map((item) => {
+      const ev = terminal.find((e) => e.customerId === item.customer_id);
+      if (!ev) return item;
+      return {
+        ...item,
+        status: ev.type === "completed" ? "visited" : "skipped",
+        arrival_time: ev.arrivalTime ?? item.arrival_time,
+        leaving_time: ev.leavingTime ?? item.leaving_time,
+        duration_minutes: ev.durationMinutes ?? item.duration_minutes,
+        notes: ev.notes ?? item.notes,
+      };
+    });
+  } catch {
+    return items; // IDB read failure — never block rendering on the overlay
+  }
 }
 
 // ─── DailySchedule ────────────────────────────────────────────────────────────
@@ -256,8 +292,9 @@ export default function DailySchedule() {
         hasCachedSchedule = true;
         setSchedule(cached);
         const sorted = (cached.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
-        setItems(sorted);
-        reconcileActiveVisit(sorted);
+        const overlaidCached = await overlayPendingOutboxEvents(sorted, scheduleDate);
+        setItems(overlaidCached);
+        reconcileActiveVisit(overlaidCached);
         setLoading(false);
       }
     } catch { /* ignore cache read errors */ }
@@ -278,10 +315,11 @@ export default function DailySchedule() {
       if (data) {
         setSchedule(data);
         const sortedItems = (data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
-        setItems(sortedItems);
-        resolveUnknownCustomers(sortedItems);
+        const overlaid = await overlayPendingOutboxEvents(sortedItems, scheduleDate);
+        setItems(overlaid);
+        resolveUnknownCustomers(overlaid);
         await setCachedSchedule(repId, scheduleDate, data);
-        reconcileActiveVisit(sortedItems, true);
+        reconcileActiveVisit(overlaid, true);
       } else {
         const todayStr = new Date().toISOString().split("T")[0];
         if (scheduleDate <= todayStr) {
@@ -296,10 +334,11 @@ export default function DailySchedule() {
               .maybeSingle();
             setSchedule(newData);
             const sortedNewItems = (newData?.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
-            setItems(sortedNewItems);
-            resolveUnknownCustomers(sortedNewItems);
+            const overlaidNewItems = await overlayPendingOutboxEvents(sortedNewItems, scheduleDate);
+            setItems(overlaidNewItems);
+            resolveUnknownCustomers(overlaidNewItems);
             if (newData) await setCachedSchedule(repId, scheduleDate, newData);
-            reconcileActiveVisit(sortedNewItems, true);
+            reconcileActiveVisit(overlaidNewItems, true);
           } else {
             setSchedule(null); setItems([]);
           }
@@ -371,8 +410,9 @@ export default function DailySchedule() {
 
       setSchedule((prev: any) => (JSON.stringify(prev) === JSON.stringify(data) ? prev : data));
       const sortedItems = (data.schedule_items || []).sort((a: any, b: any) => a.sort_order - b.sort_order);
+      const overlaid = await overlayPendingOutboxEvents(sortedItems, scheduleDate);
       setItems((prev) => {
-        const merged = mergeItemsQuiet(prev, sortedItems);
+        const merged = mergeItemsQuiet(prev, overlaid);
         // Any item with an unsynced optimistic update currently in flight (e.g. a
         // checkout whose own database write hasn't committed yet) keeps its local
         // version untouched, no matter what this fetch returned. This fetch may
@@ -390,9 +430,9 @@ export default function DailySchedule() {
           return prevItem ?? it;
         });
       });
-      resolveUnknownCustomers(sortedItems);
+      resolveUnknownCustomers(overlaid);
       await setCachedSchedule(repId, scheduleDate, data);
-      reconcileActiveVisit(sortedItems, true);
+      reconcileActiveVisit(overlaid, true);
     } catch {
       // network error — keep existing state, no visible change
     }
@@ -524,7 +564,17 @@ export default function DailySchedule() {
         return;
       }
       setActiveVisit(null);
-      handleLocalUpdate(item.id, { status: "visited", leaving_time: "pending" });
+      // Write the REAL leaving time and duration the machine just computed —
+      // never a placeholder. The Done tab must immediately show the visit
+      // exactly as captured; whether the sync has completed yet is invisible
+      // to the rep by design. (The previous "pending" placeholder rendered as
+      // a truncated "pendi" in the time slot and left duration blank, reading
+      // as if the app had failed to capture the visit.)
+      handleLocalUpdate(item.id, {
+        status: "visited",
+        leaving_time: res.leavingTime,
+        duration_minutes: res.durationMinutes,
+      });
       pendingOptimisticIdsRef.current.add(item.id);
       try {
         if (navigator.onLine) {
@@ -572,6 +622,7 @@ export default function DailySchedule() {
         visitDate: scheduleDate,
         scheduleItemId: item.id,
         reason,
+        customerName: item.customers?.customer_name ?? null,
       });
       // If the skipped stop was the active one, clear it.
       if (activeVisit?.customerId === item.customer_id) setActiveVisit(null);

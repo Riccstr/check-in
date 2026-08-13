@@ -11,6 +11,7 @@ import { Pencil, Trash2, Camera } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { A, PageHeader, Tag } from "@/lib/adminUi";
 import { parseAmount } from "@/components/schedule/ScheduleHelpers";
+import { debounce } from "@/lib/debounce";
 
 const PAGE_SIZE = 50;
 
@@ -135,6 +136,63 @@ export default function AdminVisits() {
     setLoading(false);
   };
 
+  // Quiet variant — identical queries, but never touches `loading`, so the
+  // table stays mounted and visible while fresh data lands. Used only by the
+  // realtime subscription: a burst of syncing visits (a rep's offline outbox
+  // draining can insert/update a dozen-plus rows in seconds) previously
+  // triggered one full loud fetch per row, each flipping loading true→false
+  // and unmounting the entire table into a "Loading…" placeholder — the
+  // visible repeated flashing. The loud fetchVisits stays for initial load,
+  // filter changes, and pagination, where a loading state is appropriate.
+  const fetchVisitsQuiet = async () => {
+    const applyFilters = (q: any) => {
+      q = q.eq("is_deleted", false);
+      if (repFilter !== "all") q = q.eq("rep_id", repFilter);
+      if (custFilter !== "all") q = q.eq("customer_id", custFilter);
+      if (dateFrom) q = q.gte("visit_date", dateFrom);
+      if (dateTo) q = q.lte("visit_date", dateTo);
+      return q;
+    };
+
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+    const dataQuery = applyFilters(
+      supabase
+        .from("visits")
+        .select("*, reps(rep_name), customers(customer_name, account_number)", { count: "exact" })
+        .order("visit_date", { ascending: false })
+        .order("arrival_time", { ascending: false })
+        .range(from, to)
+    );
+
+    const statsQuery = applyFilters(
+      (supabase as any)
+        .from("visits")
+        .select("status, order_amount")
+    );
+
+    try {
+      const [{ data, count }, { data: statsData }] = await Promise.all([dataQuery, statsQuery]);
+
+      setVisits((data as Visit[]) || []);
+      setTotalCount(count ?? 0);
+
+      const allVisits = (statsData as any[]) || [];
+      setSummaryStats({
+        totalVisits: allVisits.length,
+        completedCount: allVisits.filter((v) => v.status === "visited").length,
+        skippedCount: allVisits.filter((v) => v.status === "skipped").length,
+        offRouteCount: allVisits.filter((v) => v.status === "off_route").length,
+        supersededCount: allVisits.filter((v) => v.status === "superseded").length,
+        totalAmount: allVisits
+          .filter((v) => v.status !== "superseded")
+          .reduce((s: number, v: any) => s + (Number(v.order_amount) || 0), 0),
+      });
+    } catch {
+      // network error — keep existing state, no visible change
+    }
+  };
+
   useEffect(() => {
     Promise.all([
       supabase.from("reps").select("id, rep_name").order("rep_name"),
@@ -145,19 +203,27 @@ export default function AdminVisits() {
   useEffect(() => { setPage(0); }, [repFilter, custFilter, dateFrom, dateTo]);
   useEffect(() => { fetchVisits(); }, [repFilter, custFilter, dateFrom, dateTo, page]);
 
-  // Keep a ref to the latest fetchVisits so the realtime callback always uses
-  // the current filter state without needing to recreate the channel.
-  const fetchVisitsRef = useRef(fetchVisits);
-  fetchVisitsRef.current = fetchVisits;
+  // Keep a ref to the latest QUIET fetch so the realtime callback always uses
+  // the current filter state without needing to recreate the channel. The
+  // realtime path deliberately uses the quiet variant (no loading flip) and a
+  // shared 300ms debounce so a burst of row changes collapses into a single
+  // silent refresh instead of one loud refetch per row.
+  const fetchVisitsQuietRef = useRef(fetchVisitsQuiet);
+  fetchVisitsQuietRef.current = fetchVisitsQuiet;
+
+  const debouncedQuietRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    debouncedQuietRef.current = debounce(() => { fetchVisitsQuietRef.current(); }, 300);
+  }, []);
 
   useEffect(() => {
     const channel = supabase
       .channel("admin-visits-realtime")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "visits" }, () => {
-        fetchVisitsRef.current();
+        debouncedQuietRef.current();
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "visits" }, () => {
-        fetchVisitsRef.current();
+        debouncedQuietRef.current();
       })
       .subscribe();
 

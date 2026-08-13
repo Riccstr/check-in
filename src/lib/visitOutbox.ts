@@ -49,6 +49,12 @@ export interface VisitEvent {
   // the originating schedule_items row. Null for ad-hoc and off-route.
   scheduleItemId: string | null;
 
+  // Display-only: the customer's name at capture time. Used by the offline
+  // outbox overlays to render synthesized Done-tab rows with a proper name
+  // before the visit has synced. NEVER sent to the server (no such column) —
+  // syncEngine ignores it entirely.
+  customerName: string | null;
+
   // Wall-clock SAST times, matching the visits.arrival_time / leaving_time
   // convention. Present depending on event type:
   //   arrived   → arrivalTime set, leavingTime null
@@ -99,6 +105,7 @@ export function makeEvent(
   return {
     eventId: uuidv4(),
     scheduleItemId: null,
+    customerName: null,
     arrivalTime: null,
     leavingTime: null,
     durationMinutes: null,

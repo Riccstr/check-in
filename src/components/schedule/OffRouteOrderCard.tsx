@@ -99,6 +99,7 @@ export function OffRouteOrderCard({
         orderQty: offRouteOrderQty,
         orderAmount: offRouteOrderAmount,
         notes: offRouteNotes,
+        customerName: customerName ?? null,
       });
 
       // Optimistic row for the Done tab; the page refetches to reconcile.
